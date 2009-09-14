@@ -7,12 +7,14 @@
 struct smtp_cmd_tree cmd_tree;
 const char *white = "\r\n\t ";
 
-int smtp_cmd_register(const char *cmd, smtp_cmd_handler_t handler, void *priv)
+int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio)
 {
 	struct smtp_cmd_tree *node = &cmd_tree, *aux;
+	struct smtp_cmd_hdlr_list *hlink;
+	struct list_head *p;
 	const char *c;
 
-	for (c = cmd; *c != '\0'; c++) {
+	for (c = cmd; c != NULL && *c != '\0'; c++) {
 		assert(*c >= 'A' && *c <= 'Z');
 		if (node->next[*c - 'A'] != NULL) {
 			node = node->next[*c - 'A'];
@@ -21,16 +23,22 @@ int smtp_cmd_register(const char *cmd, smtp_cmd_handler_t handler, void *priv)
 		aux = malloc(sizeof(struct smtp_cmd_tree));
 		assert(aux != NULL);
 		memset(aux, 0, sizeof(struct smtp_cmd_tree));
+		INIT_LIST_HEAD(&aux->hdlrs);
 		node->next[*c - 'A'] = aux;
 		node = aux;
 	}
 
-	if (node->handler != NULL)
-		return -1;
+	list_for_each(p, &node->hdlrs) {
+		if (list_entry(p, struct smtp_cmd_hdlr_list, lh)->prio > prio)
+			break;
+	}
 
-	node->handler = handler;
-	node->priv = priv;
+	hlink = malloc(sizeof(struct smtp_cmd_hdlr_list));
+	assert(hlink != NULL);
+	hlink->hdlr = hdlr;
+	hlink->prio = prio;
 
+	list_add_tail(&hlink->lh, p);
 	return 0;
 }
 
@@ -44,14 +52,39 @@ int smtp_server_response(FILE *f, int code, const char *message)
 	return -1;
 }
 
-int smtp_server_run(FILE *f)
+int smtp_server_run(struct smtp_server_context *ctx, FILE *f)
 {
+	int continue_session = 1;
+	struct smtp_cmd_hdlr_list *hlink;
 	char buf[SMTP_COMMAND_MAX + 1];
 
 	/* Worst case for argv: all arguments are one character long. Even
 	 * so, since command is not stored in argv, there are N / 2 - 1
 	 * arguments, leaving the last position for the terminating NULL */
 	char *argv[SMTP_COMMAND_MAX / 2];
+
+	smtp_server_context_init(ctx);
+	list_for_each_entry(hlink, &cmd_tree.hdlrs, lh) {
+		int schs;
+
+		if (ctx->message != NULL)
+			free(ctx->message);
+		schs = hlink->hdlr(ctx, buf, f, argv);
+		if (schs == SCHS_ABORT)
+			continue_session = 0;
+		if (schs != SCHS_OK)
+			break;
+	}
+
+	if (ctx->code) {
+		smtp_server_response(f, ctx->code, ctx->message);
+		free(ctx->message);
+	} else {
+		smtp_server_response(f, 400, "Internal server error"); // FIXME: 400
+		continue_session = 0;
+	}
+	if (!continue_session)
+		return 0;
 
 	do {
 		int oversized = 0;
@@ -104,43 +137,75 @@ int smtp_server_run(FILE *f)
 		}
 		argv[argc] = NULL;
 
-		if (node->handler(buf, f, node->priv, argv))
-			break;
-	} while (1);
+		/* Invoke all command handlers */
+		ctx->code = 0;
+		ctx->message = NULL;
+		list_for_each_entry(hlink, &node->hdlrs, lh) {
+			int schs;
+
+			if (ctx->message != NULL)
+				free(ctx->message);
+			schs = hlink->hdlr(ctx, buf, f, argv);
+			if (schs == SCHS_ABORT || schs == SCHS_QUIT)
+				continue_session = 0;
+			if (schs == SCHS_BREAK || schs == SCHS_ABORT)
+				break;
+		}
+
+		if (ctx->code) {
+			smtp_server_response(f, ctx->code, ctx->message);
+			free(ctx->message);
+		} else
+			smtp_server_response(f, 400, "Internal server error"); // FIXME: 400
+	} while (continue_session);
 
 	return 0;
 }
 
-int smtp_hdlr_mail(const char *cmd, FILE *in, void *priv, char **argv)
+int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv)
+{
+	ctx->code = 220;
+	ctx->message = strdup("Mindbit Mail Filter");
+	return SCHS_OK;
+}
+
+int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv)
 {
 	// TODO copiere envelope sender in smtp_server_context
-	return 0;
+	return SCHS_OK;
 }
 
-int smtp_hdlr_rcpt(const char *cmd, FILE *in, void *priv, char **argv)
+int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv)
 {
 	// TODO verificare existenta envelope sender; populare lista recipients in smtp_server_context
-	return 0;
+	return SCHS_OK;
 }
 
-int smtp_hdlr_data(const char *cmd, FILE *in, void *priv, char **argv)
+int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv)
 {
 	// TODO verificare existenta envelope sender si recipienti; salvare mail in temporar; copiere path temp in smtp_server_context
-	return 0;
+	return SCHS_OK;
 }
 
-int smtp_hdlr_quit(const char *cmd, FILE *in, void *priv, char **argv)
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv)
 {
-	// TODO apelare hooks
-	return 0;
+	ctx->code = 221;
+	ctx->message = strdup("closing connection");
+	return SCHS_QUIT;
 }
 
 int smtp_server_init(void)
 {
-	smtp_cmd_register("MAIL", smtp_hdlr_mail, NULL);
-	smtp_cmd_register("RCPT", smtp_hdlr_rcpt, NULL);
-	smtp_cmd_register("DATA", smtp_hdlr_data, NULL);
-	smtp_cmd_register("QUIT", smtp_hdlr_quit, NULL);
+	memset(&cmd_tree, 0, sizeof(struct smtp_cmd_tree));
+	INIT_LIST_HEAD(&cmd_tree.hdlrs);
+	smtp_cmd_register(NULL, smtp_hdlr_init, 0);
+	smtp_cmd_register("MAIL", smtp_hdlr_mail, 0);
+	smtp_cmd_register("RCPT", smtp_hdlr_rcpt, 0);
+	smtp_cmd_register("DATA", smtp_hdlr_data, 0);
+	smtp_cmd_register("QUIT", smtp_hdlr_quit, 0);
+}
 
-	// TODO init smtp_server_context
+int smtp_server_context_init(struct smtp_server_context *ctx)
+{
+	memset(ctx, 0, sizeof(struct smtp_server_context));
 }
