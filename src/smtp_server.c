@@ -110,6 +110,7 @@ int smtp_server_run(struct smtp_server_context *ctx, FILE *f)
 		}
 
 		/* Parse SMTP command */
+		c += strspn(c, white);
 		n = strcspn(c, white);
 		for (i = 0; i < n; i++) {
 			if (c[i] >= 'a' && c[i] <= 'z')
@@ -120,7 +121,7 @@ int smtp_server_run(struct smtp_server_context *ctx, FILE *f)
 				break;
 			node = node->next[c[i] - 'A'];
 		}
-		if (i < n) {
+		if (i < n || !n || list_empty(&node->hdlrs)) {
 			smtp_server_response(f, 500, "Command not implemented");
 			continue;
 		}

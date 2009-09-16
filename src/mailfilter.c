@@ -87,25 +87,26 @@ void server_main(void)
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
 		struct smtp_server_context ctx;
-		FILE *f;
+		FILE *client_sock_stream;
+		int client_sock_fd;
 
-		status = accept(sock, (struct sockaddr *)&ctx.addr, &addrlen);
-		if (status < 0) {
+		client_sock_fd = accept(sock, (struct sockaddr *)&ctx.addr, &addrlen);
+		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
 		}
-
-		f = fdopen(status, "r+");
-		assert(f != NULL);
 
 		switch (fork()) {
 		case -1:
 			assert(0); // FIXME
 			break;
 		case 0:
-			smtp_server_run(&ctx, f);
-			fclose(f);
+			client_sock_stream = fdopen(client_sock_fd, "r+");
+			assert(client_sock_stream != NULL);
+			smtp_server_run(&ctx, client_sock_stream);
+			fclose(client_sock_stream);
 			exit(EXIT_SUCCESS);
-		//default:
+		default:
+			close(client_sock_fd);
 			// FIXME append child to list for graceful shutdown
 		}
 	} while (1);
