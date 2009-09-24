@@ -12,6 +12,21 @@
 
 #define SMTP_COMMAND_MAX 512
 
+struct smtp_domain {
+	const char *domain;
+	struct list_head lh;
+};
+
+struct smtp_mailbox {
+	const char *local;
+	struct smtp_domain domain;
+};
+
+struct smtp_path {
+	struct smtp_mailbox mailbox;
+	struct list_head domains;
+};
+
 /**
  * SMTP server context.
  */
@@ -19,11 +34,14 @@ struct smtp_server_context {
 	/* Authenticated username or empty string if no user authenticated */
 	char auth[10]; // FIXME 10
 
-	/* Envelope sender or empty string if "MAIL" was not issued */
-	char mail[10]; // FIXME 10
+	/* Envelope sender (aka reverse-path as per RFC821). .mailbox.local
+	 * is NULL if "MAIL" was not issued. */
+	struct smtp_path rpath;
 
-	/* List of recipient addresses (empty if "RCPT" was not issued) */
-	// FIXME "list" rcpt
+	/* List of recipients (aka forward-path as per RFC821). Mailbox list
+	 * is empty if "RCPT" was not issued. Elements are chained by the
+	 * .mailbox.domain.lh component. */
+	struct list_head fpath;
 
 	/* Path to temporary file or empty string if "DATA" was not issued */
 	char data[PATH_MAX];
@@ -51,7 +69,7 @@ struct smtp_server_context {
  * 		Private data passed back to the command handler, as passed to
  * 		smtp_cmd_register() on handler registration.
  */
-typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, FILE *in, char **argv);
+typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream);
 
 struct smtp_cmd_hdlr_list {
 	smtp_cmd_hdlr_t hdlr;
@@ -88,6 +106,6 @@ enum smtp_cmd_hdlr_status {
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio);
 extern int smtp_server_init(void);
 extern int smtp_server_run(struct smtp_server_context *ctx, FILE *f);
-extern int smtp_server_context_init(struct smtp_server_context *ctx);
+extern void smtp_server_context_init(struct smtp_server_context *ctx);
 
 #endif
