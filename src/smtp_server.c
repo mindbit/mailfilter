@@ -321,24 +321,21 @@ int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char 
 
 int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	struct smtp_path path;
-
 	if (ctx->rpath.mailbox.local != NULL) {
 		ctx->code = 503;
 		ctx->message = strdup("Sender already specified");
 		return SCHS_BREAK;
 	}
 
-	smtp_path_init(&path);
-	if (smtp_path_parse(&path, arg, "FROM")) {
+	if (smtp_path_parse(&ctx->rpath, arg, "FROM")) {
+		smtp_path_cleanup(&ctx->rpath);
+		smtp_path_init(&ctx->rpath);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
 		return SCHS_BREAK;
 	}
 
-	memcpy(&ctx->rpath, &path, sizeof(struct smtp_path));
-
-	fprintf(stream, "l='%s' d='%s'\n", path.mailbox.local, path.mailbox.domain.domain);
+	fprintf(stream, "l='%s' d='%s'\n", ctx->rpath.mailbox.local, ctx->rpath.mailbox.domain.domain);
 
 	ctx->code = 250;
 	ctx->message = strdup("Ok");
