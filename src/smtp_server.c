@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "smtp_server.h"
 
@@ -400,6 +401,47 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	ctx->message = strdup("Go ahead");
 	ctx->node = smtp_cmd_lookup("BODY");
 	return SCHS_CHAIN;
+}
+
+int smtp_copy_to_file(FILE *out, FILE *in)
+{
+	const uint64_t EOF_MAGIC		= 0x0d0a2e0d0a;	/* <CR><LF>"."<CR><LF> */
+	const uint64_t EOF_MASK			= 0xffffffffff;
+	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
+	const uint64_t DOTLINE_MASK		= 0xffffff0000;
+	const uint64_t CRLF_MAGIC		= 0x0000000d0a; /* <CR><LF> */
+	const uint64_t CRLF_MASK		= 0x000000ffff;
+	uint64_t buf = 0;
+	int fill = 0;
+	int c;
+
+	while ((c = getc_unlocked(in)) != EOF) {
+		if (++fill > 8) {
+			if (putc_unlocked(buf >> 56, out) == EOF)
+				return 1;
+			fill = 8;
+		}
+		buf = (buf << 8) | c;
+		if ((buf & EOF_MASK) == EOF_MAGIC) {
+			assert(fill >= 5);
+			/* discard the (terminating) "."<CR><LF> */
+			buf >>= 24;
+			fill -= 3;
+			break;
+		}
+		if ((buf & DOTLINE_MASK) == DOTLINE_MAGIC && (buf & CRLF_MASK) != CRLF_MAGIC) {
+			assert(fill >= 5);
+			/* strip the dot at beginning of line */
+			buf = ((buf >> 8) & ~CRLF_MASK) | (buf & CRLF_MASK);
+			fill--;
+		}
+	}
+
+	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
+		if (putc_unlocked((buf >> fill) & 0xff, out) == EOF)
+			return 1;
+
+	return 0;
 }
 
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
