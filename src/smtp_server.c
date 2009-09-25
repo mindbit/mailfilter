@@ -328,7 +328,6 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 
 	if (smtp_path_parse(&ctx->rpath, arg, "FROM")) {
-		smtp_path_cleanup(&ctx->rpath);
 		smtp_path_init(&ctx->rpath);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
@@ -338,13 +337,36 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	fprintf(stream, "l='%s' d='%s'\n", ctx->rpath.mailbox.local, ctx->rpath.mailbox.domain.domain);
 
 	ctx->code = 250;
-	ctx->message = strdup("Ok");
+	ctx->message = strdup("Envelope sender ok");
 	return SCHS_OK;
 }
 
 int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	// TODO verificare existenta envelope sender; populare lista recipients in smtp_server_context
+	struct smtp_path *path;
+
+	if (ctx->rpath.mailbox.local == NULL) {
+		ctx->code = 503;
+		ctx->message = strdup("Must specify envelope sender first");
+		return SCHS_BREAK;
+	}
+
+	path = malloc(sizeof(struct smtp_path));
+	if (path == NULL)
+		return SCHS_BREAK;
+	smtp_path_init(path);
+
+	if (smtp_path_parse(path, arg, "TO")) {
+		free(path);
+		ctx->code = 501;
+		ctx->message = strdup("Syntax error");
+		return SCHS_BREAK;
+	}
+
+	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
+	ctx->code = 250;
+	ctx->message = strdup("Recipient ok");
+
 	return SCHS_OK;
 }
 
