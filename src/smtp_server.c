@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "smtp_server.h"
 
@@ -108,13 +109,10 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	return continue_session;
 }
 
-int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
+int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 {
 	int continue_session;
 	char buf[SMTP_COMMAND_MAX + 1];
-
-	smtp_server_context_init(ctx);
-	//sleep(5);
 
 	/* Handle initial greeting */
 	if ((ctx->node = smtp_cmd_lookup("INIT")) != NULL) {
@@ -211,6 +209,22 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 		smtp_path_cleanup(path);
 		free(path);
 	}
+	if (ctx->body.stream != NULL)
+		fclose(ctx->body.stream);
+	if (ctx->body.path[0] != '\0')
+		unlink(ctx->body.path);
+}
+
+int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
+{
+	int ret;
+
+	smtp_server_context_init(ctx);
+	//sleep(5);
+	ret = __smtp_server_run(ctx, stream);
+	smtp_server_context_cleanup(ctx);
+
+	return ret;
 }
 
 int __smtp_path_parse(struct smtp_path *path, const char *arg)
@@ -391,12 +405,29 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
+	int fd;
+
 	// TODO verificare existenta envelope sender si recipienti; salvare mail in temporar; copiere path temp in smtp_server_context
 	if (list_empty(&ctx->fpath)) {
 		ctx->code = 503;
 		ctx->message = strdup("Must specify recipient(s) first");
 		return SCHS_BREAK;
 	}
+
+	/* prepare temporary file to store message body */
+	sprintf(ctx->body.path, "/tmp/mailfilter.XXXXXX"); // FIXME sNprintf; cale in loc de /tmp;
+	if ((fd = mkstemp(ctx->body.path)) == -1) {
+		ctx->body.path[0] = '\0';
+		return SCHS_BREAK;
+	}
+	if ((ctx->body.stream = fdopen(fd, "r+")) == NULL) {
+		close(fd);
+		unlink(ctx->body.path);
+		ctx->body.path[0] = '\0';
+		return SCHS_BREAK;
+	}
+
+	/* prepare response */
 	ctx->code = 354;
 	ctx->message = strdup("Go ahead");
 	ctx->node = smtp_cmd_lookup("BODY");
@@ -405,8 +436,6 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 
 int smtp_copy_to_file(FILE *out, FILE *in)
 {
-	const uint64_t EOF_MAGIC		= 0x0d0a2e0d0a;	/* <CR><LF>"."<CR><LF> */
-	const uint64_t EOF_MASK			= 0xffffffffff;
 	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
 	const uint64_t DOTLINE_MASK		= 0xffffff0000;
 	const uint64_t CRLF_MAGIC		= 0x0000000d0a; /* <CR><LF> */
@@ -422,21 +451,23 @@ int smtp_copy_to_file(FILE *out, FILE *in)
 			fill = 8;
 		}
 		buf = (buf << 8) | c;
-		if ((buf & EOF_MASK) == EOF_MAGIC) {
+		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
+			continue;
+		if ((buf & CRLF_MASK) == CRLF_MAGIC) {
+			/* we found the EOF sequence (<CR><LF>"."<CR><LF>) */
 			assert(fill >= 5);
 			/* discard the (terminating) "."<CR><LF> */
 			buf >>= 24;
 			fill -= 3;
 			break;
 		}
-		if ((buf & DOTLINE_MASK) == DOTLINE_MAGIC && (buf & CRLF_MASK) != CRLF_MAGIC) {
-			assert(fill >= 5);
-			/* strip the dot at beginning of line */
-			buf = ((buf >> 8) & ~CRLF_MASK) | (buf & CRLF_MASK);
-			fill--;
-		}
+		/* strip the dot at beginning of line */
+		assert(fill >= 5);
+		buf = ((buf >> 8) & ~CRLF_MASK) | (buf & CRLF_MASK);
+		fill--;
 	}
 
+	/* flush remaining buffer */
 	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
 		if (putc_unlocked((buf >> fill) & 0xff, out) == EOF)
 			return 1;
@@ -446,6 +477,9 @@ int smtp_copy_to_file(FILE *out, FILE *in)
 
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
+	assert(ctx->body.stream != NULL);
+	smtp_copy_to_file(ctx->body.stream, stream);
+	fflush(ctx->body.stream);
 	ctx->code = 250;
 	ctx->message = strdup("Mail successfully received");
 	return SCHS_OK;
@@ -467,7 +501,7 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_OK;
 }
 
-int smtp_server_init(void)
+void smtp_server_init(void)
 {
 	memset(&cmd_tree, 0, sizeof(struct smtp_cmd_tree));
 	INIT_LIST_HEAD(&cmd_tree.hdlrs);

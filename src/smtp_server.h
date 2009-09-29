@@ -85,8 +85,14 @@ struct smtp_server_context {
 	 * .mailbox.domain.lh component. */
 	struct list_head fpath;
 
-	/* Path to temporary file or empty string if "DATA" was not issued */
-	char data[PATH_MAX];
+	/* Message body */
+	struct {
+		/* Path to tmp file or empty string if "DATA" was not issued */
+		char path[PATH_MAX];
+
+		/* Stream of tmp file or NULL if "DATA" was not issued */
+		FILE *stream;
+	} body;
 
 	/* Remote end address */
 	struct sockaddr_in addr;
@@ -116,7 +122,7 @@ enum smtp_cmd_hdlr_status {
 };
 
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
-extern int smtp_server_init(void);
+extern void smtp_server_init(void);
 extern int smtp_server_run(struct smtp_server_context *ctx, FILE *f);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
 

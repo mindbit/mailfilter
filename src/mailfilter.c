@@ -62,6 +62,17 @@ void daemonize(void) {
 	dup(fd);
 }
 
+/* TODO redesign model procese:
+ * - reciclam workerii
+ * - procesul parinte functioneaza ca multiplexor de date
+ *   - fiecare worker are un set de pipe-uri cu procesul principal
+ *   - la o conexiune noua, daca avem un worker disponibil, asignam workerul si punem conexiunea intr-o lista
+ *   - procesul parinte supravegheaza cu select() toate fd-urile active
+ *   - datele primite pe socket se copiaza in pipe si invers
+ * - probleme
+ *   - pipe-urile sunt unidirectionale => in worker trebuie modificat FILE * stream cu o pereche
+ *   - stream-urile fac buffer; pot sa am probleme cu buffer pe input atunci cand un worker serveste o noua conexiune
+ */
 void server_main(void)
 {
 	int sock, on = 1, status;
