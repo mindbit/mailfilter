@@ -126,17 +126,17 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 		char *c = &buf[0];
 		size_t i, n;
 
-		buf[SMTP_COMMAND_MAX] = '\0';
+		buf[SMTP_COMMAND_MAX] = '\n';
 		if (fgets(buf, sizeof(buf), stream) == NULL)
 			return -1;
 
 		/* Handle oversized commands */
-		do {
-			if (buf[SMTP_COMMAND_MAX] == '\0')
-				break;
+		while (buf[SMTP_COMMAND_MAX] == '\n') {
 			oversized = 1;
-			buf[SMTP_COMMAND_MAX] = '\0';
-		} while (fgets(buf, sizeof(buf), stream) != NULL);
+			buf[SMTP_COMMAND_MAX] = '\n';
+			if (fgets(buf, sizeof(buf), stream) == NULL)
+				return -1;
+		}
 		if (oversized) {
 			smtp_server_response(stream, 421, "Command too long");
 			return -1;
