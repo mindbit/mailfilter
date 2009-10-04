@@ -5,6 +5,8 @@
 
 #define SMTP_COMMAND_MAX 512
 
+#define EMPTY_STRING ((void *)1)
+
 struct smtp_domain {
 	const char *domain;
 	struct list_head lh;

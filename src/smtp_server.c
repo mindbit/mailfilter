@@ -11,7 +11,6 @@
 
 struct smtp_cmd_tree cmd_tree;
 const char *white = "\r\n\t ";
-const char *EMPTY_STRING = "";
 
 int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable)
 {
@@ -227,7 +226,7 @@ int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 	return ret;
 }
 
-int __smtp_path_parse(struct smtp_path *path, const char *arg)
+int smtp_path_parse(struct smtp_path *path, const char *arg)
 {
 	enum {
 		S_INIT,
@@ -273,9 +272,11 @@ int __smtp_path_parse(struct smtp_path *path, const char *arg)
 					return 1;
 				domain = malloc(sizeof(struct smtp_domain));
 				if (domain == NULL)
-					return 2; // FIXME in cadrul apelant dau alt mesaj de eroare decat syntax err
-				if ((domain->domain = strndup(token, arg - token)) == NULL)
+					return 2; // FIXME in cadrul apelant trebuie sa dau alt mesaj de eroare decat syntax err
+				if ((domain->domain = strndup(token, arg - token)) == NULL) {
+					free(domain);
 					return 2; // FIXME
+				}
 				list_add_tail(&domain->lh, &path->domains);
 			}
 			if (*arg == ',') {
@@ -322,7 +323,7 @@ int __smtp_path_parse(struct smtp_path *path, const char *arg)
 	return state == S_FINAL ? 0 : 1;
 }
 
-int smtp_path_parse(struct smtp_path *path, const char *arg, const char *word)
+int smtp_path_parse_cmd(struct smtp_path *path, const char *arg, const char *word)
 {
 	/* Look for passed-in word */
 	arg += strspn(arg, white);
@@ -337,7 +338,7 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, const char *word)
 
 	/* Parse actual path */
 	arg += strspn(arg, white);
-	if (__smtp_path_parse(path, arg)) {
+	if (smtp_path_parse(path, arg)) {
 		smtp_path_cleanup(path);
 		return 1;
 	}
@@ -360,7 +361,7 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 		return SCHS_BREAK;
 	}
 
-	if (smtp_path_parse(&ctx->rpath, arg, "FROM")) {
+	if (smtp_path_parse_cmd(&ctx->rpath, arg, "FROM")) {
 		smtp_path_init(&ctx->rpath);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
@@ -389,7 +390,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 		return SCHS_BREAK;
 	smtp_path_init(path);
 
-	if (smtp_path_parse(path, arg, "TO")) {
+	if (smtp_path_parse_cmd(path, arg, "TO")) {
 		free(path);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
