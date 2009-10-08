@@ -113,12 +113,6 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 	int continue_session;
 	char buf[SMTP_COMMAND_MAX + 1];
 
-	/* Handle initial greeting */
-	if ((ctx->node = smtp_cmd_lookup("INIT")) != NULL) {
-		if (!smtp_server_process(ctx, NULL, NULL, stream) || !ctx->code)
-			return 0;
-	}
-
 	/* Command handling loop */
 	do {
 		int oversized = 0;
@@ -195,9 +189,14 @@ void smtp_path_cleanup(struct smtp_path *path)
 
 void smtp_server_context_init(struct smtp_server_context *ctx)
 {
+	int i;
+
 	memset(ctx, 0, sizeof(struct smtp_server_context));
 	smtp_path_init(&ctx->rpath);
 	INIT_LIST_HEAD(&ctx->fpath);
+
+	for (i = 0; i < SMTP_PRIV_HASH_SIZE; i++)
+		INIT_LIST_HEAD(&ctx->priv_hash[i]);
 }
 
 void smtp_server_context_cleanup(struct smtp_server_context *ctx)
@@ -219,8 +218,21 @@ int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 	int ret;
 
 	smtp_server_context_init(ctx);
-	//sleep(5);
+
+	/* Handle initial greeting */
+	if ((ctx->node = smtp_cmd_lookup("INIT")) != NULL) {
+		if (!smtp_server_process(ctx, NULL, NULL, stream) || !ctx->code)
+			return 0;
+	}
+
 	ret = __smtp_server_run(ctx, stream);
+
+	/* Give all modules the chance to clean up (possibly after a broken
+	 * connection */
+	if ((ctx->node = smtp_cmd_lookup("TERM")) != NULL) {
+		if (!smtp_server_process(ctx, NULL, NULL, stream) || !ctx->code)
+			return 0;
+	}
 	smtp_server_context_cleanup(ctx);
 
 	return ret;
@@ -514,3 +526,31 @@ void smtp_server_init(void)
 	smtp_cmd_register("QUIT", smtp_hdlr_quit, 0, 1);
 	smtp_cmd_register("RSET", smtp_hdlr_rset, 0, 1);
 }
+
+extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
+{
+	struct smtp_priv_hash *h;
+
+	h = malloc(sizeof(struct smtp_priv_hash));
+	if (h == NULL)
+		return 1;
+
+	h->key = key;
+	h->priv = priv;
+	list_add_tail(&h->lh, &ctx->priv_hash[smtp_priv_bucket(key)]);
+
+	return 0;
+}
+
+extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key)
+{
+	struct smtp_priv_hash *h;
+	int i = smtp_priv_bucket(key);
+
+	list_for_each_entry(h, &ctx->priv_hash[i], lh)
+		if (h->key == key)
+			return h->priv;
+
+	return NULL;
+}
+
