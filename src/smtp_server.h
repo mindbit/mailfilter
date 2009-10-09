@@ -122,6 +122,7 @@ extern int smtp_server_run(struct smtp_server_context *ctx, FILE *f);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
 extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv);
 extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key);
+extern int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key);
 
 static inline int smtp_priv_bucket(uint64_t key)
 {

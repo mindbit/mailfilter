@@ -15,11 +15,14 @@ int smtp_client_response(FILE *stream, smtp_client_callback_t callback, void *pr
 
 	do {
 		int oversized = 0;
+		size_t len;
 
 		buf[SMTP_COMMAND_MAX] = '\n';
 		if (fgets(buf, sizeof(buf), stream) == NULL)
 			return SMTP_READ_ERROR;
-		if (strlen(buf) < 4)
+		len = strlen(buf);
+
+		if (len < 4)
 			return SMTP_PARSE_ERROR;
 		sep = buf[3];
 		buf[3] = '\0';
@@ -36,6 +39,11 @@ int smtp_client_response(FILE *stream, smtp_client_callback_t callback, void *pr
 			return SMTP_PARSE_ERROR;
 		if (code < 100 || code > 999)
 			return SMTP_INVALID_CODE;
+
+		if (buf[len - 1] == '\n')
+			buf[--len] = '\0';
+		if (buf[len - 1] == '\r')
+			buf[--len] = '\0';
 
 		if (callback != NULL && callback(code, &buf[0] + 4, sep == ' ', priv))
 			return code;
@@ -98,6 +106,23 @@ int smtp_c_mail(FILE *stream, struct smtp_path *path)
 int smtp_c_rcpt(FILE *stream, struct smtp_path *path)
 {
 	return smtp_put_path_cmd(stream, "RCPT TO", path);
+}
+
+int smtp_client_command(FILE *stream, const char *cmd, const char *arg)
+{
+	if (fputs(cmd, stream) == EOF)
+		return 1;
+	if (arg != NULL) {
+		if (fputc(' ', stream) == EOF)
+			return 1;
+		if (fputs(arg, stream) == EOF)
+			return 1;
+	}
+	if (fputs("\r\n", stream) == EOF)
+		return 1;
+	if (fflush(stream) == EOF)
+		return 1;
+	return 0;
 }
 
 int smtp_copy_from_file(FILE *out, FILE *in)

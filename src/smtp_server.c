@@ -124,7 +124,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 			return -1;
 
 		/* Handle oversized commands */
-		while (buf[SMTP_COMMAND_MAX] == '\n') {
+		while (buf[SMTP_COMMAND_MAX] != '\n') {
 			oversized = 1;
 			buf[SMTP_COMMAND_MAX] = '\n';
 			if (fgets(buf, sizeof(buf), stream) == NULL)
@@ -525,9 +525,12 @@ void smtp_server_init(void)
 	smtp_cmd_register("BODY", smtp_hdlr_body, 0, 0);
 	smtp_cmd_register("QUIT", smtp_hdlr_quit, 0, 1);
 	smtp_cmd_register("RSET", smtp_hdlr_rset, 0, 1);
+
+	// TODO urmatoarele trebuie sa se intample din config
+	mod_proxy_init();
 }
 
-extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
+int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
 {
 	struct smtp_priv_hash *h;
 
@@ -542,7 +545,7 @@ extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, voi
 	return 0;
 }
 
-extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key)
+void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key)
 {
 	struct smtp_priv_hash *h;
 	int i = smtp_priv_bucket(key);
@@ -552,5 +555,20 @@ extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key)
 			return h->priv;
 
 	return NULL;
+}
+
+int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
+{
+	struct smtp_priv_hash *h;
+	int i = smtp_priv_bucket(key);
+
+	list_for_each_entry(h, &ctx->priv_hash[i], lh)
+		if (h->key == key) {
+			list_del(&h->lh);
+			free(h);
+			return 1;
+		}
+
+	return 0;
 }
 
