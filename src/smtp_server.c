@@ -101,7 +101,7 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		if (ctx->code) {
 			smtp_server_response(stream, ctx->code, ctx->message);
 			free(ctx->message);
-		} else if (schs != SCHS_CHAIN)
+		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE)
 			smtp_server_response(stream, 400, "Internal server error"); // FIXME: 400
 	} while (schs == SCHS_CHAIN);
 
@@ -379,8 +379,6 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 		ctx->message = strdup("Syntax error");
 		return SCHS_BREAK;
 	}
-
-	fprintf(stream, "l='%s' d='%s'\n", ctx->rpath.mailbox.local, ctx->rpath.mailbox.domain.domain);
 
 	ctx->code = 250;
 	ctx->message = strdup("Envelope sender ok");

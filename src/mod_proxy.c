@@ -67,6 +67,8 @@ int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const 
 
 	smtp_client_command(priv->sock, "QUIT", NULL);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
+
+	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
 }
 
 int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
@@ -76,7 +78,7 @@ int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_priv_unregister(ctx, key);
 	free(priv);
 
-	return SCHS_OK;
+	return SCHS_IGNORE;
 }
 
 /* void __attribute__((constructor)) my_init() */

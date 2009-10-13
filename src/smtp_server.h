@@ -113,7 +113,10 @@ enum smtp_cmd_hdlr_status {
 	SCHS_QUIT	= 3,
 
 	/* Re-enter handler processing chain */
-	SCHS_CHAIN	= 4
+	SCHS_CHAIN	= 4,
+
+	/* Same as OK, but ignore the handler not having set any response code */
+	SCHS_IGNORE	= 5
 };
 
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
