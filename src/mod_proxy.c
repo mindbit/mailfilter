@@ -61,6 +61,29 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 	return SCHS_OK;
 }
 
+int mod_proxy_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+
+	smtp_c_mail(priv->sock, &ctx->rpath);
+	smtp_client_response(priv->sock, copy_response_callback, ctx);
+
+	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
+}
+
+int mod_proxy_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+
+	if (list_empty(&ctx->fpath))
+		return SCHS_BREAK;
+
+	smtp_c_rcpt(priv->sock, list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
+	smtp_client_response(priv->sock, copy_response_callback, ctx);
+
+	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
+}
+
 int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
@@ -87,6 +110,8 @@ void mod_proxy_init(void)
 {
 	key = smtp_priv_key("proxy");
 	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
+	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
+	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
 	smtp_cmd_register("TERM", mod_proxy_hdlr_term, 100, 0);
 }
