@@ -11,6 +11,7 @@ enum {
 };
 int smtp_client_response(FILE *stream, smtp_client_callback_t callback, void *priv);
 int smtp_client_command(FILE *stream, const char *cmd, const char *arg);
+int smtp_copy_from_file(FILE *out, FILE *in);
 int smtp_put_path(FILE *stream, struct smtp_path *path);
 int smtp_put_path_cmd(FILE *stream, const char *cmd, struct smtp_path *path);
 int smtp_c_mail(FILE *stream, struct smtp_path *path);

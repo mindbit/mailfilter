@@ -77,7 +77,7 @@ int smtp_server_response(FILE *f, int code, const char *message)
 
 int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	int schs, first = 1, continue_session = 1;
+	int schs, continue_session = 1;
 	struct smtp_cmd_hdlr_list *hlink;
 
 	do {
@@ -102,7 +102,7 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 			smtp_server_response(stream, ctx->code, ctx->message);
 			free(ctx->message);
 		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE)
-			smtp_server_response(stream, 400, "Internal server error"); // FIXME: 400
+			smtp_server_response(stream, 451, "Internal server error");
 	} while (schs == SCHS_CHAIN);
 
 	return continue_session;

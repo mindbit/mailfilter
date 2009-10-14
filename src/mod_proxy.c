@@ -31,7 +31,7 @@ int copy_response_callback(int code, const char *message, int last, void *priv)
 int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_proxy_priv *priv;
-	int sock, status;
+	int sock;
 	struct sockaddr_in peer;
 
 	priv = malloc(sizeof(struct mod_proxy_priv));
@@ -68,7 +68,7 @@ int mod_proxy_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_c_mail(priv->sock, &ctx->rpath);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
 int mod_proxy_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
@@ -81,7 +81,7 @@ int mod_proxy_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_c_rcpt(priv->sock, list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
 int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
@@ -91,7 +91,33 @@ int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_command(priv->sock, "QUIT", NULL);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code < 400 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+}
+
+int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+
+	smtp_client_command(priv->sock, "DATA", NULL);
+	smtp_client_response(priv->sock, copy_response_callback, ctx);
+
+	if (ctx->code < 300 || ctx->code > 399)
+		return SCHS_BREAK;
+
+	free(ctx->message);
+	ctx->code = 0;
+	ctx->message = NULL;
+
+	rewind(ctx->body.stream);
+	if (smtp_copy_from_file(priv->sock, ctx->body.stream)) {
+		/* leave code to 0 (fall back to the default Internal Server
+		 * Error message) */
+		return SCHS_BREAK;
+	}
+	fflush(priv->sock);
+
+	smtp_client_response(priv->sock, copy_response_callback, ctx);
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
 int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
@@ -113,6 +139,7 @@ void mod_proxy_init(void)
 	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
 	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
+	smtp_cmd_register("BODY", mod_proxy_hdlr_body, 100, 0);
 	smtp_cmd_register("TERM", mod_proxy_hdlr_term, 100, 0);
 }
 
