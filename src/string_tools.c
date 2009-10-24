@@ -17,20 +17,9 @@ int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 	if (s == NULL)
 		return ENOMEM;
 
+	memset(s + sb->size, 0, chunk);
 	sb->s = s;
 	sb->size += chunk;
-
-	return 0;
-}
-
-int string_buffer_append_char(struct string_buffer *sb, char c)
-{
-	int err;
-
-	if (sb->cur >= sb->size && (err = string_buffer_enlarge(sb)))
-		return err;
-
-	sb->s[sb->cur++] = c;
 
 	return 0;
 }
@@ -39,13 +28,15 @@ int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, ex
 {
 	enum {
 		S_EXPECT_KEY,
+		S_EXPECT_KEY_ESCAPE,
 		S_EXPECT_BRACKET,
-		S_TOKEN
+		S_TOKEN,
+		S_TOKEN_ESCAPE
 	} state = S_EXPECT_KEY;
 	char key = '\0';
 	const char *token = NULL;
 	char *p = (char *)expr;
-	int err = 0;
+	int err = 0, bracket = 0;
 
 	if (keys == NULL)
 		keys = "$";
@@ -53,6 +44,10 @@ int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, ex
 	while (*p) {
 		switch (state) {
 		case S_EXPECT_KEY:
+			if (*p == '\\') {
+				state = S_EXPECT_KEY_ESCAPE;
+				break;
+			}
 			if (strchr(keys, *p) == NULL) {
 				string_buffer_append_char(sb, *p);
 				break;
@@ -60,23 +55,38 @@ int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, ex
 			key = *p;
 			state = S_EXPECT_BRACKET;
 			break;
+		case S_EXPECT_KEY_ESCAPE:
+			string_buffer_append_char(sb, *p);
+			state = S_EXPECT_KEY;
+			break;
 		case S_EXPECT_BRACKET:
-			if (*p == key) {
-				string_buffer_append_char(sb, *p);
-				break;
-			}
 			if (*p != '{') {
 				err = -1;
 				break;
 			}
 			token = p + 1;
+			bracket++; /* should be 1 */
 			break;
 		case S_TOKEN:
+			if (*p == '\\') {
+				state = S_TOKEN_ESCAPE;
+				break;
+			}
+			if (*p == '{') {
+				bracket++;
+				break;
+			}
 			if (*p != '}')
+				break;
+			if (--bracket)
 				break;
 			if ((err = cbk(sb, key, token, p - token, priv)))
 				break;
 			state = S_EXPECT_KEY;
+			break;
+		case S_TOKEN_ESCAPE:
+			string_buffer_append_char(sb, *p);
+			state = S_TOKEN;
 			break;
 		}
 
