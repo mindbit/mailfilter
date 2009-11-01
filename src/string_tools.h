@@ -16,6 +16,13 @@ struct string_buffer {
 
 #define STRING_BUFFER_CHUNK 256
 
+#define STRING_BUFFER_INITIALIZER {\
+	.s = NULL,\
+	.size = 0,\
+	.cur = 0,\
+	.chunk = 0\
+}
+
 void string_buffer_init(struct string_buffer *sb);
 
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk);
@@ -36,7 +43,19 @@ static inline int string_buffer_append_char(struct string_buffer *sb, char c)
 	return 0;
 }
 
-int string_buffer_append_string(struct string_buffer *sb, char *s);
+static inline int string_buffer_append_string(struct string_buffer *sb, const char *s)
+{
+	size_t len = strlen(s);
+	int err;
+
+	if (sb->cur + len >= sb->size && (err = __string_buffer_enlarge(sb, STRING_BUFFER_CHUNK * ((STRING_BUFFER_CHUNK + sb->cur + len - sb->size) / STRING_BUFFER_CHUNK))))
+		return err;
+
+	strcpy(sb->s + sb->cur, s);
+	sb->cur += len;
+
+	return 0;
+}
 
 /* ------------------ Generic expression expansion ---------------- */
 

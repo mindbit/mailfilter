@@ -1,0 +1,24 @@
+#
+# Logging
+#
+logging:
+{
+    # type: stderr, syslog or file
+    type = "stderr";
+    # level: emerg, alert, crit, err, warning, notice, info, debug
+    level = "info";
+    # facility: daemon, user or local0 up to local7
+    #facility = "daemon";
+    # path: relevant only when logging type is file
+    #path = "/var/log/tbd.log";
+};
+
+#
+# Database connection
+#
+dbconn:
+{
+    host   = "10.0.1.146";
+    dbname = "mipanel";
+    user   = "mipanel";
+};

@@ -61,6 +61,19 @@ void daemonize(void) {
 	dup(fd);
 }
 
+static void show_help(const char *argv0)
+{
+	fprintf(stderr,
+			"Usage: %s <options>\n"
+			"\n"
+			"Valid options:\n"
+			"  -c <path>       Read configuration file from <path>\n"
+			"  -d              Do not fork to background; log everything to stderr\n"
+			"  -h              Show this help\n"
+			"\n",
+			argv0);
+}
+
 /* TODO redesign model procese:
  * - reciclam workerii
  * - procesul parinte functioneaza ca multiplexor de date
@@ -72,10 +85,47 @@ void daemonize(void) {
  *   - pipe-urile sunt unidirectionale => in worker trebuie modificat FILE * stream cu o pereche
  *   - stream-urile fac buffer; pot sa am probleme cu buffer pe input atunci cand un worker serveste o noua conexiune
  */
-void server_main(void)
+int main(int argc, char **argv)
 {
-	int sock, on = 1, status;
+	int sock, on = 1, status, opt;
 	struct sockaddr_in servaddr;
+
+	/*
+	 * Server configuration initializer.
+	 */
+	struct config config = {
+		.path = "/etc/mailfilter.conf",
+		.daemon = 1,
+		.logging_type = LOGGING_TYPE_STDERR,
+		.logging_level = LOG_INFO,
+		.logging_facility = LOG_DAEMON,
+		.dbconn = NULL,
+	};
+	struct config newcfg;
+
+	while ((opt = getopt(argc, argv, "hdc:")) != -1) {
+		switch (opt) {
+		case 'c':
+			config.path = strdup(optarg);
+			break;
+		case 'd':
+			config.daemon = 0;
+			break;
+		case 'h':
+			show_help(argv[0]);
+			return 0;
+		default:
+			show_help(argv[0]);
+			return 1;
+		}
+	}
+
+	if (config_parse(&config, &newcfg))
+		return 1;
+
+	config = newcfg;
+
+	smtp_server_init();
 
 	sock = socket(PF_INET, SOCK_STREAM, 0);
 	assert(sock != -1);
@@ -93,6 +143,8 @@ void server_main(void)
 
 	status = listen(sock, 20);
 	assert(status != -1);
+
+	log(&config, LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
 
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
@@ -112,6 +164,7 @@ void server_main(void)
 		case 0:
 			client_sock_stream = fdopen(client_sock_fd, "r+");
 			assert(client_sock_stream != NULL);
+			ctx.cfg = &config;
 			smtp_server_run(&ctx, client_sock_stream);
 			fclose(client_sock_stream);
 			exit(EXIT_SUCCESS);
@@ -120,11 +173,6 @@ void server_main(void)
 			// FIXME append child to list for graceful shutdown
 		}
 	} while (1);
-}
 
-int main(int argc, char **argv) {
-	printf("Hello\n");
-	smtp_server_init();
-	server_main();
 	return 0;
 }

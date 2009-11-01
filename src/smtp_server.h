@@ -10,6 +10,7 @@
 #include <netinet/ip.h> /* superset of previous */
 
 #include "smtp.h"
+#include "logging.h"
 
 struct smtp_server_context;
 
@@ -62,6 +63,12 @@ struct smtp_priv_hash {
  * SMTP server context.
  */
 struct smtp_server_context {
+	/* Server configuration */
+	struct config *cfg;
+
+	/* Remote end address */
+	struct sockaddr_in addr;
+
 	/* Command tree node that is currently being run */
 	struct smtp_cmd_tree *node;
 
@@ -85,9 +92,6 @@ struct smtp_server_context {
 		/* Stream of tmp file or NULL if "DATA" was not issued */
 		FILE *stream;
 	} body;
-
-	/* Remote end address */
-	struct sockaddr_in addr;
 
 	/* SMTP status code to send back to client */
 	int code;
