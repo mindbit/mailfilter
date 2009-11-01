@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -8,8 +9,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <string.h>
-
-FILE *fdopen(int fildes, const char *mode); // WTF ?!!
 
 #include "smtp_server.h"
 
