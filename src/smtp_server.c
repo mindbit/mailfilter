@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -536,7 +537,7 @@ int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv
 
 	h = malloc(sizeof(struct smtp_priv_hash));
 	if (h == NULL)
-		return 1;
+		return -ENOMEM;
 
 	h->key = key;
 	h->priv = priv;
@@ -566,9 +567,9 @@ int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
 		if (h->key == key) {
 			list_del(&h->lh);
 			free(h);
-			return 1;
+			return 0;
 		}
 
-	return 0;
+	return -ESRCH;
 }
 

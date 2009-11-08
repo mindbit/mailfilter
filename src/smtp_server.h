@@ -17,6 +17,8 @@ struct smtp_server_context;
 /**
  * SMTP command handler prototype.
  *
+ * FIXME: this help is innacurate ...
+ *
  * cmd
  *		The (SMTP) command that is being handled.
  * 
@@ -43,7 +45,7 @@ struct smtp_cmd_hdlr_list {
 /**
  * SMTP command tree node.
  *
- * User by generic command parser to find out what handler to call for
+ * Used by generic command parser to find out what handler to call for
  * each SMTP command.
  */
 struct smtp_cmd_tree {
