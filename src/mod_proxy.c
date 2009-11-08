@@ -71,12 +71,14 @@ int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const 
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
 	char *domain;
 
-	/* We must break the rules and modify arg to strip the terminating \n. Otherwise
+	assert(priv);
+
+	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
 	 * the server to which we're proxying gets confused, since it expects the \r\n line
 	 * ending. smtp_client_command already appends this.
 	 */
 	domain = (char *)arg;
-	domain[strcspn(domain, "\n")] = '\0';
+	domain[strcspn(domain, "\r\n")] = '\0';
 	smtp_client_command(priv->sock, cmd, domain);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 

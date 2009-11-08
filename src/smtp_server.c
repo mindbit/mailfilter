@@ -90,8 +90,10 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		ctx->message = NULL;
 		list_for_each_entry(hlink, &node->hdlrs, lh) {
 
-			if (ctx->message != NULL)
+			if (ctx->message != NULL) {
 				free(ctx->message);
+				ctx->message = NULL;
+			}
 			schs = hlink->hdlr(ctx, cmd, arg, stream);
 			if (schs == SCHS_ABORT || schs == SCHS_QUIT)
 				continue_session = 0;
@@ -507,7 +509,6 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	smtp_server_context_cleanup(ctx);
-	smtp_server_context_init(ctx);
 	ctx->code = 250;
 	ctx->message = strdup("State reset complete");
 	return SCHS_OK;
