@@ -85,6 +85,42 @@ int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
+int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+	char buf[SMTP_COMMAND_MAX + 1], *domain, *p, sep;
+
+	assert(priv);
+
+	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
+	 * the server to which we're proxying gets confused, since it expects the \r\n line
+	 * ending. smtp_client_command already appends this.
+	 */
+	domain = (char *)arg;
+	domain[strcspn(domain, "\r\n")] = '\0';
+
+	/* send the EHLO command to the real SMTP server */
+	smtp_client_command(priv->sock, cmd, domain);
+	/* proxy the SMTP server output to our client */
+	do {
+		if (fgets(buf, sizeof(buf), priv->sock) == NULL)
+			return SCHS_BREAK;
+		if (strlen(buf) <= 4)
+			return SCHS_BREAK;
+		if ((sep = buf[3]) != '-')
+			break;
+		fprintf(stream, "%s", buf);
+	} while (1);
+	fflush(stream);
+
+	buf[strcspn(buf, "\r\n")] = '\0';
+	buf[3] = '\0';
+	ctx->code = strtol(buf, &p, 10);
+	ctx->message = strdup(&buf[4]);
+
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+}
+
 int mod_proxy_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
@@ -161,6 +197,7 @@ void mod_proxy_init(void)
 	key = smtp_priv_key("proxy");
 	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
 	smtp_cmd_register("HELO", mod_proxy_hdlr_helo, 100, 1);
+	smtp_cmd_register("EHLO", mod_proxy_hdlr_ehlo, 100, 1);
 	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
 	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
