@@ -127,7 +127,7 @@ enum smtp_cmd_hdlr_status {
 
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
 extern void smtp_server_init(void);
-extern int smtp_server_run(struct smtp_server_context *ctx, FILE *f);
+extern int smtp_server_run(struct smtp_server_context *ctx, FILE *stream);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
 extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv);
 extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key);

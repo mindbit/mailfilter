@@ -152,6 +152,7 @@ int main(int argc, char **argv)
 		FILE *client_sock_stream;
 		int client_sock_fd;
 
+		smtp_server_context_init(&ctx);
 		client_sock_fd = accept(sock, (struct sockaddr *)&ctx.addr, &addrlen);
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
