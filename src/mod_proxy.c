@@ -105,7 +105,7 @@ int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const 
 	do {
 		if (fgets(buf, sizeof(buf), priv->sock) == NULL)
 			return SCHS_BREAK;
-		if (strlen(buf) <= 4)
+		if (strlen(buf) < 4)
 			return SCHS_BREAK;
 		if ((sep = buf[3]) != '-')
 			break;
@@ -116,6 +116,45 @@ int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const 
 	buf[strcspn(buf, "\r\n")] = '\0';
 	buf[3] = '\0';
 	ctx->code = strtol(buf, &p, 10);
+	ctx->message = strdup(&buf[4]);
+
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+}
+
+int mod_proxy_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
+
+	assert(priv);
+
+	sprintf(buf, "%s %s", cmd, arg);
+
+	do {
+		/* proxy command to smtp server */
+		if (fputs(buf, priv->sock) == EOF)
+			return SCHS_BREAK;
+		/* read back the smtp server response */
+		if (fgets(buf, sizeof(buf), priv->sock) == NULL)
+			return SCHS_BREAK;
+		if (strlen(buf) < 4)
+			return SCHS_BREAK;
+		/* parse the response code and loop while it's 334 */
+		sep = buf[3];
+		buf[3] = '\0';
+		ctx->code = strtol(buf, &p, 10);
+		buf[3] = sep;
+		if (ctx->code != 334)
+			break;
+		/* send the smtp server's response to the client */
+		if (fputs(buf, stream) == EOF)
+			return SCHS_BREAK;
+		/* read next command from client */
+		if (fgets(buf, sizeof(buf), stream) == NULL)
+			return SCHS_BREAK;
+	} while (1);
+
+	buf[strcspn(buf, "\r\n")] = '\0';
 	ctx->message = strdup(&buf[4]);
 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
@@ -198,6 +237,7 @@ void mod_proxy_init(void)
 	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
 	smtp_cmd_register("HELO", mod_proxy_hdlr_helo, 100, 1);
 	smtp_cmd_register("EHLO", mod_proxy_hdlr_ehlo, 100, 1);
+	smtp_cmd_register("AUTH", mod_proxy_hdlr_auth, 100, 1);
 	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
 	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
