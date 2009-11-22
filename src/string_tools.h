@@ -1,6 +1,9 @@
 #ifndef _STRING_TOOLS_H
 #define _STRING_TOOLS_H
 
+#include <string.h>
+#include <stdlib.h>
+
 /* ------------------------- String Buffer ------------------------- */
 
 /* A few basic rules about string buffers:
@@ -16,14 +19,30 @@ struct string_buffer {
 
 #define STRING_BUFFER_CHUNK 256
 
-#define STRING_BUFFER_INITIALIZER {\
+#define __STRING_BUFFER_INITIALIZER(__chunk) {\
 	.s = NULL,\
 	.size = 0,\
 	.cur = 0,\
-	.chunk = 0\
+	.chunk = __chunk\
 }
 
-void string_buffer_init(struct string_buffer *sb);
+#define STRING_BUFFER_INITIALIZER __STRING_BUFFER_INITIALIZER(STRING_BUFFER_CHUNK)
+
+static inline void __string_buffer_init(struct string_buffer *sb, size_t chunk)
+{
+	memset(sb, 0, sizeof(struct string_buffer));
+	sb->chunk = chunk;
+}
+
+static inline void string_buffer_cleanup(struct string_buffer *sb)
+{
+	if (sb->s != NULL)
+		free(sb->s);
+	sb->s = NULL;
+}
+
+#define __STRING_BUFFER_INIT(__sb, __chunk...) __string_buffer_init(__sb, __chunk)
+#define string_buffer_init(__sb, __chunk...) __STRING_BUFFER_INIT(__sb, ##__chunk, STRING_BUFFER_CHUNK)
 
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk);
 #define string_buffer_enlarge(sb) __string_buffer_enlarge((sb), (sb)->chunk)
@@ -48,7 +67,7 @@ static inline int string_buffer_append_string(struct string_buffer *sb, const ch
 	size_t len = strlen(s);
 	int err;
 
-	if (sb->cur + len >= sb->size && (err = __string_buffer_enlarge(sb, STRING_BUFFER_CHUNK * ((STRING_BUFFER_CHUNK + sb->cur + len - sb->size) / STRING_BUFFER_CHUNK))))
+	if (sb->cur + len >= sb->size && (err = __string_buffer_enlarge(sb, sb->chunk * ((sb->chunk + sb->cur + len - sb->size) / sb->chunk))))
 		return err;
 
 	strcpy(sb->s + sb->cur, s);

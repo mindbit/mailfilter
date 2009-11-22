@@ -87,14 +87,25 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		struct smtp_cmd_tree *node = ctx->node;
 
 		ctx->code = 0;
-		ctx->message = NULL;
+		ctx->message = ctx->prev_message = NULL;
+
 		list_for_each_entry(hlink, &node->hdlrs, lh) {
 
-			if (ctx->message != NULL) {
-				free(ctx->message);
-				ctx->message = NULL;
-			}
+			if (ctx->prev_message != NULL)
+				free(ctx->prev_message);
+			ctx->prev_code = ctx->code;
+			ctx->prev_message = ctx->message;
+			ctx->code = 0;
+			ctx->message = NULL;
+
 			schs = hlink->hdlr(ctx, cmd, arg, stream);
+
+			if (ctx->code == -1) {
+				ctx->code = ctx->prev_code;
+				ctx->message = ctx->prev_message;
+				ctx->prev_code = 0;
+				ctx->prev_message = NULL;
+			}
 			if (schs == SCHS_ABORT || schs == SCHS_QUIT)
 				continue_session = 0;
 			if (schs == SCHS_BREAK || schs == SCHS_ABORT)
@@ -103,9 +114,12 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 
 		if (ctx->code) {
 			smtp_server_response(stream, ctx->code, ctx->message);
-			free(ctx->message);
 		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE)
 			smtp_server_response(stream, 451, "Internal server error");
+		if (ctx->message)
+			free(ctx->message);
+		if (ctx->prev_message)
+			free(ctx->prev_message);
 	} while (schs == SCHS_CHAIN);
 
 	return continue_session;

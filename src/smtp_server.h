@@ -96,10 +96,10 @@ struct smtp_server_context {
 	} body;
 
 	/* SMTP status code to send back to client */
-	int code;
+	int code, prev_code;
 
 	/* SMTP message to send back to client */
-	char *message;
+	char *message, *prev_message;
 
 	/* Hash of per-module private data */
 	struct list_head priv_hash[SMTP_PRIV_HASH_SIZE];

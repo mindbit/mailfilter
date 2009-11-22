@@ -16,15 +16,18 @@ static const char *module = "log_sql";
 
 enum {
 	PSTMT_CREATE_TRANSACTION,
-	PSTMT_GET_TRANSACTION_ID
+	PSTMT_GET_TRANSACTION_ID,
+	PSTMT_UPDATE_SENDER
 };
 
 
 static const char *prepared_statements[] = {
 	[PSTMT_CREATE_TRANSACTION] =
-		"INSERT INTO smtp_transactions(remote_addr, remote_port) VALUES ($1::inet, $2::integer)",
+		"INSERT INTO smtp_transactions(remote_addr, remote_port, time) VALUES ($1::inet, $2::integer, NOW())",
 	[PSTMT_GET_TRANSACTION_ID] =
-		"SELECT currval('smtp_transactions_smtp_transaction_id_seq')"
+		"SELECT currval('smtp_transactions_smtp_transaction_id_seq')",
+	[PSTMT_UPDATE_SENDER] =
+		"UPDATE smtp_transactions SET envelope_sender=$1 WHERE smtp_transaction_id=$2::integer"
 };
 
 #include "mod_log_sql.h"
@@ -62,7 +65,6 @@ int mod_log_sql_new_transaction(struct smtp_server_context *ctx)
 int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv;
-	int err = SCHS_ABORT;
 	char *stmt;
 
 	priv = malloc(sizeof(struct mod_log_sql_priv));
@@ -86,13 +88,14 @@ int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, cons
 	if (mod_log_sql_new_transaction(ctx))
 		goto out_err;
 
+	ctx->code = -1;
 	return SCHS_OK;
 out_err:
 	if (priv->conn != NULL)
 		PQfinish(priv->conn);
 	smtp_priv_unregister(ctx, key);
 	free(priv);
-	return err;
+	return SCHS_ABORT;
 }
 
 /*
@@ -110,17 +113,28 @@ int mod_log_sql_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, cons
 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
+*/
 
 int mod_log_sql_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	char id[20];
+	char *params[2] = {
+		smtp_path_to_string(&ctx->rpath),
+		&id[0]
+	};
+	PGresult *res;
 
-	smtp_c_mail(priv->sock, &ctx->rpath);
-	smtp_client_response(priv->sock, copy_response_callback, ctx);
+	snprintf(id, sizeof(id), "%lld", priv->smtp_transaction_id);
+	if ((res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SENDER, 2, (const char * const *)params, NULL, NULL, 0)) == NULL)
+		return SCHS_BREAK;
+	PQclear(res);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	ctx->code = -1;
+	return SCHS_OK;
 }
 
+/*
 int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
@@ -177,7 +191,9 @@ void mod_log_sql_init(void)
 	smtp_cmd_register("INIT", mod_log_sql_hdlr_init, 10, 0);
 	/*
 	smtp_cmd_register("HELO", mod_log_sql_hdlr_helo, 100, 1);
+	*/
 	smtp_cmd_register("MAIL", mod_log_sql_hdlr_mail, 100, 1);
+	/*
 	smtp_cmd_register("RCPT", mod_log_sql_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 100, 1);
 	*/

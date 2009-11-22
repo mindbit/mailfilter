@@ -22,4 +22,6 @@ struct smtp_path {
 	struct list_head domains;
 };
 
+char *smtp_path_to_string(struct smtp_path *path);
+
 #endif

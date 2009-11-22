@@ -4,12 +4,6 @@
 
 #include "string_tools.h"
 
-void string_buffer_init(struct string_buffer *sb)
-{
-	memset(sb, 0, sizeof(struct string_buffer));
-	sb->chunk = STRING_BUFFER_CHUNK;
-}
-
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 {
 	void *s = realloc(sb->s, sb->size + chunk);
