@@ -8,6 +8,12 @@ AC_OUTPUT(Makefile src/Makefile)
 AC_CONFIG_SRCDIR([src/mailfilter.c])
 AC_CONFIG_HEADERS([config.h])
 
+AC_COMPILE_IFELSE(
+     [AC_LANG_PROGRAM([[#include <libconfig.h>]],
+                      [[const char *value;
+config_t cf;
+value = config_lookup_string(&cf, "key");]])], [], [AC_DEFINE([LIBCONFIG_NEW_API], [1], [Libconfig API changes])])
+
 # Checks for programs.
 AC_PROG_CC
 

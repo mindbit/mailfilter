@@ -11,6 +11,10 @@
 #include "logging.h"
 #include "string_tools.h"
 
+#ifdef HAVE_CONFIG_H
+#include "../config.h"
+#endif
+
 /*
  * Mapping from string representation to numeriv value.
  */
@@ -77,8 +81,12 @@ int config_parse(struct config *current, struct config *next)
 	/*
 	 * Logging configuration
 	 */
+#ifndef LIBCONFIG_NEW_API
 	value = config_lookup_string(&cf, "logging.type");
 	if (value) {
+#else
+	if (config_lookup_string(&cf, "logging.type", &value) == CONFIG_TRUE) {
+#endif
 		if (!strcmp(value, "file"))
 			next->logging_type = LOGGING_TYPE_LOGFILE;
 		else if (!strcmp(value, "stderr"))
@@ -92,21 +100,33 @@ int config_parse(struct config *current, struct config *next)
 	}
 
 	if (next->logging_type == LOGGING_TYPE_LOGFILE) {
+#ifndef LIBCONFIG_NEW_API
 		if (!(value = config_lookup_string(&cf, "logging.path"))) {
+#else
+		if (config_lookup_string(&cf, "logging.path", &value) == CONFIG_FALSE) {
+#endif
 			log(current, LOG_ERR, "logging.path not found in config file.\n");
 			goto out_err;
 		}
 		next->logging_path = strdup(value);
 	}
 
+#ifndef LIBCONFIG_NEW_API
 	if ((value = config_lookup_string(&cf, "logging.level"))) {
+#else
+	if (config_lookup_string(&cf, "logging.level", &value) == CONFIG_TRUE) {
+#endif
 		if ((next->logging_level = str_2_val(log_levels, value)) < 0) {
 			log(current, LOG_ERR, "Invalid logging.level value: '%s'.\n", value);
 			goto out_err;
 		}
 	}
 
+#ifndef LIBCONFIG_NEW_API
 	if ((value = config_lookup_string(&cf, "logging.facility"))) {
+#else
+	if (config_lookup_string(&cf, "logging.facility", &value) == CONFIG_TRUE) {
+#endif
 		if ((next->logging_facility = str_2_val(log_facilities, value)) < 0) {
 			log(current, LOG_ERR, "Invalid logging.facility value: '%s'\n", value);
 			goto out_err;
