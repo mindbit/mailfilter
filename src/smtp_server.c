@@ -10,6 +10,9 @@
 
 #include "smtp_server.h"
 
+static uint64_t key;
+static const char *module = "server";
+
 struct smtp_cmd_tree cmd_tree;
 const char *white = "\r\n\t ";
 
@@ -114,8 +117,10 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 
 		if (ctx->code) {
 			smtp_server_response(stream, ctx->code, ctx->message);
-		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE)
+		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE) {
 			smtp_server_response(stream, 451, "Internal server error");
+			smtp_set_transaction_state(ctx, NULL, 451, "Internal server error");
+		}
 		if (ctx->message)
 			free(ctx->message);
 		if (ctx->prev_message)
@@ -216,18 +221,40 @@ void smtp_server_context_init(struct smtp_server_context *ctx)
 		INIT_LIST_HEAD(&ctx->priv_hash[i]);
 }
 
+/**
+ * Free resources and prepare for another SMTP transaction.
+ *
+ * This function is not only used at the end of the SMTP session, but
+ * also by the default RSET handler.
+ *
+ * Besides closing all resources, this also leaves the context ready for
+ * another SMTP session.
+ */
 void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 {
 	struct smtp_path *path, *path_aux;
+
 	smtp_path_cleanup(&ctx->rpath);
+	smtp_path_init(&ctx->rpath);
+
 	list_for_each_entry_safe(path, path_aux, &ctx->fpath, mailbox.domain.lh) {
 		smtp_path_cleanup(path);
 		free(path);
 	}
+	INIT_LIST_HEAD(&ctx->fpath);
+
 	if (ctx->body.stream != NULL)
 		fclose(ctx->body.stream);
+	ctx->body.stream = NULL;
+
 	if (ctx->body.path[0] != '\0')
 		unlink(ctx->body.path);
+	ctx->body.path[0] = '\0';
+
+	ctx->transaction.state.code = 0;
+	if (ctx->transaction.state.message)
+		free(ctx->transaction.state.message);
+	ctx->transaction.state.message = NULL;
 }
 
 int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
@@ -508,6 +535,7 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 	fflush(ctx->body.stream);
 	ctx->code = 250;
 	ctx->message = strdup("Mail successfully received");
+	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return SCHS_OK;
 }
 
@@ -587,3 +615,31 @@ int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
 	return -ESRCH;
 }
 
+int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__module, int code, const char *message)
+{
+	char *__message;
+	
+	/* default param values */
+	if (!code)
+		code = ctx->code;
+
+	if (!message)
+		message = ctx->message;
+
+	/* update ctx->transaction */
+	if (message) {
+		__message = strdup(message);
+		if (__message == NULL)
+			return -ENOMEM;
+		if (ctx->transaction.state.message)
+			free(ctx->transaction.state.message);
+		ctx->transaction.state.message = __message;
+	}
+
+	ctx->transaction.state.code = code;
+
+	if (__module)
+		ctx->transaction.module = __module;
+
+	return 0;
+}

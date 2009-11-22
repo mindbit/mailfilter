@@ -13,6 +13,9 @@
 #include "smtp_server.h"
 #include "string_tools.h"
 
+static uint64_t key;
+static const char *module = "clamav";
+
 static inline void clamdscan(struct smtp_server_context *ctx, int pipe_fd)
 {
 	const char *path = "/usr/bin/clamdscan";
@@ -49,8 +52,10 @@ int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const
 	FILE *pipe_stream = NULL;
 	int ret = SCHS_BREAK;
 
-	if (pipe(p))
+	if (pipe(p)) {
+		smtp_set_transaction_state(ctx, module, 0, NULL);
 		return SCHS_BREAK;
+	}
 
 	switch ((pid = fork())) {
 	case -1:
@@ -112,6 +117,7 @@ int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const
 	else
 		fclose(pipe_stream);
 	close(p[1]);
+	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return ret;
 }
 

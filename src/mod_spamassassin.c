@@ -11,6 +11,9 @@
 
 #include "smtp_server.h"
 
+static uint64_t key;
+static const char *module = "spamassassin";
+
 static inline void spamc(struct smtp_server_context *ctx, int pipe_fd)
 {
 	const char *path = "/usr/bin/spamc";
@@ -56,8 +59,10 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 	FILE *pipe_stream = NULL;
 	int ret = SCHS_BREAK;
 
-	if (pipe(p))
+	if (pipe(p)) {
+		smtp_set_transaction_state(ctx, module, 0, NULL);
 		return SCHS_BREAK;
+	}
 
 	switch ((pid = fork())) {
 	case -1:
@@ -100,6 +105,7 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 	else
 		fclose(pipe_stream);
 	close(p[1]);
+	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return ret;
 }
 

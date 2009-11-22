@@ -15,6 +15,7 @@
 #include "smtp_client.h"
 
 static uint64_t key;
+static const char *module = "proxy";
 
 int copy_response_callback(int code, const char *message, int last, void *priv)
 {
@@ -200,8 +201,10 @@ int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_command(priv->sock, "DATA", NULL);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	if (ctx->code < 300 || ctx->code > 399)
+	if (ctx->code < 300 || ctx->code > 399) {
+		smtp_set_transaction_state(ctx, module, 0, NULL);
 		return SCHS_BREAK;
+	}
 
 	free(ctx->message);
 	ctx->code = 0;
@@ -210,12 +213,14 @@ int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const 
 	rewind(ctx->body.stream);
 	if (smtp_copy_from_file(priv->sock, ctx->body.stream)) {
 		/* leave code to 0 (fall back to the default Internal Server
-		 * Error message) */
+		 * Error message); update transaction state just to set the module */
+		smtp_set_transaction_state(ctx, module, 0, NULL);
 		return SCHS_BREAK;
 	}
 	fflush(priv->sock);
 
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
+	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
@@ -233,7 +238,7 @@ int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const 
 
 void mod_proxy_init(void)
 {
-	key = smtp_priv_key("proxy");
+	key = smtp_priv_key(module);
 	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
 	smtp_cmd_register("HELO", mod_proxy_hdlr_helo, 100, 1);
 	smtp_cmd_register("EHLO", mod_proxy_hdlr_ehlo, 100, 1);

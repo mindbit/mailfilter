@@ -17,7 +17,8 @@ static const char *module = "log_sql";
 enum {
 	PSTMT_CREATE_TRANSACTION,
 	PSTMT_GET_TRANSACTION_ID,
-	PSTMT_UPDATE_SENDER
+	PSTMT_UPDATE_SENDER,
+	PSTMT_ADD_RECIPIENT
 };
 
 
@@ -27,7 +28,9 @@ static const char *prepared_statements[] = {
 	[PSTMT_GET_TRANSACTION_ID] =
 		"SELECT currval('smtp_transactions_smtp_transaction_id_seq')",
 	[PSTMT_UPDATE_SENDER] =
-		"UPDATE smtp_transactions SET envelope_sender=$1 WHERE smtp_transaction_id=$2::integer"
+		"UPDATE smtp_transactions SET envelope_sender=$1 WHERE smtp_transaction_id=$2::integer",
+	[PSTMT_ADD_RECIPIENT] =
+		"INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES($1::integer, $2)"
 };
 
 #include "mod_log_sql.h"
@@ -59,6 +62,19 @@ int mod_log_sql_new_transaction(struct smtp_server_context *ctx)
 	PQclear(res);
 
 	mod_log(LOG_DEBUG, "New transaction id is %d\n", priv->smtp_transaction_id);
+	return 0;
+}
+
+int mod_log_sql_end_transaction(struct smtp_server_context *ctx)
+{
+	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	uint64_t my_transaction_id = priv->smtp_transaction_id;
+
+	if (!my_transaction_id)
+		return 0;
+
+	priv->smtp_transaction_id = 0;
+
 	return 0;
 }
 
@@ -98,23 +114,6 @@ out_err:
 	return SCHS_ABORT;
 }
 
-/*
-int mod_log_sql_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
-	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
-	char *domain;
-
-	assert(priv);
-
-	domain = (char *)arg;
-	domain[strcspn(domain, "\r\n")] = '\0';
-	smtp_client_command(priv->sock, cmd, domain);
-	smtp_client_response(priv->sock, copy_response_callback, ctx);
-
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
-}
-*/
-
 int mod_log_sql_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
@@ -126,56 +125,79 @@ int mod_log_sql_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, cons
 	PGresult *res;
 
 	snprintf(id, sizeof(id), "%lld", priv->smtp_transaction_id);
-	if ((res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SENDER, 2, (const char * const *)params, NULL, NULL, 0)) == NULL)
+	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SENDER, 2, (const char * const *)params, NULL, NULL, 0);
+	free(params[0]);
+
+	if (res == NULL)
 		return SCHS_BREAK;
+
 	PQclear(res);
+	ctx->code = -1;
+	return SCHS_OK;
+}
+
+int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	char id[20];
+	char *params[2] = {&id[0], NULL};
+	PGresult *res;
+
+	if (list_empty(&ctx->fpath))
+		return SCHS_BREAK;
+
+	snprintf(id, sizeof(id), "%lld", priv->smtp_transaction_id);
+	params[1] = smtp_path_to_string(list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
+	res = _PQexecPrepared(ctx, priv->conn, PSTMT_ADD_RECIPIENT, 2, (const char * const *)params, NULL, NULL, 0);
+	free(params[1]);
+
+	if (res == NULL)
+		return SCHS_BREAK;
+
+	PQclear(res);
+	ctx->code = -1;
+	return SCHS_OK;
+}
+
+int mod_log_sql_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	if (mod_log_sql_end_transaction(ctx))
+		return SCHS_BREAK;
+
+	ctx->code = -1;
+	return SCHS_OK;
+}
+
+int mod_log_sql_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	//struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	if (mod_log_sql_end_transaction(ctx))
+		return SCHS_BREAK;
 
 	ctx->code = -1;
 	return SCHS_OK;
 }
 
 /*
-int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
-	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
-
-	if (list_empty(&ctx->fpath))
-		return SCHS_BREAK;
-
-	smtp_c_rcpt(priv->sock, list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
-	smtp_client_response(priv->sock, copy_response_callback, ctx);
-
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
-}
-
-int mod_log_sql_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
-	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
-
-	smtp_client_command(priv->sock, "QUIT", NULL);
-	smtp_client_response(priv->sock, copy_response_callback, ctx);
-
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
-}
-*/
-
-int mod_log_sql_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
-	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
-
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
-}
-
 int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	//struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	if (mod_log_sql_end_transaction(ctx))
+		return SCHS_BREAK;
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	ctx->code = -1;
+	return SCHS_OK;
 }
+*/
 
 int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+
+	if (mod_log_sql_end_transaction(ctx))
+		return SCHS_BREAK;
+
+	PQfinish(priv->conn);
 
 	smtp_priv_unregister(ctx, key);
 	free(priv);
@@ -189,16 +211,11 @@ void mod_log_sql_init(void)
 {
 	key = smtp_priv_key(module);
 	smtp_cmd_register("INIT", mod_log_sql_hdlr_init, 10, 0);
-	/*
-	smtp_cmd_register("HELO", mod_log_sql_hdlr_helo, 100, 1);
-	*/
-	smtp_cmd_register("MAIL", mod_log_sql_hdlr_mail, 100, 1);
-	/*
-	smtp_cmd_register("RCPT", mod_log_sql_hdlr_rcpt, 100, 1);
-	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 100, 1);
-	*/
-	smtp_cmd_register("RSET", mod_log_sql_hdlr_rset, 1000, 1);
-	smtp_cmd_register("BODY", mod_log_sql_hdlr_body, 1000, 0);
+	smtp_cmd_register("MAIL", mod_log_sql_hdlr_mail, 1000, 1);
+	smtp_cmd_register("RCPT", mod_log_sql_hdlr_rcpt, 1000, 1);
+	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 1000, 1);
+	smtp_cmd_register("RSET", mod_log_sql_hdlr_rset, -10, 1);
+	//smtp_cmd_register("BODY", mod_log_sql_hdlr_body, 1000, 0);
 	smtp_cmd_register("TERM", mod_log_sql_hdlr_term, 1000, 0);
 }
 
