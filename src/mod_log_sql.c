@@ -18,7 +18,8 @@ enum {
 	PSTMT_CREATE_TRANSACTION,
 	PSTMT_GET_TRANSACTION_ID,
 	PSTMT_UPDATE_SENDER,
-	PSTMT_ADD_RECIPIENT
+	PSTMT_ADD_RECIPIENT,
+	PSTMT_UPDATE_TRANSACTION_STATE
 };
 
 
@@ -30,7 +31,9 @@ static const char *prepared_statements[] = {
 	[PSTMT_UPDATE_SENDER] =
 		"UPDATE smtp_transactions SET envelope_sender=$1 WHERE smtp_transaction_id=$2::integer",
 	[PSTMT_ADD_RECIPIENT] =
-		"INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES($1::integer, $2)"
+		"INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES($1::integer, $2)",
+	[PSTMT_UPDATE_TRANSACTION_STATE] =
+		"UPDATE smtp_transactions SET smtp_status_code=$1::integer, smtp_status_message=$2, module=$3 WHERE smtp_transaction_id=$4::integer"
 };
 
 #include "mod_log_sql.h"
@@ -69,11 +72,28 @@ int mod_log_sql_end_transaction(struct smtp_server_context *ctx)
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
 	uint64_t my_transaction_id = priv->smtp_transaction_id;
+	char id[20], code[10];
+	char * params[4] = {
+		&code[0],
+		ctx->transaction.state.message,
+		ctx->transaction.module,
+		&id[0]
+	};
+	PGresult *res;
 
 	if (!my_transaction_id)
 		return 0;
 
 	priv->smtp_transaction_id = 0;
+	snprintf(id, sizeof(id), "%lld", my_transaction_id);
+	snprintf(code, sizeof(code), "%d", ctx->transaction.state.code);
+
+	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_TRANSACTION_STATE, 4, (const char * const *)params, NULL, NULL, 0);
+
+	if (res == NULL)
+		return -1;
+
+	PQclear(res);
 
 	return 0;
 }
@@ -194,8 +214,7 @@ int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, cons
 {
 	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
 
-	if (mod_log_sql_end_transaction(ctx))
-		return SCHS_BREAK;
+	mod_log_sql_end_transaction(ctx);
 
 	PQfinish(priv->conn);
 

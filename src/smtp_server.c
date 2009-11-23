@@ -255,6 +255,7 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	if (ctx->transaction.state.message)
 		free(ctx->transaction.state.message);
 	ctx->transaction.state.message = NULL;
+	ctx->transaction.module = NULL;
 }
 
 int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
