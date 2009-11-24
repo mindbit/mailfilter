@@ -47,6 +47,13 @@ static inline void string_buffer_cleanup(struct string_buffer *sb)
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk);
 #define string_buffer_enlarge(sb) __string_buffer_enlarge((sb), (sb)->chunk)
 
+static inline void string_buffer_reset(struct string_buffer *sb)
+{
+	sb->cur = 0;
+	if (sb->s)
+		sb->s[0] = '\0';
+}
+
 static inline int string_buffer_append_char(struct string_buffer *sb, char c)
 {
 	int err;
