@@ -196,6 +196,18 @@ int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const 
 
 int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
+	/* We have no handler for DATA. Instead, we use this handler to send
+	 * both stages (DATA and message body) to the origin server.
+	 *
+	 * Once we send "DATA" to the origin server, there is no way to
+	 * cancel message delivery. But it is only in the BODY stage that we
+	 * know for sure if the message can be delivered (for instance the
+	 * message can be rejected by antivir modules upon message body
+	 * inspection).
+	 *
+	 * So we don't send anything to the origin server in the DATA stage,
+	 * and then we send both stages when we reach the BODY stage.
+	 */
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
 
 	smtp_client_command(priv->sock, "DATA", NULL);

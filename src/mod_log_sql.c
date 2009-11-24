@@ -190,25 +190,15 @@ int mod_log_sql_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, cons
 
 int mod_log_sql_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	//struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
 	if (mod_log_sql_end_transaction(ctx))
+		return SCHS_BREAK;
+
+	if (mod_log_sql_new_transaction(ctx))
 		return SCHS_BREAK;
 
 	ctx->code = -1;
 	return SCHS_OK;
 }
-
-/*
-int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
-	//struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
-	if (mod_log_sql_end_transaction(ctx))
-		return SCHS_BREAK;
-
-	ctx->code = -1;
-	return SCHS_OK;
-}
-*/
 
 int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
@@ -234,7 +224,6 @@ void mod_log_sql_init(void)
 	smtp_cmd_register("RCPT", mod_log_sql_hdlr_rcpt, 1000, 1);
 	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 1000, 1);
 	smtp_cmd_register("RSET", mod_log_sql_hdlr_rset, -10, 1);
-	//smtp_cmd_register("BODY", mod_log_sql_hdlr_body, 1000, 0);
 	smtp_cmd_register("TERM", mod_log_sql_hdlr_term, 1000, 0);
 }
 

@@ -147,7 +147,7 @@ int config_parse(struct config *current, struct config *next)
 		if (i)
 			string_buffer_append_char(&sb, ' ');
 		string_buffer_append_string(&sb, config_setting_name(child));
-		string_buffer_append_string(&sb, " = ");
+		string_buffer_append_char(&sb, '=');
 		string_buffer_append_string(&sb, config_setting_get_string(child));
 	}
 
