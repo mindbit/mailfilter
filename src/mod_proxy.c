@@ -13,6 +13,7 @@
 
 #include "mod_proxy.h"
 #include "smtp_client.h"
+#include "base64.h"
 
 static uint64_t key;
 static const char *module = "proxy";
@@ -122,41 +123,98 @@ int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
 
-int mod_proxy_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
-{
+int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
-	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
+	char buf[SMTP_COMMAND_MAX + 1], sep;
 
 	assert(priv);
 
-	sprintf(buf, "%s %s", cmd, arg);
+	/* Send command to the real stmp server */
+	if (fputs(cmd, priv->sock) == EOF)
+		return SCHS_BREAK;
 
-	do {
-		/* proxy command to smtp server */
-		if (fputs(buf, priv->sock) == EOF)
-			return SCHS_BREAK;
-		/* read back the smtp server response */
-		if (fgets(buf, sizeof(buf), priv->sock) == NULL)
-			return SCHS_BREAK;
-		if (strlen(buf) < 4)
-			return SCHS_BREAK;
-		/* parse the response code and loop while it's 334 */
-		sep = buf[3];
-		buf[3] = '\0';
-		ctx->code = strtol(buf, &p, 10);
-		buf[3] = sep;
-		if (ctx->code != 334)
-			break;
-		/* send the smtp server's response to the client */
-		if (fputs(buf, stream) == EOF)
-			return SCHS_BREAK;
-		/* read next command from client */
-		if (fgets(buf, sizeof(buf), stream) == NULL)
-			return SCHS_BREAK;
-	} while (1);
+	/* read back the smtp server response */
+	if (fgets(buf, sizeof(buf), priv->sock) == NULL)
+		return SCHS_BREAK;
 
-	buf[strcspn(buf, "\r\n")] = '\0';
-	ctx->message = strdup(&buf[4]);
+	if (strlen(buf) < 4)
+		return SCHS_BREAK;
+
+	/* parse the response code */
+	sep = buf[3];
+	buf[3] = '\0';
+	ctx->code = strtol(buf, NULL, 10);
+	buf[3] = sep;
+
+	if (ctx->code != 334) {
+		buf[strcspn(buf, "\r\n")] = '\0';
+		ctx->message = strdup(&buf[4]);
+		return SCHS_BREAK;
+	}
+
+	return SCHS_OK;
+}
+
+int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char buf[SMTP_COMMAND_MAX + 1], *user64, *pw64;
+	int err;
+
+	/* AUTH LOGIN base64(username) */
+	user64 = base64_enc(ctx->auth_user, strlen(ctx->auth_user));
+	if (!user64)
+		return SCHS_BREAK;
+
+	err = sprintf(buf, "AUTH LOGIN %s\r\n", user64);
+	assert(err < SMTP_COMMAND_MAX + 1);
+	free(user64);
+
+	err = mod_proxy_auth_send_one(ctx, buf);
+	if (err != SCHS_OK)
+		return err;
+
+	/* base64(password) */
+	pw64 = base64_enc(ctx->auth_pw, strlen(ctx->auth_pw));
+	if (!pw64)
+		return SCHS_BREAK;
+
+	err = sprintf(buf, "%s\r\n", pw64);
+	assert(err < SMTP_COMMAND_MAX + 1);
+	free(pw64);
+
+	err = mod_proxy_auth_send_one(ctx, buf);
+	if (err != SCHS_OK)
+		return err;
+
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+}
+
+int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char buf[SMTP_COMMAND_MAX + 1], *auth64;
+	int err;
+
+	/* FIXME: should we brutally abort, or gracefully signal an internal server error? */
+	assert(ctx->auth_user);
+	assert(ctx->auth_pw);
+	assert(2 + strlen(ctx->auth_user) + strlen(ctx->auth_pw) < SMTP_COMMAND_MAX + 1);
+
+	memset(buf, 0, sizeof(buf));
+	memcpy(&buf[1], ctx->auth_user, strlen(ctx->auth_user));
+	memcpy(&buf[2 + strlen(ctx->auth_user)], ctx->auth_pw, strlen(ctx->auth_pw));
+
+	/* AUTH PLAIN base64(buf) */
+	auth64 = base64_enc(buf, 2 + strlen(ctx->auth_user) + strlen(ctx->auth_pw));
+	if (!auth64)
+		return SCHS_BREAK;
+
+	err = sprintf(buf, "AUTH PLAIN %s\r\n", auth64);
+	assert(err < SMTP_COMMAND_MAX + 1);
+	free(auth64);
+
+	err = mod_proxy_auth_send_one(ctx, buf);
+	if (err != SCHS_OK)
+		return err;
 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
 }
@@ -254,7 +312,8 @@ void mod_proxy_init(void)
 	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
 	smtp_cmd_register("HELO", mod_proxy_hdlr_helo, 100, 1);
 	smtp_cmd_register("EHLO", mod_proxy_hdlr_ehlo, 100, 1);
-	smtp_cmd_register("AUTH", mod_proxy_hdlr_auth, 100, 1);
+	smtp_cmd_register("ALOP", mod_proxy_hdlr_alop, 100, 0);
+	smtp_cmd_register("APLP", mod_proxy_hdlr_aplp, 100, 0);
 	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
 	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);

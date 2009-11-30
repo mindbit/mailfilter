@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "smtp_server.h"
+#include "base64.h"
 
 static uint64_t key;
 static const char *module = "server";
@@ -401,10 +402,167 @@ int smtp_path_parse_cmd(struct smtp_path *path, const char *arg, const char *wor
 	return 0;
 }
 
+int smtp_auth_login_parse_user(struct smtp_server_context *ctx, const char *arg)
+{
+	ctx->code = 334;
+	if (arg) {
+		ctx->auth_user = base64_dec(arg, strlen(arg), NULL);
+		if (!ctx->auth_user) {
+			ctx->code = 501;
+			ctx->message = strdup("Cannot decode AUTH parameter");
+			return SCHS_BREAK;
+		}
+		ctx->node = smtp_cmd_lookup("ALOP");
+		ctx->message = base64_enc("Password:", strlen("Password:"));
+	}
+	else {
+		ctx->node = smtp_cmd_lookup("ALOU");
+		ctx->message = base64_enc("Username:", strlen("Username:"));
+	}
+	return SCHS_CHAIN;
+}
+
+int smtp_auth_login_parse_pw(struct smtp_server_context *ctx, const char *arg)
+{
+	ctx->auth_pw = base64_dec(arg, strlen(arg), NULL);
+	if (!ctx->auth_pw) {
+		ctx->code = 501;
+		ctx->message = strdup("Cannot decode AUTH parameter");
+		return SCHS_BREAK;
+	}
+	ctx->code = 250;
+	return SCHS_OK;
+}
+
+int smtp_auth_plain_parse(struct smtp_server_context *ctx, const char *arg)
+{
+	char *auth_info, *p;
+	int len;
+
+	ctx->node = smtp_cmd_lookup("APLP");
+
+	/* Parse (user, pw) from arg = base64(\0username\0password) */
+	if (arg) {
+		auth_info = base64_dec(arg, strlen(arg), &len);
+		if (!auth_info) {
+			ctx->code = 501;
+			ctx->message = strdup("Cannot decode AUTH parameter");
+			return SCHS_BREAK;
+		}
+		ctx->auth_user = strdup(auth_info + 1);
+		p = auth_info + strlen(auth_info + 1) + 2;
+		assert(p - auth_info < len);
+		ctx->auth_pw = strdup(p);
+		free(auth_info);
+		return SCHS_CHAIN;
+	}
+
+	/* Request the base64 encoded authentication string */
+	ctx->code = 334;
+	ctx->message = NULL;
+	return SCHS_CHAIN;
+}
+
+int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
+{
+	ctx->code = 504;
+	ctx->message = strdup("AUTH mechanism not available");
+	return SCHS_BREAK;
+}
+
 int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	ctx->code = 220;
 	ctx->message = strdup("Mindbit Mail Filter");
+	return SCHS_OK;
+}
+
+int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct {
+		const char *name;
+		int (*parse)(struct smtp_server_context *ctx, const char *arg);
+	} auth_types[] = {
+		{ "LOGIN", smtp_auth_login_parse_user },
+		{ "PLAIN", smtp_auth_plain_parse },
+		{ NULL, NULL },
+	};
+	char *c, tmp;
+	int i;
+
+	if (ctx->auth_user) {
+		ctx->code = 503;
+		ctx->message = strdup("Already Authenticated");
+		return SCHS_OK;
+	}
+
+	c = strrchr(arg, ' ');
+	if (c) {
+		tmp = *c;
+		*c = 0;
+		ctx->auth_type = strdup(arg);
+		*c = tmp;
+		c++;
+	}
+	else {
+		c = arg;
+		c[strcspn(c, "\r\n")] = 0;
+		ctx->auth_type = strdup(arg);
+		c = NULL;
+	}
+
+	for (i = 0; auth_types[i].name; i++)
+		if (!strcasecmp(ctx->auth_type, auth_types[i].name))
+			return auth_types[i].parse(ctx, c);
+	return smtp_auth_unknown_parse(ctx, c);
+}
+
+int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char buf[SMTP_COMMAND_MAX + 1];
+
+	assert(!ctx->auth_user);
+
+	if (fgets(buf, sizeof(buf), stream) == NULL)
+		return SCHS_BREAK;
+
+	if (!strcmp(buf, "*\r\n")) {
+		ctx->code = 501;
+		ctx->message = strdup("AUTH aborted");
+		return SCHS_BREAK;
+	}
+
+	return smtp_auth_login_parse_user(ctx, buf);
+}
+
+int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char buf[SMTP_COMMAND_MAX + 1];
+
+	assert(!ctx->auth_pw);
+
+	if (fgets(buf, sizeof(buf), stream) == NULL)
+		return SCHS_BREAK;
+
+	if (!strcmp(buf, "*\r\n")) {
+		ctx->code = 501;
+		ctx->message = strdup("AUTH aborted");
+		return SCHS_BREAK;
+	}
+
+	return smtp_auth_login_parse_pw(ctx, buf);
+}
+
+int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char buf[SMTP_COMMAND_MAX + 1];
+
+	if (!ctx->auth_user) {
+		if (fgets(buf, sizeof(buf), stream) == NULL)
+			return SCHS_BREAK;
+
+		return smtp_auth_plain_parse(ctx, buf);
+	}
 	return SCHS_OK;
 }
 
@@ -560,6 +718,10 @@ void smtp_server_init(void)
 	memset(&cmd_tree, 0, sizeof(struct smtp_cmd_tree));
 	INIT_LIST_HEAD(&cmd_tree.hdlrs);
 	smtp_cmd_register("INIT", smtp_hdlr_init, 0, 0);
+	smtp_cmd_register("AUTH", smtp_hdlr_auth, 0, 1);
+	smtp_cmd_register("ALOU", smtp_hdlr_alou, 0, 0);
+	smtp_cmd_register("ALOP", smtp_hdlr_alop, 0, 0);
+	smtp_cmd_register("APLP", smtp_hdlr_aplp, 0, 0);
 	smtp_cmd_register("MAIL", smtp_hdlr_mail, 0, 1);
 	smtp_cmd_register("RCPT", smtp_hdlr_rcpt, 0, 1);
 	smtp_cmd_register("DATA", smtp_hdlr_data, 0, 1);

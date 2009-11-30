@@ -74,8 +74,8 @@ struct smtp_server_context {
 	/* Command tree node that is currently being run */
 	struct smtp_cmd_tree *node;
 
-	/* Authenticated username or empty string if no user authenticated */
-	char auth[10]; // FIXME 10
+	/* Authentication details. NULL if no user authenticated */
+	char *auth_user, *auth_pw, *auth_type;
 
 	/* Envelope sender (aka reverse-path as per RFC821). .mailbox.local
 	 * is NULL if "MAIL" was not issued. */
