@@ -11,6 +11,7 @@
 
 #include "smtp.h"
 #include "logging.h"
+#include "internet_message.h"
 
 struct smtp_server_context;
 
@@ -85,6 +86,8 @@ struct smtp_server_context {
 	 * is empty if "RCPT" was not issued. Elements are chained by the
 	 * .mailbox.domain.lh component. */
 	struct list_head fpath;
+
+	struct list_head hdrs;
 
 	/* Message body */
 	struct {

@@ -208,6 +208,8 @@ void smtp_path_cleanup(struct smtp_path *path)
 		free(pos->domain);
 		free(pos);
 	}
+
+	//FIXME ctx->hdrs
 }
 
 void smtp_server_context_init(struct smtp_server_context *ctx)
@@ -220,6 +222,8 @@ void smtp_server_context_init(struct smtp_server_context *ctx)
 
 	for (i = 0; i < SMTP_PRIV_HASH_SIZE; i++)
 		INIT_LIST_HEAD(&ctx->priv_hash[i]);
+
+	INIT_LIST_HEAD(&ctx->hdrs);
 }
 
 /**
@@ -646,7 +650,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_CHAIN;
 }
 
-int smtp_copy_to_file(FILE *out, FILE *in)
+int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
 {
 	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
 	const uint64_t DOTLINE_MASK		= 0xffffff0000;
@@ -654,12 +658,17 @@ int smtp_copy_to_file(FILE *out, FILE *in)
 	const uint64_t CRLF_MASK		= 0x000000ffff;
 	uint64_t buf = 0;
 	int fill = 0;
+	int im_state = IM_OK;
 	int c;
 
 	while ((c = getc_unlocked(in)) != EOF) {
+		if (im_hdr_ctx && im_state == IM_OK) {
+			im_state = im_header_feed(im_hdr_ctx, c);
+			continue;
+		}
 		if (++fill > 8) {
 			if (putc_unlocked(buf >> 56, out) == EOF)
-				return 1;
+				return -EIO;
 			fill = 8;
 		}
 		buf = (buf << 8) | c;
@@ -682,19 +691,40 @@ int smtp_copy_to_file(FILE *out, FILE *in)
 	/* flush remaining buffer */
 	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
 		if (putc_unlocked((buf >> fill) & 0xff, out) == EOF)
-			return 1;
+			return -EIO;
 
-	return 0;
+	return im_state == IM_OK || im_state == IM_COMPLETE ? 0 : im_state;
 }
 
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
+	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
+
 	assert(ctx->body.stream != NULL);
-	smtp_copy_to_file(ctx->body.stream, stream);
+
+	im_hdr_ctx.max_size = 65536; // FIXME use proper value
+	im_hdr_ctx.hdrs = &ctx->hdrs;
+	//sleep(10);
+	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
+	case 0:
+		ctx->code = 250;
+		ctx->message = strdup("Mail successfully received");
+		break;
+	case IM_PARSE_ERROR:
+		ctx->code = 500;
+		ctx->message = strdup("Could not parse message headers");
+		break;
+	case IM_OVERRUN:
+		ctx->code = 552;
+		ctx->message = strdup("Message header size exceeds safety limits");
+		break;
+	default:
+		ctx->code = 452;
+		ctx->message = strdup("Insufficient system storage");
+	}
 	fflush(ctx->body.stream);
-	ctx->code = 250;
-	ctx->message = strdup("Mail successfully received");
 	smtp_set_transaction_state(ctx, module, 0, NULL);
+	//im_header_write(&ctx->hdrs, stdout);
 	return SCHS_OK;
 }
 
@@ -731,9 +761,9 @@ void smtp_server_init(void)
 
 	// TODO urmatoarele trebuie sa se intample din config
 	mod_proxy_init();
-	mod_spamassassin_init();
-	mod_clamav_init();
-	mod_log_sql_init();
+	//mod_spamassassin_init();
+	//mod_clamav_init();
+	//mod_log_sql_init();
 }
 
 int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)

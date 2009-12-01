@@ -280,18 +280,25 @@ int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const 
 	ctx->code = 0;
 	ctx->message = NULL;
 
+	if (im_header_write(&ctx->hdrs, priv->sock))
+		goto out_err;
+
+	if (fputs("\r\n", priv->sock) == EOF)
+		goto out_err;
+
 	rewind(ctx->body.stream);
-	if (smtp_copy_from_file(priv->sock, ctx->body.stream)) {
-		/* leave code to 0 (fall back to the default Internal Server
-		 * Error message); update transaction state just to set the module */
-		smtp_set_transaction_state(ctx, module, 0, NULL);
-		return SCHS_BREAK;
-	}
+	if (smtp_copy_from_file(priv->sock, ctx->body.stream))
+		goto out_err;
 	fflush(priv->sock);
 
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+out_err:
+	/* leave code to 0 (fall back to the default Internal Server
+	 * Error message); update transaction state just to set the module */
+	smtp_set_transaction_state(ctx, module, 0, NULL);
+	return SCHS_BREAK;
 }
 
 int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)

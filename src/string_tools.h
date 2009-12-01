@@ -51,7 +51,9 @@ static inline void string_buffer_reset(struct string_buffer *sb)
 {
 	sb->cur = 0;
 	if (sb->s)
-		sb->s[0] = '\0';
+		memset(sb->s, 0, sb->size);
+	/* reset to 0 the whole memory area, since string_buffer_append_char()
+	 * expects the memory to be already zeroed */
 }
 
 static inline int string_buffer_append_char(struct string_buffer *sb, char c)

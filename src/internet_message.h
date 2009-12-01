@@ -39,10 +39,18 @@ struct im_header_context {
 		IM_H_FOLD,
 		IM_H_FIN
 	} state;
-	struct list_head hdrs;
+	struct list_head *hdrs;
 	size_t max_size, curr_size;
 	struct string_buffer sb;
 };
+
+#define IM_HEADER_CONTEXT_INITIALIZER {\
+	.state = IM_H_NAME1,\
+	.hdrs = NULL,\
+	.max_size = 0,\
+	.curr_size = 0,\
+	.sb = STRING_BUFFER_INITIALIZER\
+}
 
 enum {
 	IM_OK,
@@ -52,5 +60,8 @@ enum {
 	IM_PARSE_ERROR,
 	IM_WTF
 };
+
+int im_header_feed(struct im_header_context *ctx, char c);
+void im_header_dump(struct list_head *lh);
 
 #endif
