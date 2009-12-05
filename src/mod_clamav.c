@@ -16,109 +16,55 @@
 static uint64_t key;
 static const char *module = "clamav";
 
-static inline void clamdscan(struct smtp_server_context *ctx, int pipe_fd)
+#include "pexec.h"
+
+int mod_clamav_send_headers(struct smtp_server_context *ctx, FILE *fw)
 {
-	const char *path = "/usr/bin/clamdscan";
-	int i, null_fd;
-	struct rlimit rl = {0};
+	return im_header_write(&ctx->hdrs, fw);
+}
 
-	getrlimit(RLIMIT_NOFILE, &rl);
-	switch (rl.rlim_max) {
-	case -1:
-		//syslog(LOG_ERR, "getrlimit");
-		exit(100);
-	case 0:
-		//syslog(LOG_ERR, "Max number of open file descriptors is 0!");
-		exit(100);
-	}
-	for (i = 0; i < rl.rlim_max; i++) {
-		if (i == pipe_fd)
-			continue;
-		close(i);
+int mod_clamav_result(struct smtp_server_context *ctx, FILE *fr, int status)
+{
+	if (WEXITSTATUS(status) > 1) {
+		/* clamdscan failed with error */
+		return SCHS_BREAK;
 	}
 
-	null_fd = open("/dev/null", 0);
-	dup2(pipe_fd, 1);
-	dup2(null_fd, 2);
+	if (!WEXITSTATUS(status))
+		return SCHS_IGNORE;
 
-	execl(path, path, ctx->body.path, NULL);
-	exit(100);
+	ctx->code = 550;
+
+	do {
+		struct string_buffer sb;
+		char c;
+		int i;
+
+		string_buffer_init(&sb);
+		/* first line of output is "stream: " followed
+		 * by the virus name followed by " FOUND"; first
+		 * skip "stream: " */
+		for (i = 0; i < 8; i++)
+			if (getc_unlocked(fr) == EOF)
+				break;
+		/* copy virus name */
+		while ((c = getc_unlocked(fr)) != EOF && c != ' ')
+			string_buffer_append_char(&sb, c);
+		if (sb.s == NULL)
+			break;
+		if (asprintf(&ctx->message, "This message appears to be infected with the %s virus", sb.s) == -1)
+			ctx->message = NULL;
+	} while (0);
+	if (ctx->message == NULL)
+		ctx->message = strdup("This message appears to contain viruses");
+	return SCHS_BREAK;
 }
 
 int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
-	int status, p[2];
-	pid_t pid;
-	FILE *pipe_stream = NULL;
-	int ret = SCHS_BREAK;
+	const char *argv[] = {"/usr/bin/clamdscan", "-", NULL};
 
-	if (pipe(p)) {
-		smtp_set_transaction_state(ctx, module, 0, NULL);
-		return SCHS_BREAK;
-	}
-
-	switch ((pid = fork())) {
-	case -1:
-		break;
-	case 0:
-		/* child */
-		clamdscan(ctx, p[1]);
-		break;
-	default:
-		/* parent */
-		do {
-			waitpid(pid, &status, 0);
-			// FIXME check for interrupted syscall (and retval)
-		} while (!WIFEXITED(status));
-
-		if (WEXITSTATUS(status) == 100) {
-			/* we failed to execl() the clamdscan binary */
-			break;
-		}
-
-		if (WEXITSTATUS(status) > 1) {
-			/* clamdscan failed with error */
-			break;
-		}
-
-		if (!WEXITSTATUS(status)) {
-			ret = SCHS_IGNORE;
-			break;
-		}
-
-		ctx->code = 550;
-
-		do {
-			struct string_buffer sb;
-			char c;
-			int i;
-
-			string_buffer_init(&sb);
-			if ((pipe_stream = fdopen(p[0], "r")) == NULL)
-				break;
-			/* first line of output is the file path followed by ": " followed
-			 * by the virus name followed by " FOUND" */
-			for (i = strlen(ctx->body.path) + 2; i; i--)
-				if (getc_unlocked(pipe_stream) == EOF)
-					break;
-			while ((c = getc_unlocked(pipe_stream)) != EOF && c != ' ')
-				string_buffer_append_char(&sb, c);
-			if (sb.s == NULL)
-				break;
-			if (asprintf(&ctx->message, "This message appears to be infected with the %s virus", sb.s) == -1)
-				ctx->message = NULL;
-		} while (0);
-		if (ctx->message == NULL)
-			ctx->message = strdup("This message appears to contain viruses");
-	}
-
-	if (pipe_stream == NULL)
-		close(p[0]);
-	else
-		fclose(pipe_stream);
-	close(p[1]);
-	smtp_set_transaction_state(ctx, module, 0, NULL);
-	return ret;
+	return pexec_hdlr_body(ctx, argv, mod_clamav_send_headers, mod_clamav_result);
 }
 
 void mod_clamav_init(void)

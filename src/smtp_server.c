@@ -762,7 +762,7 @@ void smtp_server_init(void)
 	// TODO urmatoarele trebuie sa se intample din config
 	mod_proxy_init();
 	mod_spamassassin_init();
-	//mod_clamav_init();
+	mod_clamav_init();
 	//mod_log_sql_init();
 }
 
@@ -837,6 +837,7 @@ int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__mo
 	return 0;
 }
 
+/* FIXME move this to some lib/util file */
 int stream_copy(FILE *src, FILE *dst)
 {
 	char buf[4096];
