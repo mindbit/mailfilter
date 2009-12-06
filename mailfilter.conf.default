@@ -18,7 +18,7 @@ logging:
 #
 dbconn:
 {
-    host   = "10.0.1.146";
+    host   = "127.0.0.1";
     dbname = "mipanel";
     user   = "mipanel";
 };
