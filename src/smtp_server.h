@@ -75,6 +75,9 @@ struct smtp_server_context {
 	/* Command tree node that is currently being run */
 	struct smtp_cmd_tree *node;
 
+	/* Client identity specified in EHLO command */
+	char *identity;
+
 	/* Authentication details. NULL if no user authenticated */
 	char *auth_user, *auth_pw, *auth_type;
 

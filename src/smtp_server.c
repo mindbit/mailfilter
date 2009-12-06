@@ -72,7 +72,16 @@ struct smtp_cmd_tree *smtp_cmd_lookup(const char *cmd)
 
 int smtp_server_response(FILE *f, int code, const char *message)
 {
-	if (fprintf(f, "%d %s\r\n", code, message) >= 0) {
+	char *buf = (char *)message, *c;
+
+	while ((c = index(buf, '\n'))) {
+		*c = 0;
+		fprintf(f, "%d-%s\r\n", code, buf);
+		*c = '\n';
+		buf = c + 1;
+	}
+
+	if (fprintf(f, "%d %s\r\n", code, buf) >= 0) {
 		fflush(f);
 		return 0;
 	}
@@ -570,6 +579,25 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_OK;
 }
 
+int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	char *domain;
+
+	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
+	 * the server to which we're proxying gets confused, since it expects the \r\n line
+	 * ending. smtp_client_command already appends this.
+	 */
+	domain = (char *)arg;
+	domain[strcspn(domain, "\r\n")] = '\0';
+
+	/* Store client identity in the server's context */
+	ctx->identity = strdup(domain);
+	ctx->code = 250;
+	ctx->message = strdup("AUTH LOGIN PLAIN\nHELP");
+
+	return SCHS_OK;
+}
+
 int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	if (ctx->rpath.mailbox.local != NULL) {
@@ -752,6 +780,7 @@ void smtp_server_init(void)
 	smtp_cmd_register("ALOU", smtp_hdlr_alou, 0, 0);
 	smtp_cmd_register("ALOP", smtp_hdlr_alop, 0, 0);
 	smtp_cmd_register("APLP", smtp_hdlr_aplp, 0, 0);
+	smtp_cmd_register("EHLO", smtp_hdlr_ehlo, 0, 1);
 	smtp_cmd_register("MAIL", smtp_hdlr_mail, 0, 1);
 	smtp_cmd_register("RCPT", smtp_hdlr_rcpt, 0, 1);
 	smtp_cmd_register("DATA", smtp_hdlr_data, 0, 1);

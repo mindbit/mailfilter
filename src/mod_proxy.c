@@ -90,37 +90,40 @@ int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const 
 int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
-	char buf[SMTP_COMMAND_MAX + 1], *domain, *p, sep;
+	char buf[SMTP_COMMAND_MAX + 1], sep;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
 	assert(priv);
 
-	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
-	 * the server to which we're proxying gets confused, since it expects the \r\n line
-	 * ending. smtp_client_command already appends this.
-	 */
-	domain = (char *)arg;
-	domain[strcspn(domain, "\r\n")] = '\0';
-
 	/* send the EHLO command to the real SMTP server */
-	smtp_client_command(priv->sock, cmd, domain);
-	/* proxy the SMTP server output to our client */
+	smtp_client_command(priv->sock, cmd, ctx->identity);
+	/* read the real SMTP server response */
 	do {
 		if (fgets(buf, sizeof(buf), priv->sock) == NULL)
-			return SCHS_BREAK;
+			goto out_err;
 		if (strlen(buf) < 4)
-			return SCHS_BREAK;
+			goto out_err;
 		if ((sep = buf[3]) != '-')
 			break;
-		fprintf(stream, "%s", buf);
+		buf[strcspn(buf, "\r\n")] = '\0';
+		if (string_buffer_append_string(&sb, &buf[4]))
+			goto out_err;
+		if (string_buffer_append_char(&sb, '\n'))
+			goto out_err;
 	} while (1);
-	fflush(stream);
 
 	buf[strcspn(buf, "\r\n")] = '\0';
 	buf[3] = '\0';
-	ctx->code = strtol(buf, &p, 10);
-	ctx->message = strdup(&buf[4]);
+	ctx->code = strtol(buf, NULL, 10);
+	if (string_buffer_append_string(&sb, &buf[4]))
+		goto out_err;
+	ctx->message = sb.s;
 
 	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+
+out_err:
+	string_buffer_cleanup(&sb);
+	return SCHS_BREAK;
 }
 
 int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
