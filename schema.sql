@@ -2,6 +2,7 @@
 -- PostgreSQL database dump
 --
 
+SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = off;
 SET check_function_bodies = false;
@@ -32,6 +33,7 @@ ALTER TABLE public.smtp_transaction_recipients OWNER TO mipanel;
 --
 
 CREATE SEQUENCE smtp_transaction_recipients_smtp_transaction_recipient_id_seq
+    START WITH 1
     INCREMENT BY 1
     NO MAXVALUE
     NO MINVALUE
@@ -60,7 +62,8 @@ CREATE TABLE smtp_transactions (
     subject text,
     smtp_status_code integer,
     smtp_status_message text,
-    module character varying(30)
+    module character varying(30),
+    size integer DEFAULT 0 NOT NULL
 );
 
 
@@ -71,6 +74,7 @@ ALTER TABLE public.smtp_transactions OWNER TO mipanel;
 --
 
 CREATE SEQUENCE smtp_transactions_smtp_transaction_id_seq
+    START WITH 1
     INCREMENT BY 1
     NO MAXVALUE
     NO MINVALUE

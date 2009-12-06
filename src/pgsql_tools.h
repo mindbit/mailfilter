@@ -8,7 +8,7 @@ static uint64_t prepared_mask = 0;
 #define _PQexecPrepared(ctx, conn, id, nParams, paramValues, paramLengths, paramFormats, resultFormat) \
 	__PQexecPrepared(ctx, conn, #id, id, nParams, paramValues, paramLengths, paramFormats, resultFormat)
 
-static PGresult *__PQexecPrepared(struct smtp_server_context *ctx, PGconn *conn, const char *stmt, int stmt_id,
+static __inline__ PGresult *__PQexecPrepared(struct smtp_server_context *ctx, PGconn *conn, const char *stmt, int stmt_id,
 		int nParams, const char * const *paramValues, const int *paramLengths,
 		const int *paramFormats, int resultFormat)
 {

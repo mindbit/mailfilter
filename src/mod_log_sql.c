@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -19,7 +20,8 @@ enum {
 	PSTMT_GET_TRANSACTION_ID,
 	PSTMT_UPDATE_SENDER,
 	PSTMT_ADD_RECIPIENT,
-	PSTMT_UPDATE_TRANSACTION_STATE
+	PSTMT_UPDATE_TRANSACTION_STATE,
+	PSTMT_UPDATE_SIZE,
 };
 
 
@@ -33,7 +35,9 @@ static const char *prepared_statements[] = {
 	[PSTMT_ADD_RECIPIENT] =
 		"INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES($1::integer, $2)",
 	[PSTMT_UPDATE_TRANSACTION_STATE] =
-		"UPDATE smtp_transactions SET smtp_status_code=$1::integer, smtp_status_message=$2, module=$3 WHERE smtp_transaction_id=$4::integer"
+		"UPDATE smtp_transactions SET smtp_status_code=$1::integer, smtp_status_message=$2, module=$3 WHERE smtp_transaction_id=$4::integer",
+	[PSTMT_UPDATE_SIZE] =
+		"UPDATE smtp_transactions SET size=$1::integer WHERE smtp_transaction_id=$2::integer"
 };
 
 #include "mod_log_sql.h"
@@ -101,7 +105,6 @@ int mod_log_sql_end_transaction(struct smtp_server_context *ctx)
 int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct mod_log_sql_priv *priv;
-	char *stmt;
 
 	priv = malloc(sizeof(struct mod_log_sql_priv));
 	assert(priv != NULL);
@@ -214,6 +217,44 @@ int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, cons
 	return SCHS_IGNORE;
 }
 
+int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+{
+	struct mod_log_sql_priv *priv = smtp_priv_lookup(ctx, key);
+	char id[20], size[20];
+	char * params[2] = {
+		&size[0],
+		&id[0]
+	};
+	int fd;
+	struct stat stat;
+	PGresult *res;
+
+	assert(priv);
+
+	if (!priv->smtp_transaction_id)
+		return SCHS_BREAK;
+
+	fd = fileno(ctx->body.stream);
+	if (fd == -1)
+		return SCHS_BREAK;
+
+	if (fstat(fd, &stat) == -1)
+		return SCHS_BREAK;
+
+	snprintf(id, sizeof(id), "%lld", priv->smtp_transaction_id);
+	snprintf(size, sizeof(size), "%ld", stat.st_size);
+
+	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SIZE, 2, (const char * const *)params, NULL, NULL, 0);
+	if (res == NULL)
+		return SCHS_BREAK;
+	PQclear(res);
+
+	/* use previous code and message */
+	ctx->code = -1;
+
+	return SCHS_OK;
+}
+
 /* void __attribute__((constructor)) my_init() */
 
 void mod_log_sql_init(void)
@@ -225,5 +266,6 @@ void mod_log_sql_init(void)
 	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 1000, 1);
 	smtp_cmd_register("RSET", mod_log_sql_hdlr_rset, -10, 1);
 	smtp_cmd_register("TERM", mod_log_sql_hdlr_term, 1000, 0);
+	smtp_cmd_register("BODY", mod_log_sql_hdlr_body, 1000, 0);
 }
 
