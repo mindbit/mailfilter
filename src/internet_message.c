@@ -7,7 +7,7 @@
 
 #include "internet_message.h"
 
-static const char *white = "\t ";
+static const char *tab_space = "\t ";
 
 int im_header_alloc(struct im_header_context *ctx)
 {
@@ -54,7 +54,7 @@ int im_header_feed(struct im_header_context *ctx, char c)
 {
 	switch (ctx->state) {
 	case IM_H_NAME1:
-		if (strchr(white, c)) {
+		if (strchr(tab_space, c)) {
 			if (list_empty(ctx->hdrs))
 				return IM_PARSE_ERROR;
 			if (im_header_add_fold(ctx))
@@ -91,13 +91,13 @@ int im_header_feed(struct im_header_context *ctx, char c)
 		ctx->state = IM_H_NAME2;
 		return IM_OK;
 	case IM_H_FOLD:
-		if (strchr(white, c)) {
+		if (strchr(tab_space, c)) {
 			// TODO append to original folding
 			return IM_OK;
 		}
 		/* Intentionally fall back to IM_H_VAL1 */
 	case IM_H_VAL1:
-		if (strchr(white, c))
+		if (strchr(tab_space, c))
 			return IM_OK;
 		/* Intentionally fall back to IM_H_VAL2 */
 	case IM_H_VAL2:
