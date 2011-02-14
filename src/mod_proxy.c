@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE 500
 #define _BSD_SOURCE
 
-#include <assert.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -35,7 +34,7 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 	struct sockaddr_in peer;
 
 	priv = malloc(sizeof(struct mod_proxy_priv));
-	assert(priv != NULL);
+	assert_mod_log(priv != NULL);
 	memset(priv, 0, sizeof(struct mod_proxy_priv));
 
 	if (smtp_priv_register(ctx, key, priv) < 0)
@@ -47,7 +46,8 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 
 	peer.sin_family = AF_INET;
 	peer.sin_port = htons(25);
-	inet_aton("127.0.0.1", &peer.sin_addr);
+	//inet_aton("127.0.0.1", &peer.sin_addr);
+	inet_aton("10.0.1.140", &peer.sin_addr);
 
 	if (connect(sock, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == -1)
 		goto out_err;
@@ -73,7 +73,7 @@ int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const 
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
 	char *domain;
 
-	assert(priv);
+	assert_mod_log(priv);
 
 	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
 	 * the server to which we're proxying gets confused, since it expects the \r\n line
@@ -93,7 +93,7 @@ int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const 
 	char buf[SMTP_COMMAND_MAX + 1], sep;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
-	assert(priv);
+	assert_mod_log(priv);
 
 	/* send the EHLO command to the real SMTP server */
 	smtp_client_command(priv->sock, cmd, ctx->identity);
@@ -130,7 +130,7 @@ int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
 	char buf[SMTP_COMMAND_MAX + 1], sep;
 
-	assert(priv);
+	assert_mod_log(priv);
 
 	/* Send command to the real stmp server */
 	if (fputs(cmd, priv->sock) == EOF)
@@ -169,7 +169,7 @@ int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const 
 		return SCHS_BREAK;
 
 	err = sprintf(buf, "AUTH LOGIN %s\r\n", user64);
-	assert(err < SMTP_COMMAND_MAX + 1);
+	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(user64);
 
 	err = mod_proxy_auth_send_one(ctx, buf);
@@ -182,7 +182,7 @@ int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const 
 		return SCHS_BREAK;
 
 	err = sprintf(buf, "%s\r\n", pw64);
-	assert(err < SMTP_COMMAND_MAX + 1);
+	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(pw64);
 
 	err = mod_proxy_auth_send_one(ctx, buf);
@@ -198,9 +198,9 @@ int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const 
 	int err;
 
 	/* FIXME: should we brutally abort, or gracefully signal an internal server error? */
-	assert(ctx->auth_user);
-	assert(ctx->auth_pw);
-	assert(2 + strlen(ctx->auth_user) + strlen(ctx->auth_pw) < SMTP_COMMAND_MAX + 1);
+	assert_mod_log(ctx->auth_user);
+	assert_mod_log(ctx->auth_pw);
+	assert_mod_log(2 + strlen(ctx->auth_user) + strlen(ctx->auth_pw) < SMTP_COMMAND_MAX + 1);
 
 	memset(buf, 0, sizeof(buf));
 	memcpy(&buf[1], ctx->auth_user, strlen(ctx->auth_user));
@@ -212,7 +212,7 @@ int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const 
 		return SCHS_BREAK;
 
 	err = sprintf(buf, "AUTH PLAIN %s\r\n", auth64);
-	assert(err < SMTP_COMMAND_MAX + 1);
+	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(auth64);
 
 	err = mod_proxy_auth_send_one(ctx, buf);

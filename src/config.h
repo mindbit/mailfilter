@@ -25,4 +25,6 @@ struct config {
 
 int config_parse(struct config *current, struct config *next);
 
+// FIXME this is a hack (see mailfilter.c)
+extern struct config __main_config;
 #endif

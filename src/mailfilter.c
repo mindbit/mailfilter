@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <assert.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -16,6 +15,10 @@
 #include <arpa/inet.h>
 
 #include "smtp_server.h"
+
+// FIXME this is used by assert_log() in places where we have no other
+// reference to the main config
+struct config __main_config;
 
 /* Forks, closes all file descriptors and redirects stdin/stdout to /dev/null */
 void daemonize(void) {
@@ -128,15 +131,15 @@ int main(int argc, char **argv)
 	if (config_parse(&config, &newcfg))
 		return 1;
 
-	config = newcfg;
+	config = __main_config = newcfg;
 
 	smtp_server_init();
 
 	sock = socket(PF_INET, SOCK_STREAM, 0);
-	assert(sock != -1);
+	assert_log(sock != -1, &config);
 
 	status = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	assert(status != -1);
+	assert_log(status != -1, &config);
 
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
@@ -144,10 +147,10 @@ int main(int argc, char **argv)
 	servaddr.sin_port = htons(8025);
 
 	status = bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr));
-	assert(status != -1);
+	assert_log(status != -1, &config);
 
 	status = listen(sock, 20);
-	assert(status != -1);
+	assert_log(status != -1, &config);
 
 	log(&config, LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
 
@@ -167,12 +170,12 @@ int main(int argc, char **argv)
 
 		switch (fork()) {
 		case -1:
-			assert(0); // FIXME
+			assert_log(0, &config); // FIXME
 			break;
 		case 0:
 			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
 			client_sock_stream = fdopen(client_sock_fd, "r+");
-			assert(client_sock_stream != NULL);
+			assert_log(client_sock_stream != NULL, &config);
 			log(&config, LOG_INFO, "New connection from %s", remote_addr);
 			ctx.cfg = &config;
 			smtp_server_run(&ctx, client_sock_stream);

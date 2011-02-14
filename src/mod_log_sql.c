@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE 500
 #define _BSD_SOURCE
 
-#include <assert.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -107,7 +106,7 @@ int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, cons
 	struct mod_log_sql_priv *priv;
 
 	priv = malloc(sizeof(struct mod_log_sql_priv));
-	assert(priv != NULL);
+	assert_mod_log(priv != NULL);
 	memset(priv, 0, sizeof(struct mod_log_sql_priv));
 
 	if (smtp_priv_register(ctx, key, priv) < 0)
@@ -116,7 +115,7 @@ int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, cons
 	mod_log(LOG_DEBUG, "Using connect string %s\n", ctx->cfg->dbconn);
 
 	priv->conn = PQconnectdb(ctx->cfg->dbconn);
-	assert(priv->conn);
+	assert_mod_log(priv->conn);
 	if (PQstatus(priv->conn) != CONNECTION_OK) {
 		mod_log(LOG_ERR, "Could not connect to database: %s\n", PQerrorMessage(priv->conn));
 		goto out_err;
@@ -229,7 +228,7 @@ int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, cons
 	struct stat stat;
 	PGresult *res;
 
-	assert(priv);
+	assert_mod_log(priv);
 
 	if (!priv->smtp_transaction_id)
 		return SCHS_BREAK;

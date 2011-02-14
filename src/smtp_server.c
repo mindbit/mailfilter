@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE 500
 #define _GNU_SOURCE
 
-#include <assert.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
@@ -25,13 +24,13 @@ int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invok
 	const char *c;
 
 	for (c = cmd; *c != '\0'; c++) {
-		assert(*c >= 'A' && *c <= 'Z');
+		assert_log(*c >= 'A' && *c <= 'Z', &__main_config);
 		if (node->next[*c - 'A'] != NULL) {
 			node = node->next[*c - 'A'];
 			continue;
 		}
 		aux = malloc(sizeof(struct smtp_cmd_tree));
-		assert(aux != NULL);
+		assert_log(aux != NULL, &__main_config);
 		memset(aux, 0, sizeof(struct smtp_cmd_tree));
 		INIT_LIST_HEAD(&aux->hdlrs);
 		node->next[*c - 'A'] = aux;
@@ -44,7 +43,7 @@ int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invok
 	}
 
 	hlink = malloc(sizeof(struct smtp_cmd_hdlr_list));
-	assert(hlink != NULL);
+	assert_log(hlink != NULL, &__main_config);
 	hlink->hdlr = hdlr;
 	hlink->prio = prio;
 	hlink->invokable = invokable;
@@ -376,7 +375,7 @@ int smtp_auth_plain_parse(struct smtp_server_context *ctx, const char *arg)
 		}
 		ctx->auth_user = strdup(auth_info + 1);
 		p = auth_info + strlen(auth_info + 1) + 2;
-		assert(p - auth_info < len);
+		assert_mod_log(p - auth_info < len);
 		ctx->auth_pw = strdup(p);
 		free(auth_info);
 		return SCHS_CHAIN;
@@ -446,7 +445,7 @@ int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 
-	assert(!ctx->auth_user);
+	assert_mod_log(!ctx->auth_user);
 
 	if (fgets(buf, sizeof(buf), stream) == NULL)
 		return SCHS_BREAK;
@@ -464,7 +463,7 @@ int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 
-	assert(!ctx->auth_pw);
+	assert_mod_log(!ctx->auth_pw);
 
 	if (fgets(buf, sizeof(buf), stream) == NULL)
 		return SCHS_BREAK;
@@ -616,14 +615,14 @@ int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
 			continue;
 		if ((buf & CRLF_MASK) == CRLF_MAGIC) {
 			/* we found the EOF sequence (<CR><LF>"."<CR><LF>) */
-			assert(fill >= 5);
+			assert_log(fill >= 5, &__main_config);
 			/* discard the (terminating) "."<CR><LF> */
 			buf >>= 24;
 			fill -= 3;
 			break;
 		}
 		/* strip the dot at beginning of line */
-		assert(fill >= 5);
+		assert_log(fill >= 5, &__main_config);
 		buf = ((buf >> 8) & ~CRLF_MASK) | (buf & CRLF_MASK);
 		fill--;
 	}
@@ -640,7 +639,7 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
 
-	assert(ctx->body.stream != NULL);
+	assert_mod_log(ctx->body.stream != NULL);
 
 	im_hdr_ctx.max_size = 65536; // FIXME use proper value
 	im_hdr_ctx.hdrs = &ctx->hdrs;

@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-#include <assert.h>
 #include <libconfig.h>
 #include <errno.h>
 #include <stdio.h>
@@ -144,7 +143,7 @@ int config_parse(struct config *current, struct config *next)
 
 	for (i = 0; i < config_setting_length(node); i++) {
 		child = config_setting_get_elem(node, i);
-		assert(child);
+		assert_log(child, current);
 		if (i)
 			string_buffer_append_char(&sb, ' ');
 		string_buffer_append_string(&sb, config_setting_name(child));
