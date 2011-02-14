@@ -26,12 +26,14 @@ int mod_clamav_send_headers(struct smtp_server_context *ctx, FILE *fw)
 int mod_clamav_result(struct smtp_server_context *ctx, FILE *fr, int status)
 {
 	if (WEXITSTATUS(status) > 1) {
-		/* clamdscan failed with error */
+		mod_log(LOG_ERR, "clamdscan failed with error\n");
 		return SCHS_BREAK;
 	}
 
-	if (!WEXITSTATUS(status))
+	if (!WEXITSTATUS(status)) {
+		mod_log(LOG_INFO, "message passed\n");
 		return SCHS_IGNORE;
+	}
 
 	ctx->code = 550;
 
