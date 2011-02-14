@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 500
+#define _BSD_SOURCE
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -9,6 +10,10 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <string.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "smtp_server.h"
 
@@ -151,23 +156,28 @@ int main(int argc, char **argv)
 		struct smtp_server_context ctx;
 		FILE *client_sock_stream;
 		int client_sock_fd;
+		char *remote_addr;
 
 		smtp_server_context_init(&ctx);
 		client_sock_fd = accept(sock, (struct sockaddr *)&ctx.addr, &addrlen);
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
 		}
+		remote_addr = inet_ntoa(ctx.addr.sin_addr);
 
 		switch (fork()) {
 		case -1:
 			assert(0); // FIXME
 			break;
 		case 0:
+			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
 			client_sock_stream = fdopen(client_sock_fd, "r+");
 			assert(client_sock_stream != NULL);
+			log(&config, LOG_INFO, "New connection from %s", remote_addr);
 			ctx.cfg = &config;
 			smtp_server_run(&ctx, client_sock_stream);
 			fclose(client_sock_stream);
+			log(&config, LOG_INFO, "Closed connection to %s", remote_addr);
 			exit(EXIT_SUCCESS);
 		default:
 			close(client_sock_fd);
