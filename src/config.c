@@ -38,6 +38,7 @@ static const struct str2val_map log_levels[] = {
 static const struct str2val_map log_facilities[] = {
 	{ "daemon", LOG_DAEMON },
 	{ "user", LOG_USER },
+	{ "mail", LOG_MAIL },
 	{ "local0", LOG_LOCAL0 },
 	{ "local1", LOG_LOCAL1 },
 	{ "local2", LOG_LOCAL2 },
@@ -128,7 +129,7 @@ int config_parse(struct config *current, struct config *next)
 	if (config_lookup_string(&cf, "logging.facility", &value) == CONFIG_TRUE) {
 #endif
 		if ((next->logging_facility = str_2_val(log_facilities, value)) < 0) {
-			log(current, LOG_ERR, "Invalid logging.facility value: '%s'\n", value);
+			log(current, LOG_ERR, "Invalid logging.facility value: '%s'.\n", value);
 			goto out_err;
 		}
 	}

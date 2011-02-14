@@ -6,6 +6,7 @@
 
 void __log(struct config *cfg, int level, const char *format, ...)
 {
+	static int do_syslog_open = 1;
 	va_list ap;
 
 	va_start(ap, format);
@@ -14,6 +15,10 @@ void __log(struct config *cfg, int level, const char *format, ...)
 		vfprintf(stderr, format, ap);
 		break;
 	case LOGGING_TYPE_SYSLOG:
+		if (do_syslog_open) {
+			do_syslog_open = 0;
+			openlog("mailfilter", LOG_PID, cfg->logging_facility);
+		}
 		vsyslog(cfg->logging_facility | level, format, ap);
 		break;
 	case LOGGING_TYPE_LOGFILE:
