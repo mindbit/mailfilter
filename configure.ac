@@ -19,6 +19,7 @@ AC_PROG_CC
 
 # Checks for libraries.
 AC_SEARCH_LIBS([config_init], [config], , AC_MSG_ERROR([libconfig not found]))
+AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 AC_SEARCH_LIBS([PQconnectdb], [pq], , AC_MSG_ERROR([libpq not found]))
 
 # Checks for header files.
