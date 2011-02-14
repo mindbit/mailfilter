@@ -24,6 +24,6 @@ struct smtp_path {
 
 extern const char *white;
 char *smtp_path_to_string(struct smtp_path *path);
-int smtp_path_parse(struct smtp_path *path, const char *arg);
+int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing);
 
 #endif

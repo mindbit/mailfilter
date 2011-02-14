@@ -41,7 +41,7 @@ out_err:
 	return NULL;
 }
 
-int smtp_path_parse(struct smtp_path *path, const char *arg)
+int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 {
 	enum {
 		S_INIT,
@@ -129,6 +129,10 @@ int smtp_path_parse(struct smtp_path *path, const char *arg)
 			arg++;
 			continue;
 		case S_FINAL:
+			if (trailing) {
+				*trailing = arg;
+				return 0;
+			}
 			if (strchr(white, *(arg++)) == NULL)
 				return 1;
 			continue;

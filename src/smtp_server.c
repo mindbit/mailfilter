@@ -297,6 +297,8 @@ int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 
 int smtp_path_parse_cmd(struct smtp_path *path, const char *arg, const char *word)
 {
+	char *trailing = arg;
+
 	/* Look for passed-in word */
 	arg += strspn(arg, white);
 	if (strncasecmp(arg, word, strlen(word)))
@@ -310,10 +312,17 @@ int smtp_path_parse_cmd(struct smtp_path *path, const char *arg, const char *wor
 
 	/* Parse actual path */
 	arg += strspn(arg, white);
-	if (smtp_path_parse(path, arg)) {
+	if (smtp_path_parse(path, arg, &trailing)) {
 		smtp_path_cleanup(path);
 		return 1;
 	}
+	if (trailing == arg)
+		return 0;
+
+	arg = trailing + strspn(trailing, white);
+	if (*arg == '\0')
+		return 0;
+	// FIXME handle extra params, such as "SIZE=nnn"
 
 	return 0;
 }
