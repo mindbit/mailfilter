@@ -9,7 +9,7 @@
 #define log(cfg, level, text, par...) __log(cfg, level, text, ##par)
 #else
 #define log(cfg, level, text, par...) do {\
-	if (level < LOG_DEBUG && level <= (cfg)->logging_level) \
+	if (level <= (cfg)->logging_level) \
 		__log(cfg, level, text, ##par); \
 } while (0)
 #endif

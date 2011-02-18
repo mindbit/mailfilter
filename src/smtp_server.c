@@ -75,11 +75,13 @@ int smtp_server_response(FILE *f, int code, const char *message)
 
 	while ((c = index(buf, '\n'))) {
 		*c = 0;
+		log(&__main_config, LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
 		fprintf(f, "%d-%s\r\n", code, buf);
 		*c = '\n';
 		buf = c + 1;
 	}
 
+	log(&__main_config, LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
 	if (fprintf(f, "%d %s\r\n", code, buf) >= 0) {
 		fflush(f);
 		return 0;
@@ -148,6 +150,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 	do {
 		int oversized = 0;
 		char *c = &buf[0];
+		char tmp;
 		size_t i, n;
 
 		buf[SMTP_COMMAND_MAX] = '\n';
@@ -161,6 +164,16 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 			if (fgets(buf, sizeof(buf), stream) == NULL)
 				return -1;
 		}
+
+		/* Log received command (without the trailing '\n') */
+		for (c += strlen(c) - 1; c >= &buf[0] && (*c == '\n' || *c == '\r'); c--);
+		tmp = *++c;
+		*c = '\0';
+		mod_log(LOG_DEBUG, ">>> %s", &buf[0]);
+		*c = tmp;
+		c = &buf[0];
+
+		/* reject oversized commands */
 		if (oversized) {
 			smtp_server_response(stream, 421, "Command too long");
 			return -1;
