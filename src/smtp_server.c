@@ -20,7 +20,7 @@
 #include "smtp.h"
 #include "base64.h"
 
-static uint64_t key;
+//static uint64_t key;
 static const char *module = "server";
 
 struct smtp_cmd_tree cmd_tree;
@@ -672,7 +672,7 @@ static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
 	if (hdr == NULL)
 		return NULL;
 
-	if (!getnameinfo(&ctx->addr, sizeof(ctx->addr), remote_host, sizeof(remote_host), NULL, 0, 0))
+	if (!getnameinfo((struct sockaddr *)&ctx->addr, sizeof(ctx->addr), remote_host, sizeof(remote_host), NULL, 0, 0))
 		rev = strcmp(remote_host, remote_addr);
 	gethostname(my_hostname, sizeof(my_hostname));
 	strftime(ts, sizeof(ts), "%a, %d %b %Y %H:%M:%S %z", tm);
@@ -707,6 +707,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 
 	im_header_refold(hdr, 78);
 	list_add_tail(&hdr->lh, lh);
+	return 0;
 }
 
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)

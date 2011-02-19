@@ -58,8 +58,6 @@ struct im_header_folding *im_header_add_fold(struct im_header *hdr, size_t offse
 int im_header_refold(struct im_header *hdr, int width)
 {
 	size_t len = strlen(hdr->name) + 2;
-	size_t offset = 0;
-	size_t last_len = 0;
 	char *p1 = hdr->value;
 	char *p2 = p1;
 
