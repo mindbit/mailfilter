@@ -61,7 +61,10 @@ enum {
 	IM_WTF
 };
 
+struct im_header *im_header_alloc(const char *name);
 int im_header_feed(struct im_header_context *ctx, char c);
 void im_header_dump(struct list_head *lh);
+void im_header_unfold(struct im_header *hdr);
+int im_header_refold(struct im_header *hdr, int width);
 
 #endif
