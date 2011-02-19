@@ -64,14 +64,19 @@ int im_header_refold(struct im_header *hdr, int width)
 	im_header_unfold(hdr);
 
 	do {
+		int count = 0;
 		do {
 			len += p2 - p1;
 			p1 = p2;
 			if ((p2 = strchr(p1, ' ')) == NULL)
 				return 0;
 			p2++;
+			count++;
 		} while (len + p2 - p1 < width);
-		im_header_add_fold(hdr, p1 - 1 - hdr->value);
+		if (count > 1)
+			im_header_add_fold(hdr, p1 - 1 - hdr->value);
+		else
+			im_header_add_fold(hdr, p2 - 1 - hdr->value);
 		len = 8;
 	} while (1);
 }
