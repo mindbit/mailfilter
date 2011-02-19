@@ -1,11 +1,20 @@
 #define _XOPEN_SOURCE 500
 #define _GNU_SOURCE
+#define _BSD_SOURCE
 
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <time.h>
+#include <netdb.h>
+#include <limits.h>
+
 
 #include "smtp_server.h"
 #include "smtp.h"
@@ -648,6 +657,58 @@ int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
 	return im_state == IM_OK || im_state == IM_COMPLETE ? 0 : im_state;
 }
 
+static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
+{
+	char *remote_addr = inet_ntoa(ctx->addr.sin_addr);
+	time_t t = time(NULL);
+	struct tm *tm = localtime(&t);
+	char ts[32];
+	char remote_host[NI_MAXHOST];
+	char my_hostname[HOST_NAME_MAX];
+	int rev = 0;
+	//char *rcpt;
+	struct im_header *hdr = im_header_alloc("Received");
+
+	if (hdr == NULL)
+		return NULL;
+
+	if (!getnameinfo(&ctx->addr, sizeof(ctx->addr), remote_host, sizeof(remote_host), NULL, 0, 0))
+		rev = strcmp(remote_host, remote_addr);
+	gethostname(my_hostname, sizeof(my_hostname));
+	strftime(ts, sizeof(ts), "%a, %d %b %Y %H:%M:%S %z", tm);
+	//rcpt = smtp_path_to_string(list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
+	asprintf(&hdr->value,
+			"from %s (%s%s[%s]) by %s (8.14.2/8.14.2) with SMTP id %s; %s",
+			ctx->identity ? ctx->identity: (rev ? remote_host : remote_addr),
+			rev ? remote_host : "", rev ? " " : "",
+			remote_addr, my_hostname, "abcdef123456", ts);
+	//free(rcpt);
+
+	return hdr;
+}
+
+/*
+ * Generate an additional "Received" header
+ */
+int insert_received_hdr(struct smtp_server_context *ctx)
+{
+	struct im_header *hdr;
+	struct list_head *lh = &ctx->hdrs;
+
+	list_for_each_entry(hdr, &ctx->hdrs, lh) {
+		if (strcasecmp(hdr->name, "received"))
+			continue;
+		lh = &hdr->lh;
+		break;
+	}
+
+	if ((hdr = create_received_hdr(ctx)) == NULL)
+		return -ENOMEM;
+
+	im_header_refold(hdr, 78);
+	list_add_tail(&hdr->lh, lh);
+}
+
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
 {
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
@@ -659,6 +720,7 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 	//sleep(10);
 	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
 	case 0:
+		insert_received_hdr(ctx);
 		ctx->code = 250;
 		ctx->message = strdup("Mail successfully received");
 		break;
