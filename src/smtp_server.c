@@ -693,7 +693,7 @@ static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
 int insert_received_hdr(struct smtp_server_context *ctx)
 {
 	struct im_header *hdr;
-	struct list_head *lh = &ctx->hdrs;
+	struct list_head *lh = ctx->hdrs.next;
 
 	list_for_each_entry(hdr, &ctx->hdrs, lh) {
 		if (strcasecmp(hdr->name, "received"))
