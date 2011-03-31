@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -82,6 +84,17 @@ static void show_help(const char *argv0)
 			argv0);
 }
 
+static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
+{
+	int status;
+
+#if 0
+	printf("SIGCHLD: signo=%d errno=%d code=%d pid=%d\n",
+			info->si_signo, info->si_errno, info->si_code, info->si_pid);
+#endif
+	waitpid(info->si_pid, &status, WNOHANG);
+}
+
 /* TODO redesign model procese:
  * - reciclam workerii
  * - procesul parinte functioneaza ca multiplexor de date
@@ -110,6 +123,10 @@ int main(int argc, char **argv)
 		.dbconn = NULL,
 	};
 	struct config newcfg;
+	struct sigaction sigchld_act = {
+		.sa_sigaction = chld_sigaction,
+		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
+	};
 
 	while ((opt = getopt(argc, argv, "hdc:")) != -1) {
 		switch (opt) {
@@ -152,6 +169,8 @@ int main(int argc, char **argv)
 	status = listen(sock, 20);
 	assert_log(status != -1, &config);
 
+	sigaction(SIGCHLD, &sigchld_act, NULL);
+
 	log(&config, LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
 
 	do {
@@ -174,6 +193,7 @@ int main(int argc, char **argv)
 			break;
 		case 0:
 			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
+			signal(SIGCHLD, SIG_DFL);
 			client_sock_stream = fdopen(client_sock_fd, "r+");
 			assert_log(client_sock_stream != NULL, &config);
 			log(&config, LOG_INFO, "New connection from %s", remote_addr);
