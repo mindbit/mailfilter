@@ -17,15 +17,21 @@ static const char *module = "spamassassin";
 
 #include "pexec.h"
 
-int mod_spamassassin_send_headers(struct smtp_server_context *ctx, FILE *fw)
+int mod_spamassassin_send_headers(struct smtp_server_context *ctx, bfd_t *fw)
 {
 	return im_header_write(&ctx->hdrs, fw);
 }
 
-int mod_spamassassin_result(struct smtp_server_context *ctx, FILE *fr, int status)
+int mod_spamassassin_result(struct smtp_server_context *ctx, bfd_t *fr, int status)
 {
 	float score = 0, treshold = 0;
-	fscanf(fr, "%f/%f", &score, &treshold);
+	char buf[100];
+	ssize_t len;
+
+	if ((len = bfd_read_line(fr, buf, sizeof(buf) - 1)) >= 0) {
+		buf[len] = '\0';
+		sscanf(buf, "%f/%f", &score, &treshold);
+	}
 
 	if (WEXITSTATUS(status) > 1) {
 		mod_log(LOG_ERR, "spamc failed with error\n");
@@ -43,7 +49,7 @@ int mod_spamassassin_result(struct smtp_server_context *ctx, FILE *fr, int statu
 	return SCHS_BREAK;
 }
 
-int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	const char *argv[] = {"/usr/bin/spamc", "-c", "-x", NULL};
 

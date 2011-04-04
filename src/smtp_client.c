@@ -7,33 +7,28 @@
 
 #include "smtp_client.h"
 
-int smtp_client_response(FILE *stream, smtp_client_callback_t callback, void *priv)
+int smtp_client_response(bfd_t *stream, smtp_client_callback_t callback, void *priv)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 	long int code;
 	char *p, sep;
 
 	do {
-		int oversized = 0;
-		size_t len;
+		int n = 0;
+		ssize_t len;
 
-		buf[SMTP_COMMAND_MAX] = '\n';
-		if (fgets(buf, sizeof(buf), stream) == NULL)
-			return SMTP_READ_ERROR;
-		len = strlen(buf);
+		do {
+			buf[SMTP_COMMAND_MAX] = '\n';
+			if ((len = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) <= 0)
+				return SMTP_READ_ERROR;
+		} while (buf[SMTP_COMMAND_MAX] != '\n');
+		buf[len] = '\0';
 
-		if (len < 4)
+		if (len < 4 || n > 1)
 			return SMTP_PARSE_ERROR;
 		sep = buf[3];
 		buf[3] = '\0';
 		code = strtol(buf, &p, 10);
-
-		while (buf[SMTP_COMMAND_MAX] != '\n') {
-			oversized = 1;
-			buf[SMTP_COMMAND_MAX] = '\n';
-			if (fgets(buf, sizeof(buf), stream) == NULL)
-				return SMTP_READ_ERROR;
-		}
 
 		if ((sep != ' ' && sep != '-') || *p != '\0')
 			return SMTP_PARSE_ERROR;
@@ -52,80 +47,80 @@ int smtp_client_response(FILE *stream, smtp_client_callback_t callback, void *pr
 	return code;
 }
 
-int smtp_put_path(FILE *stream, struct smtp_path *path)
+int smtp_put_path(bfd_t *stream, struct smtp_path *path)
 {
 	struct smtp_domain *domain;
 
-	if (fputc('<', stream) == EOF)
+	if (bfd_putc(stream, '<') < 0)
 		return 1;
 
 	list_for_each_entry(domain, &path->domains, lh) {
-		if (fputc('@', stream) == EOF)
+		if (bfd_putc(stream, '@') < 0)
 			return 1;
-		if (fputs(domain->domain, stream) == EOF)
+		if (bfd_puts(stream, domain->domain) < 0)
 			return 1;
-		if (fputc(':', stream) == EOF)
+		if (bfd_putc(stream, ':') < 0)
 			return 1;
 	}
 
 	if (path->mailbox.local != EMPTY_STRING) {
-		if (fputs(path->mailbox.local, stream) == EOF)
+		if (bfd_puts(stream, path->mailbox.local) < 0)
 			return 1;
-		if (fputc('@', stream) == EOF)
+		if (bfd_putc(stream, '@') < 0)
 			return 1;
-		if (fputs(path->mailbox.domain.domain, stream) == EOF)
+		if (bfd_puts(stream, path->mailbox.domain.domain) < 0)
 			return 1;
 	}
 
-	if (fputc('>', stream) == EOF)
+	if (bfd_putc(stream, '>') < 0)
 		return 1;
 
 	return 0;
 }
 
-int smtp_put_path_cmd(FILE *stream, const char *cmd, struct smtp_path *path)
+int smtp_put_path_cmd(bfd_t *stream, const char *cmd, struct smtp_path *path)
 {
-	if (fputs(cmd, stream) == EOF)
+	if (bfd_puts(stream, cmd) < 0)
 		return 1;
-	if (fputc(':', stream) == EOF)
+	if (bfd_putc(stream, ':') < 0)
 		return 1;
 	if (smtp_put_path(stream, path))
 		return 1;
-	if (fputs("\r\n", stream) == EOF)
+	if (bfd_puts(stream, "\r\n") < 0)
 		return 1;
-	if (fflush(stream) == EOF)
+	if (bfd_flush(stream) < 0)
 		return 1;
 	return 0;
 }
 
-int smtp_c_mail(FILE *stream, struct smtp_path *path)
+int smtp_c_mail(bfd_t *stream, struct smtp_path *path)
 {
 	return smtp_put_path_cmd(stream, "MAIL FROM", path);
 }
 
-int smtp_c_rcpt(FILE *stream, struct smtp_path *path)
+int smtp_c_rcpt(bfd_t *stream, struct smtp_path *path)
 {
 	return smtp_put_path_cmd(stream, "RCPT TO", path);
 }
 
-int smtp_client_command(FILE *stream, const char *cmd, const char *arg)
+int smtp_client_command(bfd_t *stream, const char *cmd, const char *arg)
 {
-	if (fputs(cmd, stream) == EOF)
+	if (bfd_puts(stream, cmd) < 0)
 		return 1;
 	if (arg != NULL) {
-		if (fputc(' ', stream) == EOF)
+		if (bfd_putc(stream, ' ') < 0)
 			return 1;
-		if (fputs(arg, stream) == EOF)
+		if (bfd_puts(stream, arg) < 0)
 			return 1;
 	}
-	if (fputs("\r\n", stream) == EOF)
+	if (bfd_puts(stream, "\r\n") < 0)
 		return 1;
-	if (fflush(stream) == EOF)
+	if (bfd_flush(stream) < 0)
 		return 1;
 	return 0;
 }
 
-int smtp_copy_from_file(FILE *out, FILE *in)
+int smtp_copy_from_file(bfd_t *out, bfd_t *in)
 {
 	const uint32_t DOTLINE_MAGIC	= 0x0d0a2e;	/* <CR><LF>"." */
 	const uint32_t DOTLINE_MASK		= 0xffffff;
@@ -135,16 +130,16 @@ int smtp_copy_from_file(FILE *out, FILE *in)
 	int fill = 0, needcrlf = 1;
 	int c;
 
-	while ((c = getc_unlocked(in)) != EOF) {
+	while ((c = bfd_getc(in)) >= 0) {
 		if (++fill > 4) {
-			if (putc_unlocked(buf >> 24, out) == EOF)
+			if (bfd_putc(out, buf >> 24) < 0)
 				return 1;
 			fill = 4;
 		}
 		buf = (buf << 8) | c;
 		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
 			continue;
-		if (putc_unlocked('.', out) == EOF)
+		if (bfd_putc(out, '.') < 0)
 			return 1;
 	}
 
@@ -152,14 +147,14 @@ int smtp_copy_from_file(FILE *out, FILE *in)
 	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8) {
 		if (fill == 8 && (buf & CRLF_MASK) == CRLF_MAGIC)
 			needcrlf = 0;
-		if (putc_unlocked((buf >> fill) & 0xff, out) == EOF)
+		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
 			return 1;
 	}
 
 	/* send termination marker */
-	if (needcrlf && fputs("\r\n", out) == EOF)
+	if (needcrlf && bfd_puts(out, "\r\n") < 0)
 		return 1;
-	if (fputs(".\r\n", out) == EOF)
+	if (bfd_puts(out, ".\r\n") < 0)
 		return 1;
 
 	return 0;

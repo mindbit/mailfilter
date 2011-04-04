@@ -207,16 +207,16 @@ int im_header_feed(struct im_header_context *ctx, char c)
 	return IM_WTF;
 }
 
-int __im_header_write(struct im_header *hdr, FILE *f)
+int __im_header_write(struct im_header *hdr, bfd_t *f)
 {
 	char *s = hdr->value;
 	struct im_header_folding *folding;
 	size_t prev_offset = 0;
 
-	if (hdr->name && fputs(hdr->name, f) == EOF)
+	if (hdr->name && bfd_puts(f, hdr->name) < 0)
 		return 1;
 
-	if (fputs(": ", f) == EOF)
+	if (bfd_puts(f, ": ") < 0)
 		return 1;
 
 	if (!s)
@@ -225,23 +225,23 @@ int __im_header_write(struct im_header *hdr, FILE *f)
 	list_for_each_entry(folding, &hdr->folding, lh) {
 		size_t offset = folding->offset + 1;
 
-		if (!fwrite(s, folding->offset - prev_offset, 1, f))
+		if (bfd_write_full(f, s, folding->offset - prev_offset) < 0)
 			return 1;
 		s += offset - prev_offset;
 		prev_offset = offset;
-		if (fputs("\r\n\t", f) == EOF)
+		if (bfd_puts(f, "\r\n\t") < 0)
 			return 1;
 		/* FIXME replace \r\n\t sequence with folding->original when
 		 * it is implemented by im_header_feed() */
 	}
 
-	if (fputs(s, f) == EOF)
+	if (bfd_puts(f, s) < 0)
 		return 1;
 
 	return 0;
 }
 
-int im_header_write(struct list_head *lh, FILE *f)
+int im_header_write(struct list_head *lh, bfd_t *f)
 {
 	struct im_header *hdr;
 	int err;
@@ -249,7 +249,7 @@ int im_header_write(struct list_head *lh, FILE *f)
 	list_for_each_entry(hdr, lh, lh) {
 		if ((err = __im_header_write(hdr, f)))
 			return err;
-		if (fputs("\r\n", f) == EOF)
+		if (bfd_puts(f, "\r\n") < 0)
 			return 1;
 	}
 

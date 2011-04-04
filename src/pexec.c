@@ -10,7 +10,7 @@
 #include <signal.h>
 
 #include "pexec.h"
-#include "stdio.h"
+#include "bfd.h"
 
 int pexec(char * const *argv, int fd_in, int fd_out)
 {
@@ -44,16 +44,16 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 {
 	int status = 0, pr[2] = {-1, -1}, pw[2] = {-1, -1};
 	pid_t pid;
-	FILE *fr = NULL, *fw = NULL;
+	bfd_t *fr = NULL, *fw = NULL;
 	int ret = SCHS_BREAK;
 
 	if (pipe(pr))
 		goto out_clean;
 	if (pipe(pw))
 		goto out_clean;
-	if ((fr = fdopen(pr[0], "r")) == NULL)
+	if ((fr = bfd_alloc(pr[0])) == NULL)
 		goto out_clean;
-	if ((fw = fdopen(pw[1], "w")) == NULL)
+	if ((fw = bfd_alloc(pw[1])) == NULL)
 		goto out_clean;
 
 	switch ((pid = fork())) {
@@ -73,19 +73,19 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 		goto out_err;
 	}
 
-	if (fputs("\r\n", fw) == EOF) {
+	if (bfd_puts(fw, "\r\n") < 0) {
 		mod_log(LOG_ERR, "could not copy message header delimiter\n");
 		goto out_err;
 	}
 
-	fseek(ctx->body.stream, 0, SEEK_SET);
-	if (stream_copy(ctx->body.stream, fw)) {
+	bfd_seek(ctx->body.stream, 0, SEEK_SET);
+	if (bfd_copy(ctx->body.stream, fw)) {
 		mod_log(LOG_ERR, "could not copy message body\n");
 		goto out_err;
 	}
 
 	/* close pipe and prevent it from being closed again at cleanup */
-	fclose(fw);
+	bfd_close(fw);
 	fw = NULL;
 	pw[0] = -1;
 
@@ -117,11 +117,11 @@ out_err:
 
 out_clean:
 	if (fr != NULL) {
-		fclose(fr);
+		bfd_close(fr);
 		pr[0] = -1;
 	}
 	if (fw != NULL) {
-		fclose(fw);
+		bfd_close(fw);
 		pw[1] = -1;
 	}
 	if (pr[0] != -1)

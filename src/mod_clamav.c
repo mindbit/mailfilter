@@ -18,12 +18,12 @@ static const char *module = "clamav";
 
 #include "pexec.h"
 
-int mod_clamav_send_headers(struct smtp_server_context *ctx, FILE *fw)
+int mod_clamav_send_headers(struct smtp_server_context *ctx, bfd_t *fw)
 {
 	return im_header_write(&ctx->hdrs, fw);
 }
 
-int mod_clamav_result(struct smtp_server_context *ctx, FILE *fr, int status)
+int mod_clamav_result(struct smtp_server_context *ctx, bfd_t *fr, int status)
 {
 	if (WEXITSTATUS(status) > 1) {
 		mod_log(LOG_ERR, "clamdscan failed with error\n");
@@ -47,10 +47,10 @@ int mod_clamav_result(struct smtp_server_context *ctx, FILE *fr, int status)
 		 * by the virus name followed by " FOUND"; first
 		 * skip "stream: " */
 		for (i = 0; i < 8; i++)
-			if (getc_unlocked(fr) == EOF)
+			if (bfd_getc(fr) < 0)
 				break;
 		/* copy virus name */
-		while ((c = getc_unlocked(fr)) != EOF && c != ' ')
+		while ((c = bfd_getc(fr)) >= 0 && c != ' ')
 			string_buffer_append_char(&sb, c);
 		if (sb.s == NULL)
 			break;
@@ -62,7 +62,7 @@ int mod_clamav_result(struct smtp_server_context *ctx, FILE *fr, int status)
 	return SCHS_BREAK;
 }
 
-int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	const char *argv[] = {"/usr/bin/clamdscan", "-", NULL};
 

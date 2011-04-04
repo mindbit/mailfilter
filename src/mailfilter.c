@@ -176,7 +176,7 @@ int main(int argc, char **argv)
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
 		struct smtp_server_context ctx;
-		FILE *client_sock_stream;
+		bfd_t *client_sock_stream;
 		int client_sock_fd;
 		char *remote_addr;
 
@@ -194,12 +194,12 @@ int main(int argc, char **argv)
 		case 0:
 			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
 			signal(SIGCHLD, SIG_DFL);
-			client_sock_stream = fdopen(client_sock_fd, "r+");
+			client_sock_stream = bfd_alloc(client_sock_fd);
 			assert_log(client_sock_stream != NULL, &config);
 			log(&config, LOG_INFO, "New connection from %s", remote_addr);
 			ctx.cfg = &config;
 			smtp_server_run(&ctx, client_sock_stream);
-			fclose(client_sock_stream);
+			bfd_close(client_sock_stream);
 			log(&config, LOG_INFO, "Closed connection to %s", remote_addr);
 			exit(EXIT_SUCCESS);
 		default:

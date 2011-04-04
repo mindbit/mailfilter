@@ -6,6 +6,7 @@
 
 #include "list.h"
 #include "string_tools.h"
+#include "bfd.h"
 
 /**
  * A single header: name-value pair.
@@ -66,6 +67,6 @@ int im_header_feed(struct im_header_context *ctx, char c);
 void im_header_dump(struct list_head *lh);
 void im_header_unfold(struct im_header *hdr);
 int im_header_refold(struct im_header *hdr, int width);
-int im_header_write(struct list_head *lh, FILE *f);
+int im_header_write(struct list_head *lh, bfd_t *f);
 
 #endif

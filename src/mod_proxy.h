@@ -6,7 +6,7 @@
 #include "smtp_server.h"
 
 struct mod_proxy_priv {
-	FILE *sock;
+	bfd_t *sock;
 };
 
 #endif

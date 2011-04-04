@@ -12,6 +12,7 @@
 #include "smtp.h"
 #include "logging.h"
 #include "internet_message.h"
+#include "bfd.h"
 
 struct smtp_server_context;
 
@@ -30,7 +31,7 @@ struct smtp_server_context;
  * 		Private data passed back to the command handler, as passed to
  * 		smtp_cmd_register() on handler registration.
  */
-typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream);
+typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 
 struct smtp_cmd_hdlr_list {
 	smtp_cmd_hdlr_t hdlr;
@@ -98,7 +99,7 @@ struct smtp_server_context {
 		char path[PATH_MAX];
 
 		/* Stream of tmp file or NULL if "DATA" was not issued */
-		FILE *stream;
+		bfd_t *stream;
 	} body;
 
 	/* SMTP status code to send back to client */
@@ -146,7 +147,7 @@ enum smtp_cmd_hdlr_status {
 
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
 extern void smtp_server_init(void);
-extern int smtp_server_run(struct smtp_server_context *ctx, FILE *stream);
+extern int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
 extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv);
 extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key);

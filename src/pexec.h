@@ -3,8 +3,8 @@
 
 #include "smtp_server.h"
 
-typedef int (*pexec_send_headers_t)(struct smtp_server_context *ctx, FILE *fw);
-typedef int (*pexec_result_t)(struct smtp_server_context *ctx, FILE *fr, int status);
+typedef int (*pexec_send_headers_t)(struct smtp_server_context *ctx, bfd_t *fw);
+typedef int (*pexec_result_t)(struct smtp_server_context *ctx, bfd_t *fr, int status);
 
 int pexec(char * const *argv, int fd_in, int fd_out);
 #define pexec_hdlr_body(_ctx, _argv, _h, _r) \

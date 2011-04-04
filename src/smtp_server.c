@@ -78,28 +78,28 @@ struct smtp_cmd_tree *smtp_cmd_lookup(const char *cmd)
 	return node;
 }
 
-int smtp_server_response(FILE *f, int code, const char *message)
+int smtp_server_response(bfd_t *f, int code, const char *message)
 {
 	char *buf = (char *)message, *c;
 
 	while ((c = index(buf, '\n'))) {
 		*c = 0;
 		log(&__main_config, LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
-		fprintf(f, "%d-%s\r\n", code, buf);
+		bfd_printf(f, "%d-%s\r\n", code, buf);
 		*c = '\n';
 		buf = c + 1;
 	}
 
 	log(&__main_config, LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
-	if (fprintf(f, "%d %s\r\n", code, buf) >= 0) {
-		fflush(f);
+	if (bfd_printf(f, "%d %s\r\n", code, buf) >= 0) {
+		bfd_flush(f);
 		return 0;
 	}
 
 	return -1;
 }
 
-int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	int schs, continue_session = 1;
 	struct smtp_cmd_hdlr_list *hlink;
@@ -150,29 +150,27 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	return continue_session;
 }
 
-int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
+int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
 	int continue_session;
 	char buf[SMTP_COMMAND_MAX + 1];
 
 	/* Command handling loop */
 	do {
-		int oversized = 0;
 		char *c = &buf[0];
 		char tmp;
-		size_t i, n;
+		size_t i, n = 0;
+		ssize_t sz;
 
-		buf[SMTP_COMMAND_MAX] = '\n';
-		if (fgets(buf, sizeof(buf), stream) == NULL)
-			return -1;
-
-		/* Handle oversized commands */
-		while (buf[SMTP_COMMAND_MAX] != '\n') {
-			oversized = 1;
+		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
-			if (fgets(buf, sizeof(buf), stream) == NULL)
+			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0) {
+				mod_log(LOG_ERR, "Socket read error (%s). Aborting", strerror(errno));
 				return -1;
-		}
+			}
+			n++;
+		} while (buf[SMTP_COMMAND_MAX] != '\n');
+		buf[sz] = '\0';
 
 		/* Log received command (without the trailing '\n') */
 		for (c += strlen(c) - 1; c >= &buf[0] && (*c == '\n' || *c == '\r'); c--);
@@ -183,7 +181,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
 		c = &buf[0];
 
 		/* reject oversized commands */
-		if (oversized) {
+		if (n > 1) {
 			smtp_server_response(stream, 421, "Command too long");
 			return -1;
 		}
@@ -279,7 +277,7 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	INIT_LIST_HEAD(&ctx->fpath);
 
 	if (ctx->body.stream != NULL)
-		fclose(ctx->body.stream);
+		bfd_close(ctx->body.stream);
 	ctx->body.stream = NULL;
 
 	if (ctx->body.path[0] != '\0')
@@ -293,7 +291,7 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	ctx->transaction.module = NULL;
 }
 
-int smtp_server_run(struct smtp_server_context *ctx, FILE *stream)
+int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
 	int ret;
 
@@ -416,14 +414,14 @@ int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
 	return SCHS_BREAK;
 }
 
-int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	ctx->code = 220;
 	ctx->message = strdup("Mindbit Mail Filter");
 	return SCHS_OK;
 }
 
-int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct {
 		const char *name;
@@ -463,14 +461,16 @@ int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_unknown_parse(ctx, c);
 }
 
-int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
+	ssize_t sz;
 
 	assert_mod_log(!ctx->auth_user);
 
-	if (fgets(buf, sizeof(buf), stream) == NULL)
+	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
 		return SCHS_BREAK;
+	buf[sz] = '\0';
 
 	if (!strcmp(buf, "*\r\n")) {
 		ctx->code = 501;
@@ -481,14 +481,16 @@ int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_login_parse_user(ctx, buf);
 }
 
-int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
+	ssize_t sz;
 
 	assert_mod_log(!ctx->auth_pw);
 
-	if (fgets(buf, sizeof(buf), stream) == NULL)
+	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
 		return SCHS_BREAK;
+	buf[sz] = '\0';
 
 	if (!strcmp(buf, "*\r\n")) {
 		ctx->code = 501;
@@ -499,20 +501,22 @@ int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_login_parse_pw(ctx, buf);
 }
 
-int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
+	ssize_t sz;
 
 	if (!ctx->auth_user) {
-		if (fgets(buf, sizeof(buf), stream) == NULL)
+		if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
 			return SCHS_BREAK;
+		buf[sz] = '\0';
 
 		return smtp_auth_plain_parse(ctx, buf);
 	}
 	return SCHS_OK;
 }
 
-int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	char *domain;
 
@@ -531,7 +535,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_OK;
 }
 
-int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	if (ctx->rpath.mailbox.local != NULL) {
 		ctx->code = 503;
@@ -551,7 +555,7 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_OK;
 }
 
-int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct smtp_path *path;
 
@@ -580,7 +584,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_OK;
 }
 
-int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	int fd;
 
@@ -597,7 +601,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		ctx->body.path[0] = '\0';
 		return SCHS_BREAK;
 	}
-	if ((ctx->body.stream = fdopen(fd, "r+")) == NULL) {
+	if ((ctx->body.stream = bfd_alloc(fd)) == NULL) {
 		close(fd);
 		unlink(ctx->body.path);
 		ctx->body.path[0] = '\0';
@@ -611,7 +615,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	return SCHS_CHAIN;
 }
 
-int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
+int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ctx)
 {
 	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
 	const uint64_t DOTLINE_MASK		= 0xffffff0000;
@@ -622,13 +626,13 @@ int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
 	int im_state = IM_OK;
 	int c;
 
-	while ((c = getc_unlocked(in)) != EOF) {
+	while ((c = bfd_getc(in)) >= 0) {
 		if (im_hdr_ctx && im_state == IM_OK) {
 			im_state = im_header_feed(im_hdr_ctx, c);
 			continue;
 		}
 		if (++fill > 8) {
-			if (putc_unlocked(buf >> 56, out) == EOF)
+			if (bfd_putc(out, buf >> 56) < 0)
 				return -EIO;
 			fill = 8;
 		}
@@ -651,7 +655,7 @@ int smtp_copy_to_file(FILE *out, FILE *in, struct im_header_context *im_hdr_ctx)
 
 	/* flush remaining buffer */
 	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
-		if (putc_unlocked((buf >> fill) & 0xff, out) == EOF)
+		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
 			return -EIO;
 
 	return im_state == IM_OK || im_state == IM_COMPLETE ? 0 : im_state;
@@ -710,7 +714,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 	return 0;
 }
 
-int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
 
@@ -737,20 +741,20 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 		ctx->code = 452;
 		ctx->message = strdup("Insufficient system storage");
 	}
-	fflush(ctx->body.stream);
+	bfd_flush(ctx->body.stream);
 	smtp_set_transaction_state(ctx, module, 0, NULL);
 	//im_header_write(&ctx->hdrs, stdout);
 	return SCHS_OK;
 }
 
-int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	ctx->code = 221;
 	ctx->message = strdup("closing connection");
 	return SCHS_QUIT;
 }
 
-int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, FILE *stream)
+int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	smtp_server_context_cleanup(ctx);
 	ctx->code = 250;
@@ -851,17 +855,4 @@ int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__mo
 		ctx->transaction.module = __module;
 
 	return 0;
-}
-
-/* FIXME move this to some lib/util file */
-int stream_copy(FILE *src, FILE *dst)
-{
-	char buf[4096];
-	size_t sz;
-
-	while ((sz = fread(buf, 1, sizeof(buf), src)))
-		if (!fwrite(buf, sz, 1, dst))
-			return -1;
-
-	return !feof(src);
 }
