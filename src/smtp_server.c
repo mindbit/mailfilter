@@ -168,6 +168,10 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 				mod_log(LOG_ERR, "Socket read error (%s). Aborting", strerror(errno));
 				return -1;
 			}
+			if (!sz) {
+				mod_log(LOG_ERR, "Lost connection to client");
+				return -1;
+			}
 			n++;
 		} while (buf[SMTP_COMMAND_MAX] != '\n');
 		buf[sz] = '\0';
