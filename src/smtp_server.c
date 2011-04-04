@@ -270,6 +270,7 @@ void smtp_server_context_init(struct smtp_server_context *ctx)
 void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 {
 	struct smtp_path *path, *path_aux;
+	struct im_header *hdr, *hdr_aux;
 
 	smtp_path_cleanup(&ctx->rpath);
 	smtp_path_init(&ctx->rpath);
@@ -279,6 +280,11 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 		free(path);
 	}
 	INIT_LIST_HEAD(&ctx->fpath);
+
+	list_for_each_entry_safe(hdr, hdr_aux, &ctx->hdrs, lh) {
+		im_header_free(hdr);
+	}
+	INIT_LIST_HEAD(&ctx->hdrs);
 
 	if (ctx->body.stream != NULL)
 		bfd_close(ctx->body.stream);

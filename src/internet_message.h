@@ -68,5 +68,6 @@ void im_header_dump(struct list_head *lh);
 void im_header_unfold(struct im_header *hdr);
 int im_header_refold(struct im_header *hdr, int width);
 int im_header_write(struct list_head *lh, bfd_t *f);
+void im_header_free(struct im_header *hdr);
 
 #endif

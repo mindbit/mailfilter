@@ -267,3 +267,17 @@ void im_header_dump(struct list_head *lh)
 		n++;
 	}
 }
+
+void im_header_free(struct im_header *hdr)
+{
+	struct im_header_folding *folding, *folding_aux;
+
+	if (hdr->name != NULL)
+		free(hdr->name);
+	if (hdr->value != NULL)
+		free(hdr->value);
+	list_for_each_entry_safe(folding, folding_aux, &hdr->folding, lh) {
+		free(folding);
+	}
+	free(hdr);
+}
