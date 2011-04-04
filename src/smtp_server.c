@@ -651,10 +651,14 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ct
 			fill -= 3;
 			break;
 		}
-		/* strip the dot at beginning of line */
+		/* flush buffer up to the dot; otherwise we get false-positives for
+		 * a line consisting of (only) two dots */
 		assert_log(fill >= 5, &__main_config);
-		buf = ((buf >> 8) & ~CRLF_MASK) | (buf & CRLF_MASK);
-		fill--;
+		while (fill > 3)
+			if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
+				return -EIO;
+		buf &= CRLF_MASK;
+		fill = 2;
 	}
 
 	/* flush remaining buffer */
@@ -747,6 +751,7 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 	bfd_flush(ctx->body.stream);
 	smtp_set_transaction_state(ctx, module, 0, NULL);
+	//printf("path: %s\n", ctx->body.path); sleep(10);
 	//im_header_write(&ctx->hdrs, stdout);
 	return SCHS_OK;
 }

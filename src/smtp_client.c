@@ -139,8 +139,9 @@ int smtp_copy_from_file(bfd_t *out, bfd_t *in)
 		buf = (buf << 8) | c;
 		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
 			continue;
-		if (bfd_putc(out, '.') < 0)
+		if (bfd_putc(out, (buf >> ((fill - 1) * 8)) & 0xff) < 0)
 			return 1;
+		buf = (buf << 8) | '.';
 	}
 
 	/* flush remaining buffer */
