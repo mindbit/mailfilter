@@ -193,7 +193,17 @@ int main(int argc, char **argv)
 			break;
 		case 0:
 			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
+
+			/* __pexec_hdlr_body() always calls waitpid() for child processes,
+			 * so we reinstall the default signal handler */
 			signal(SIGCHLD, SIG_DFL);
+
+			/* Ignore SIGPIPE, because we don't want to die if the chid closes
+			 * while we're writing to the pipe. Instead, reads/writes will fail
+			 * with -1 (and errno set to EPIPE), and __pexec_hdlr_body() will
+			 * properly recover from the error. */
+			signal(SIGPIPE, SIG_IGN);
+
 			client_sock_stream = bfd_alloc(client_sock_fd);
 			assert_log(client_sock_stream != NULL, &config);
 			log(&config, LOG_INFO, "New connection from %s", remote_addr);

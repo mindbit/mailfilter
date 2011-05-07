@@ -61,13 +61,21 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 		mod_log(LOG_ERR, "could not spawn child process\n");
 		goto out_clean;
 	case 0:
-		/* child */
+		/* child; pipe ends that we're not interested in (the ones used
+		 * by the parent) will be implicitly closed by pexec() because
+		 * it closes everything but our own pipe ends. */
 		status = pexec(argv, pw[0], pr[1]);
 		/* pexec() should not return; if it does, something went wrong */
 		exit(status);
 	}
 
-	/* parent */
+	/* parent; close pipe ends that are meant for the child, so that we
+	 * detect (get read/write error) when the other pipe end has closed. */
+	close(pr[1]);
+	pr[1] = -1;
+	close(pw[0]);
+	pw[0] = -1;
+
 	if (pexec_send_headers(ctx, fw)) {
 		mod_log(LOG_ERR, "could not copy message headers\n");
 		goto out_err;
@@ -89,6 +97,17 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 	fw = NULL;
 	pw[0] = -1;
 
+	/* FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME
+	 * We have a severe race condition: if the child process
+	 * writes enough data to fill the pipe buffer, it will
+	 * block in write() and will never exit. On the other hand,
+	 * we first wait for the child to finish and then read from
+	 * the pipe, so this is a deadlock.
+	 *
+	 * We cannot close our read pipe, because the child might
+	 * die by SIGPIPE. Instead we need to read (and discard
+	 * the data) until the child closes its own end.
+	 * FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME */
 	do {
 		waitpid(pid, &status, 0);
 		// FIXME check for interrupted syscall (and retval)
