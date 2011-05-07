@@ -17,6 +17,9 @@
 static uint64_t key;
 static const char *module = "proxy";
 
+static const char *proxy_host = "127.0.0.1";
+static const int proxy_port = 25;
+
 int copy_response_callback(int code, const char *message, int last, void *priv)
 {
 	struct smtp_server_context *ctx = priv;
@@ -30,7 +33,7 @@ int copy_response_callback(int code, const char *message, int last, void *priv)
 int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct mod_proxy_priv *priv;
-	int sock, err = SCHS_ABORT;
+	int sock, err, ret = SCHS_ABORT;
 	struct sockaddr_in peer;
 
 	priv = malloc(sizeof(struct mod_proxy_priv));
@@ -45,19 +48,23 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 		goto out_err;
 
 	peer.sin_family = AF_INET;
-	peer.sin_port = htons(25);
-	//inet_aton("127.0.0.1", &peer.sin_addr);
-	inet_aton("10.0.1.140", &peer.sin_addr);
+	peer.sin_port = htons(proxy_port);
+	inet_aton(proxy_host, &peer.sin_addr); // FIXME: we should use getaddrinfo()
 
-	if (connect(sock, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == -1)
+	if (connect(sock, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == -1) {
+		mod_log(LOG_ERR, "could not connect to %s, port %d\n", proxy_host, proxy_port);
 		goto out_err;
+	}
+	mod_log(LOG_DEBUG, "connected to %s, port %d\n", proxy_host, proxy_port);
 
 	priv->sock = bfd_alloc(sock);
 	if (!priv->sock)
 		goto out_err;
 
-	if (smtp_client_response(priv->sock, copy_response_callback, ctx) < 0)
+	if ((err = smtp_client_response(priv->sock, copy_response_callback, ctx)) < 0) {
+		mod_log(LOG_ERR, "error %d reading initial greeting\n", err);
 		goto out_err;
+	}
 
 	return SCHS_OK;
 out_err:
@@ -65,7 +72,7 @@ out_err:
 		close(sock);
 	smtp_priv_unregister(ctx, key);
 	free(priv);
-	return err;
+	return ret;
 }
 
 int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
