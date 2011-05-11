@@ -25,10 +25,21 @@ stream_set_timeout($sock, 15);
 
 expect($sock, "^220 ") || die();
 
+if (true) {
+	send($sock, "AUTH LOGIN\r\n");
+	expect($sock, "^334 ") || die();
+
+	send($sock, base64_encode("gigi@test2.mp-234.mindbit.ro") . "\r\n");
+	expect($sock, "^334 ") || die();
+
+	send($sock, base64_encode("123") . "\r\n");
+	expect($sock, "^235 ") || die();
+}
+
 send($sock, "MAIL FROM:<rrendec@post.ro>\r\n");
 expect($sock, "^250 ") || die();
 
-send($sock, "RCPT TO:<apache@bat.ines.ro>\r\n");
+send($sock, "RCPT TO:<radu@m.unr-dsc.mindbit.ro>\r\n");
 expect($sock, "^250 ") || die();
 
 send($sock, "DATA\r\n");
