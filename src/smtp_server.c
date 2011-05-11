@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
@@ -731,6 +732,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
+	struct stat stat;
 
 	assert_mod_log(ctx->body.stream != NULL);
 
@@ -755,7 +757,13 @@ int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char 
 		ctx->code = 452;
 		ctx->message = strdup("Insufficient system storage");
 	}
-	bfd_flush(ctx->body.stream);
+
+	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1) {
+		ctx->code = 452;
+		ctx->message = strdup("Insufficient system storage");
+	}
+	ctx->body.size = stat.st_size;
+
 	smtp_set_transaction_state(ctx, module, 0, NULL);
 	//printf("path: %s\n", ctx->body.path); sleep(10);
 	//im_header_write(&ctx->hdrs, stdout);

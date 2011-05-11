@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -224,7 +223,6 @@ int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, cons
 		&size[0],
 		&id[0]
 	};
-	struct stat stat;
 	PGresult *res;
 
 	assert_mod_log(priv);
@@ -232,11 +230,8 @@ int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, cons
 	if (!priv->smtp_transaction_id)
 		return SCHS_BREAK;
 
-	if (fstat(ctx->body.stream->fd, &stat) == -1)
-		return SCHS_BREAK;
-
 	snprintf(id, sizeof(id), "%lld", (long long)priv->smtp_transaction_id);
-	snprintf(size, sizeof(size), "%ld", stat.st_size);
+	snprintf(size, sizeof(size), "%ld", ctx->body.size);
 
 	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SIZE, 2, (const char * const *)params, NULL, NULL, 0);
 	if (res == NULL)

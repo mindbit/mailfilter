@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
 #include <netinet/ip.h> /* superset of previous */
 
@@ -100,6 +101,9 @@ struct smtp_server_context {
 
 		/* Stream of tmp file or NULL if "DATA" was not issued */
 		bfd_t *stream;
+
+		/* Size of message body (without headers) */
+		off_t size;
 	} body;
 
 	/* SMTP status code to send back to client */
