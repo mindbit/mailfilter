@@ -143,7 +143,7 @@ int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
 	assert_mod_log(priv);
 
 	/* Send command to the real stmp server */
-	if (bfd_puts(priv->sock, cmd) < 0)
+	if (smtp_client_command(priv->sock, cmd, NULL))
 		return SCHS_BREAK;
 
 	/* read back the smtp server response */
@@ -179,7 +179,7 @@ int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const 
 	if (!user64)
 		return SCHS_BREAK;
 
-	err = sprintf(buf, "AUTH LOGIN %s\r\n", user64);
+	err = sprintf(buf, "AUTH LOGIN %s", user64);
 	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(user64);
 
@@ -192,11 +192,8 @@ int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const 
 	if (!pw64)
 		return SCHS_BREAK;
 
-	err = sprintf(buf, "%s\r\n", pw64);
-	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
+	err = mod_proxy_auth_send_one(ctx, pw64);
 	free(pw64);
-
-	err = mod_proxy_auth_send_one(ctx, buf);
 	if (err != SCHS_OK)
 		return err;
 
@@ -222,7 +219,7 @@ int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const 
 	if (!auth64)
 		return SCHS_BREAK;
 
-	err = sprintf(buf, "AUTH PLAIN %s\r\n", auth64);
+	err = sprintf(buf, "AUTH PLAIN %s", auth64);
 	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(auth64);
 
