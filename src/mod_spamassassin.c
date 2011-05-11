@@ -3,6 +3,9 @@
 /* FIXME this needs to become a config option */
 #define BYPASS_AUTH 1
 
+/* FIXME this needs to become a config option */
+#define BYPASS_SIZE_TRESHOLD 500000
+
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -58,6 +61,11 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 
 	if (BYPASS_AUTH && ctx->auth_user) {
 		mod_log(LOG_INFO, "bypassed authenticated user\n");
+		return SCHS_IGNORE;
+	}
+
+	if (ctx->body.size >= BYPASS_SIZE_TRESHOLD) {
+		mod_log(LOG_INFO, "bypassed large message (size=%d, treshold=%d)\n", ctx->body.size, BYPASS_SIZE_TRESHOLD);
 		return SCHS_IGNORE;
 	}
 
