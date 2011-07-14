@@ -347,6 +347,6 @@ void mod_proxy_init(void)
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
 	smtp_cmd_register("BODY", mod_proxy_hdlr_body, 100, 0);
 	smtp_cmd_register("TERM", mod_proxy_hdlr_term, 100, 0);
-	smtp_cmd_register("RSET", mod_proxy_hdlr_term, 100, 1);
+	smtp_cmd_register("RSET", mod_proxy_hdlr_rset, 100, 1);
 }
 
