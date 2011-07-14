@@ -322,6 +322,16 @@ int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const 
 	return SCHS_IGNORE;
 }
 
+int mod_proxy_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+{
+	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
+
+	smtp_client_command(priv->sock, "RSET", NULL);
+	smtp_client_response(priv->sock, copy_response_callback, ctx);
+
+	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+}
+
 /* void __attribute__((constructor)) my_init() */
 
 void mod_proxy_init(void)
@@ -337,5 +347,6 @@ void mod_proxy_init(void)
 	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
 	smtp_cmd_register("BODY", mod_proxy_hdlr_body, 100, 0);
 	smtp_cmd_register("TERM", mod_proxy_hdlr_term, 100, 0);
+	smtp_cmd_register("RSET", mod_proxy_hdlr_term, 100, 1);
 }
 
