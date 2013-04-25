@@ -25,20 +25,56 @@ smtpServer.listenAddress = [["127.0.0.1", "8025"]];
 // Provide the initial SMTP greeting that the server will send to the
 // client, as an SmtpStatus object.
 smtpServer.initialGreeting = function () {
+	// Create SMTP client connection to real server
 	this.client = new SmtpClientConnection("127.0.0.1", "25");
+
+	// Create connection to SQL server
+	this.db = DriverManager.getConnection("mysql://centos6/mailfilter", "mailfilter");
+
+	// Create a new record in smtp_transactions and save remote server address and port
+	var pstmt = this.db.createPreparedStatement("INSERT INTO smtp_transactions (remote_addr, remote_port) VALUES(?,?)");
+	pstmt.setString(1, smtpServer.clientAddress);
+	pstmt.setString(2, smtpServer.clientPort);
+	pstmt.executeUpdate();
+	var res = pstmt.getGeneratedKeys();
+	res.next();
+	this.smtpTransactionId = res.getString(1);
+	pstmt.close();
+
+	// Connect to real server
 	return this.client.connect();
 	// FIXME connect() tb sa intoarca un SmtpStatus care contine exact greeting-ul de la client sau sa arunce o eroare daca nu se poate conecta
 };
 
 // FIXME smtpServer.getEnvelopeSender() intoarce un obiect SmtpPath care modeleaza struct smtp_path din C
 smtpServer.smtpMail = function () {
-	return this.client.smtpMail(this.getEnvelopeSender());
+	var envelopeSender = this.getEnvelopeSender();
+
+	// Save the envelope sender in the database
+	var pstmt = this.db.createPreparedStatement("UPDATE smtp_transactions SET envelope_sender=? WHERE smtp_transaction_id=?");
+	pstmt.setString(1, this.smtpTransactionId);
+	pstmt.setString(2, envelopeSender);
+	pstmt.executeUpdate();
+	pstmt.close();
+
+	// relay the command to the real server
+	return this.client.smtpMail(envelopeSender);
 };
 
 // FIXME this.getRecipients() intoarce un array de SmtpPath, care modeleaza struct smtp_path din C
 smtpServer.smtpRcpt = function () {
 	var recipients = this.getRecipients();
-	return this.client.smtpRcpt(recipients[recipients.length - 1]);
+	var recipient = recipients[recipients.length - 1];
+
+	// Save the recipient in the database
+	var pstmt = this.db.createPreparedStatement("INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES (?,?)");
+	pstmt.setString(1, this.smtpTransactionId);
+	pstmt.setString(2, recipient);
+	pstmt.executeUpdate();
+	pstmt.close();
+
+	// relay the command to the real server
+	return this.client.smtpRcpt(recipient);
 };
 
 // smtpServer.smtpData = function () {} FIXME deocamdata nu tb sa facem nimic in plus fata de ce e built-in
