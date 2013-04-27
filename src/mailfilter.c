@@ -36,6 +36,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "js/js.h"
 #include "smtp_server.h"
 
 // FIXME this is used by assert_log() in places where we have no other
@@ -43,7 +44,8 @@
 struct config __main_config;
 
 /* Forks, closes all file descriptors and redirects stdin/stdout to /dev/null */
-void daemonize(void) {
+void daemonize(void)
+{
 	struct rlimit rl = {0};
 	int fd = -1;
 	int i;
@@ -148,6 +150,10 @@ int main(int argc, char **argv)
 		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
 	};
 
+	/* Intialize JavaScript engine */
+	status = js_init();
+	assert_log(status != 1, &config);
+
 	while ((opt = getopt(argc, argv, "hdc:")) != -1) {
 		switch (opt) {
 		case 'c':
@@ -231,6 +237,7 @@ int main(int argc, char **argv)
 			smtp_server_run(&ctx, client_sock_stream);
 			bfd_close(client_sock_stream);
 			log(&config, LOG_INFO, "Closed connection to %s", remote_addr);
+			js_stop();
 			exit(EXIT_SUCCESS);
 		default:
 			close(client_sock_fd);

@@ -21,14 +21,13 @@ AC_PROG_CC
 AC_SEARCH_LIBS([config_init], [config], , AC_MSG_ERROR([libconfig not found]))
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 AC_SEARCH_LIBS([PQconnectdb], [pq], , AC_MSG_ERROR([libpq not found]))
-AC_SEARCH_LIBS([JS_NewObject], [mozjs-17.0 mozjs mozjs185], , AC_MSG_ERROR([libmozjs not found]))
+AC_SEARCH_LIBS([JS_NewObject], [mozjs185 mozjs], , AC_MSG_ERROR([libmozjs not found]))
 
 ## Special check for SpiderMonkey
 AC_MSG_CHECKING(for jsapi.h)
 
 found="no"
-for sm_path in /usr/include/js-17.0 \
-		/usr/include/js \
+for sm_path in /usr/include/js \
 		/usr/include/mozjs \
 		/usr/include/smjs; do
 	if test -x $sm_path && test "$found"=="no"; then
@@ -43,9 +42,6 @@ if test "$found" = "yes"; then
 else
 	AC_MSG_ERROR(jsapi.h not found)
 fi
-
-CFLAGS="$CFLAGS -include /usr/include/js-17.0/js/RequiredDefines.h"
-CFLAGS="$CFLAGS -I/usr/include/nspr"
 
 # Checks for header files.
 
