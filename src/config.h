@@ -22,6 +22,7 @@
 #define _CONFIG_H
 
 #include <stdio.h>
+#include <syslog.h>
 
 struct config {
 	/* Global configuration parameters (not included in config file) */
@@ -43,7 +44,24 @@ struct config {
 	int listen_port;
 };
 
+/*
+ * Mapping from string representation to numeriv value.
+ */
+struct str2val_map {
+	const char *name;
+	const int val;
+};
+
+extern const struct str2val_map log_types[];
+extern const struct str2val_map log_levels[];
+extern const struct str2val_map log_facilities[];
+
+/* Returns value associated with string given in config */
+int str_2_val(const struct str2val_map *map, const char *str);
+
 int config_parse(struct config *current, struct config *next);
+
+extern struct config config;
 
 // FIXME this is a hack (see mailfilter.c)
 extern struct config __main_config;

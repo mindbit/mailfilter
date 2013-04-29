@@ -1,5 +1,14 @@
 #include "js.h"
 
+#include "engine.h"
+
+#define TEST_SCRIPT \
+	"engine.logging = {		\n"\
+		"type: \"syslog\",	\n"\
+		"level: \"debug\",	\n"\
+		"facility: \"mail\"	\n"\
+	"};				\n"
+
 /* The class of the global object. */
 static JSClass global_class = {
 	"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub, JS_PropertyStub,
@@ -56,7 +65,12 @@ int js_init(void)
 		return -1;
 
 	/* Initialize objects */
+	if (js_engine_obj_init(cx, global))
+		return -1;
 
+	/* TODO: Use real script file, not just a test script. */
+	JS_EvaluateScript(cx, global, TEST_SCRIPT, strlen(TEST_SCRIPT),
+			"none", 0, NULL);
 	return 0;
 }
 

@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 
 #include "config.h"
 #include "logging.h"
@@ -34,15 +33,24 @@
 #include "../config.h"
 #endif
 
-/*
- * Mapping from string representation to numeriv value.
- */
-struct str2val_map { 
-	const char *name;
-	const int val;
+/* Main server configuration */
+struct config config = {
+	.path = "/etc/mailfilter/main.js",
+	.daemon = 1,
+	.logging_type = LOGGING_TYPE_STDERR,
+	.logging_level = LOG_INFO,
+	.logging_facility = LOG_DAEMON,
+	.dbconn = NULL,
 };
 
-static const struct str2val_map log_levels[] = {
+const struct str2val_map log_types[] = {
+	{ "stderr", LOGGING_TYPE_STDERR },
+	{ "syslog", LOGGING_TYPE_SYSLOG },
+	{ "logfile", LOGGING_TYPE_LOGFILE },
+	{ NULL, 0 }
+};
+
+const struct str2val_map log_levels[] = {
 	{ "emerg", LOG_EMERG },
 	{ "alert", LOG_ALERT },
 	{ "crit", LOG_CRIT },
@@ -54,7 +62,7 @@ static const struct str2val_map log_levels[] = {
 	{ NULL, 0 }
 };
 
-static const struct str2val_map log_facilities[] = {
+const struct str2val_map log_facilities[] = {
 	{ "daemon", LOG_DAEMON },
 	{ "user", LOG_USER },
 	{ "mail", LOG_MAIL },
@@ -69,7 +77,7 @@ static const struct str2val_map log_facilities[] = {
 	{ NULL, 0 }
 };
 
-static int str_2_val(const struct str2val_map *map, const char *str)
+int str_2_val(const struct str2val_map *map, const char *str)
 {
 	int i;
 	for (i = 0; map[i].name; i++) {
@@ -176,4 +184,9 @@ int config_parse(struct config *current, struct config *next)
 out_err:
 	config_destroy(&cf);
 	return err;
+}
+
+struct config *config_get(void)
+{
+	return &config;
 }
