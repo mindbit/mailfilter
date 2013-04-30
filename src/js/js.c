@@ -1,5 +1,10 @@
-#include "js.h"
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
+#include "js.h"
 #include "engine.h"
 
 #define TEST_SCRIPT \
@@ -26,13 +31,17 @@ static void reportError(JSContext *cx, const char *message, JSErrorReport *repor
 {
 	fprintf(stderr, "%s:%u:%s\n",
 			report->filename ? report->filename : "<no filename=\"filename\">",
-			(unsigned int) report->lineno,
+			(unsigned int) report->lineno + 1,
 			message);
 }
 
-int js_init(void)
+int js_init(const char *filename)
 {
 	JSObject *global;
+
+	int fd;
+	void *buf;
+	off_t len;
 
 	/* Create a JS runtime. You always need at least one runtime per process. */
 	rt = JS_NewRuntime(8 * 1024 * 1024);
@@ -64,18 +73,48 @@ int js_init(void)
 	if (!JS_InitStandardClasses(cx, global))
 		return -1;
 
-	/* Initialize objects */
+	/* Read the file into memory */
+	fd = open(filename, O_RDONLY, 0);
+	if (fd < 0) {
+		perror(filename);
+		return -1;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	if (len == (off_t) -1) {
+		close(fd);
+		perror("lseek");
+		return -1;
+	}
+
+	buf = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+	if (buf == MAP_FAILED) {
+		close(fd);
+		perror("mmap");
+		return -1;
+	}
+
+	/* Initialize global objects */
 	if (js_engine_obj_init(cx, global))
 		return -1;
+	if (js_smtp_server_obj_init(cx, global))
+		return -1;
 
-	/* TODO: Use real script file, not just a test script. */
-	JS_EvaluateScript(cx, global, TEST_SCRIPT, strlen(TEST_SCRIPT),
-			"none", 0, NULL);
+	/* Run script */
+	JS_EvaluateScript(cx, global, buf, len, filename, 0, NULL);
+
+	/* Evaluate the changes caused by the script */
+	if (js_engine_parse(cx, global))
+		return -1;
+	if (js_smtp_server_parse(cx, global))
+		return -1;
+
 	return 0;
 }
 
 void js_stop(void)
 {
+	/* Clean things up and shut down SpiderMonkey. */
 	JS_DestroyContext(cx);
 	JS_DestroyRuntime(rt);
 	JS_ShutDown();

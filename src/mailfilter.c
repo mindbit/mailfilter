@@ -133,7 +133,6 @@ int main(int argc, char **argv)
 	int sock, on = 1, status, opt;
 	struct sockaddr_in servaddr;
 
-	struct config newcfg;
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
 		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
@@ -157,13 +156,8 @@ int main(int argc, char **argv)
 	}
 
 	/* Intialize JavaScript engine */
-	status = js_init();
-	assert_log(status != 1, &config);
-
-	if (config_parse(&config, &newcfg))
-		return 1;
-
-	config = __main_config = newcfg;
+	status = js_init(config.path);
+	assert_log(status != -1, &config);
 
 	smtp_server_init();
 

@@ -5,4 +5,6 @@
 
 int js_engine_obj_init(JSContext *cx, JSObject *global);
 
+int js_engine_parse(JSContext *cx, JSObject *global);
+
 #endif

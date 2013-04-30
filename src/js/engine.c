@@ -3,15 +3,19 @@
 
 /* Function Summary */
 /*
- * 1. add_prop_hdlr()
- *	- Called whenever a property is added to the 'engine' object.
+ * PROPERTY HANDLERS:
  *
- * 1.1. logging_prop_hdlr()
+ * 1. logging_hdlr()
  *	- Handles the object passed to the 'logging' property.
+ *
+ * NATIVE FUNCTIONS:
+ *
+ * 1. load_module()
+ *	- Implementation of the "engine.loadModule()" function.
  */
 
 /* FIXME: Print appropriate errors when bad values are given */
-static JSBool logging_prop_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
+static JSBool logging_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 {
 	JSObject *logging_obj;
 	jsval property_value;
@@ -27,6 +31,9 @@ static JSBool logging_prop_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	if (!JS_GetProperty(cx, logging_obj, "type", &property_value))
 		return JS_FALSE;
 
+	if (property_value == JSVAL_VOID)
+		goto level; /* type not specified, jump to level */
+
 	if (!JSVAL_IS_STRING(property_value))
 		return JS_FALSE;
 	property_str = JSVAL_TO_STRING(property_value);
@@ -40,10 +47,14 @@ static JSBool logging_prop_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	JS_free(cx, property_arr);
 
 
+level:
 	/* Get the value of the 'level' property */
 	logging_obj = JSVAL_TO_OBJECT(*vp);
 	if (!JS_GetProperty(cx, logging_obj, "level", &property_value))
 		return JS_FALSE;
+
+	if (property_value == JSVAL_VOID)
+		goto facility; /* level not specified, jump to facility */
 
 	if (!JSVAL_IS_STRING(property_value))
 		return JS_FALSE;
@@ -58,10 +69,14 @@ static JSBool logging_prop_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	JS_free(cx, property_arr);
 
 
+facility:
 	/* Get the value of the 'facility' property */
 	logging_obj = JSVAL_TO_OBJECT(*vp);
 	if (!JS_GetProperty(cx, logging_obj, "facility", &property_value))
 		return JS_FALSE;
+
+	if (property_value == JSVAL_VOID)
+		return JS_TRUE; /* facility not specified, leave it default */
 
 	if (!JSVAL_IS_STRING(property_value))
 		return JS_FALSE;
@@ -78,51 +93,62 @@ static JSBool logging_prop_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	return JS_TRUE;
 }
 
-static JSBool add_prop_hdlr(JSContext *cx, JSObject *obj, jsid id, jsval *vp)
+static JSObject *engine;
+
+static JSBool load_module(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval property;
-	JSString *property_str;
-	char *property_arr;
+	jsval module;
+	JSString *module_str;
+	char *module_name;
 
-	/*
-	 * Some sanity checks to see if there was actually a new property
-	 * created on the 'engine' object.
-	 */
-	if (!JS_IdToValue(cx, id, &property))
+	module = JS_ARGV(cx, vp)[0];
+
+	if (!JSVAL_IS_STRING(module))
 		return JS_FALSE;
 
-	if (!JSVAL_IS_STRING(property))
+	module_str = JSVAL_TO_STRING(module);
+	module_name = JS_EncodeString(cx, module_str);
+	if (!module_name)
 		return JS_FALSE;
 
-	property_str = JSVAL_TO_STRING(property);
-	if (!property_str)
-		return JS_FALSE;
+	printf("[STUB] Loading module \"%s\".\n", module_name);
 
-	property_arr = JS_EncodeString(cx, property_str);
-	if (!property_arr)
-		return JS_FALSE;
-
-	/* Handle 'logging' property assignment here */
-	if (strcmp(property_arr, "logging") == 0)
-		return logging_prop_hdlr(cx, obj, vp);
-
-	JS_free(cx, property_arr);
+	JS_free(cx, module_name);
 	return JS_TRUE;
 }
 
-static JSClass engine_class = {
-	"engine", JSCLASS_GLOBAL_FLAGS, add_prop_hdlr, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
+int js_engine_parse(JSContext *cx, JSObject *global)
+{
+	jsval engine_val, logging_val;
 
-static JSObject *engine;
+	if (!JS_GetProperty(cx, global, "engine", &engine_val))
+		return -1;
+	engine = JSVAL_TO_OBJECT(engine_val);
+
+	/* Parse 'logging' property. */
+	if (!JS_GetProperty(cx, engine, "logging", &logging_val))
+		return -1;
+
+	if (logging_hdlr(cx, global, &logging_val))
+		return -1;
+
+	return 0;
+}
+
+static JSClass engine_class = {
+	"engine", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
+	JS_ConvertStub, JS_FinalizeStub, JSCLASS_NO_OPTIONAL_MEMBERS
+};
 
 int js_engine_obj_init(JSContext *cx, JSObject *global)
 {
+
 	engine = JS_DefineObject(cx, global, "engine", &engine_class, NULL, 0);
-	if (engine == NULL)
+	if (!engine)
+		return -1;
+
+	if (!JS_DefineFunction(cx, engine, "loadModule", load_module, 1, 0))
 		return -1;
 
 	return 0;
