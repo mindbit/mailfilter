@@ -1,4 +1,4 @@
-#include "smtp_server.h"
+#include "smtpserver.h"
 
 int js_smtp_server_parse(JSContext *cx, JSObject *global)
 {

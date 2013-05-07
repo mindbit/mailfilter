@@ -31,7 +31,7 @@ static JSBool logging_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	if (!JS_GetProperty(cx, logging_obj, "type", &property_value))
 		return JS_FALSE;
 
-	if (property_value == JSVAL_VOID)
+	if (JSVAL_IS_VOID(property_value))
 		goto level; /* type not specified, jump to level */
 
 	if (!JSVAL_IS_STRING(property_value))
@@ -53,7 +53,7 @@ level:
 	if (!JS_GetProperty(cx, logging_obj, "level", &property_value))
 		return JS_FALSE;
 
-	if (property_value == JSVAL_VOID)
+	if (JSVAL_IS_VOID(property_value))
 		goto facility; /* level not specified, jump to facility */
 
 	if (!JSVAL_IS_STRING(property_value))
@@ -75,7 +75,7 @@ facility:
 	if (!JS_GetProperty(cx, logging_obj, "facility", &property_value))
 		return JS_FALSE;
 
-	if (property_value == JSVAL_VOID)
+	if (JSVAL_IS_VOID(property_value))
 		return JS_TRUE; /* facility not specified, leave it default */
 
 	if (!JSVAL_IS_STRING(property_value))
