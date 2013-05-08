@@ -35,8 +35,9 @@
 
 /* Main server configuration */
 struct config config = {
-	.path = "/etc/mailfilter/main.js",
+	.path = "/etc/mailfilter.js",
 	.daemon = 1,
+	.smtp_debug = 0,
 	.logging_type = LOGGING_TYPE_STDERR,
 	.logging_level = LOG_INFO,
 	.logging_facility = LOG_DAEMON,

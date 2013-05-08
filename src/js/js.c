@@ -4,33 +4,19 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "../config.h"
 #include "js.h"
 #include "engine.h"
 
-#define TEST_SCRIPT \
-	"engine.logging = {		\n"\
-		"type: \"syslog\",	\n"\
-		"level: \"debug\",	\n"\
-		"facility: \"mail\"	\n"\
-	"};				\n"
+JSContext *js_context;
 
-/* The class of the global object. */
-static JSClass global_class = {
-	"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-/* JSAPI variables. */
-static JSContext *cx;
 static JSRuntime *rt;
 
 /* The error reporter callback. */
-static void reportError(JSContext *cx, const char *message, JSErrorReport *report)
+static void reportError(JSContext *js_context, const char *message, JSErrorReport *report)
 {
-	fprintf(stderr, "%s:%u:%s\n",
-			report->filename ? report->filename : "<no filename=\"filename\">",
+	fprintf(stderr, "%s:%u: error: %s\n",
+			config.path,
 			(unsigned int) report->lineno + 1,
 			message);
 }
@@ -43,6 +29,14 @@ int js_init(const char *filename)
 	void *buf;
 	off_t len;
 
+	/* The class of the global object. */
+	static JSClass global_class = {
+		"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub,
+		JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+		JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
+		JS_FinalizeStub, JSCLASS_NO_OPTIONAL_MEMBERS
+	};
+
 	/* Create a JS runtime. You always need at least one runtime per process. */
 	rt = JS_NewRuntime(8 * 1024 * 1024);
 	if (rt == NULL)
@@ -51,18 +45,18 @@ int js_init(const char *filename)
 	 * Create a context. You always need a context per thread.
 	 * Note that this program is not multi-threaded.
 	 */
-	cx = JS_NewContext(rt, 8192);
-	if (cx == NULL)
+	js_context = JS_NewContext(rt, 8192);
+	if (js_context == NULL)
 		return -1;
-	JS_SetOptions(cx, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
-	JS_SetVersion(cx, JSVERSION_LATEST);
-	JS_SetErrorReporter(cx, reportError);
+	JS_SetOptions(js_context, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
+	JS_SetVersion(js_context, JSVERSION_LATEST);
+	JS_SetErrorReporter(js_context, reportError);
 
 	/*
 	 * Create the global object in a new compartment.
 	 * You always need a global object per context.
 	 */
-	global = JS_NewCompartmentAndGlobalObject(cx, &global_class, NULL);
+	global = JS_NewCompartmentAndGlobalObject(js_context, &global_class, NULL);
 	if (global == NULL)
 		return -1;
 
@@ -70,7 +64,7 @@ int js_init(const char *filename)
 	 * Populate the global object with the standard JavaScript
 	 * function and object classes, such as Object, Array, Date.
 	 */
-	if (!JS_InitStandardClasses(cx, global))
+	if (!JS_InitStandardClasses(js_context, global))
 		return -1;
 
 	/* Read the file into memory */
@@ -95,18 +89,16 @@ int js_init(const char *filename)
 	}
 
 	/* Initialize global objects */
-	if (js_engine_obj_init(cx, global))
+	if (js_engine_obj_init(js_context, global))
 		return -1;
-	if (js_smtp_server_obj_init(cx, global))
+	if (js_smtp_server_obj_init(js_context, global))
 		return -1;
 
 	/* Run script */
-	JS_EvaluateScript(cx, global, buf, len, filename, 0, NULL);
+	JS_EvaluateScript(js_context, global, buf, len, filename, 0, NULL);
 
 	/* Evaluate the changes caused by the script */
-	if (js_engine_parse(cx, global))
-		return -1;
-	if (js_smtp_server_parse(cx, global))
+	if (js_engine_parse(js_context, global))
 		return -1;
 
 	return 0;
@@ -115,7 +107,7 @@ int js_init(const char *filename)
 void js_stop(void)
 {
 	/* Clean things up and shut down SpiderMonkey. */
-	JS_DestroyContext(cx);
+	JS_DestroyContext(js_context);
 	JS_DestroyRuntime(rt);
 	JS_ShutDown();
 }

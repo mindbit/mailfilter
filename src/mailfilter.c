@@ -20,21 +20,23 @@
 
 #define _XOPEN_SOURCE 500
 #define _BSD_SOURCE
-#include <stdio.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <stdlib.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <string.h>
 #include <signal.h>
-#include <sys/wait.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "js/js.h"
 #include "smtp_server.h"
@@ -42,6 +44,9 @@
 // FIXME this is used by assert_log() in places where we have no other
 // reference to the main config
 struct config __main_config;
+
+/* Array of server sockets */
+int fds[256], fds_len;
 
 /* Forks, closes all file descriptors and redirects stdin/stdout to /dev/null */
 void daemonize(void)
@@ -117,6 +122,161 @@ static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
 	waitpid(info->si_pid, &status, WNOHANG);
 }
 
+static int get_socket_for_address(char *ip, char *port)
+{
+	int sockfd, status, yes = 1;
+	struct addrinfo hints, *servinfo, *p;
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	status = getaddrinfo(ip, port, &hints, &servinfo);
+	if (status) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+		exit(EXIT_FAILURE);
+	}
+
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+		if (sockfd < 0) {
+			perror("server: socket");
+			continue;
+		}
+
+		status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
+				sizeof(int));
+		if (status < 0) {
+			perror("setsockopt");
+			exit(EXIT_FAILURE);
+		}
+
+		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
+		if (status < 0) {
+			close(sockfd);
+			perror("server: bind");
+			continue;
+		}
+
+		status = listen(sockfd, 20);
+		if (status < 0) {
+			close(sockfd);
+			perror("server: listen");
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "server: failed to bind to %s:%s\n", ip, port);
+		exit(EXIT_FAILURE);
+	}
+
+	freeaddrinfo(servinfo);
+
+	return sockfd;
+}
+
+static int create_sockets(void)
+{
+	JSObject *global, *smtpserver, *listen_address, *array;
+	jsval server_val, prop_val, array_elem;
+
+	JSString *array_elem_obj;
+	char *ip, *port;
+
+	int i;
+	jsuint array_len;
+
+	/* Get "global" object */
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	if (!JS_GetProperty(js_context, global, "smtpServer", &server_val))
+		return -1;
+	smtpserver = JSVAL_TO_OBJECT(server_val);
+
+	if (!JS_GetProperty(js_context, smtpserver, "listenAddress", &prop_val))
+		return -1;
+
+	/* Check if assigned value is not primitive */
+	if (JSVAL_IS_PRIMITIVE(prop_val))
+		return JS_FALSE;
+
+	/* Check if object is an array */
+	listen_address = JSVAL_TO_OBJECT(prop_val);
+	if (!listen_address || !JS_IsArrayObject(js_context, listen_address))
+		return JS_FALSE;
+
+	/* Get number of elements in array */
+	if (!JS_GetArrayLength(js_context, listen_address, &array_len))
+		return JS_FALSE;
+
+	/* Handle each of the array elements */
+	for (i = 0; i < array_len; i++) {
+		if (!JS_GetElement(js_context, listen_address, i, &array_elem))
+			return JS_FALSE;
+
+		/* Check if assigned value is not primitive */
+		if (JSVAL_IS_PRIMITIVE(array_elem))
+			return JS_FALSE;
+
+		/* Check if object is an array */
+		array = JSVAL_TO_OBJECT(array_elem);
+		if (!array || !JS_IsArrayObject(js_context, array))
+			return JS_FALSE;
+
+		/* Get number of elements in array */
+		if (!JS_GetArrayLength(js_context, array, &array_len))
+			return JS_FALSE;
+
+		/* Get IP address (1st element of array) */
+		if (array_len >= 1) {
+			if (!JS_GetElement(js_context, array, 0, &array_elem))
+				return JS_FALSE;
+
+			if (!JSVAL_IS_STRING(array_elem))
+				return JS_FALSE;
+
+			array_elem_obj = JSVAL_TO_STRING(array_elem);
+			if (!array_elem_obj)
+				return JS_FALSE;
+
+			ip = JS_EncodeString(js_context, array_elem_obj);
+		}
+
+		/* Get Port number (2nd element of array) */
+		if (array_len >= 2) {
+			if (!JS_GetElement(js_context, array, 1, &array_elem))
+				return JS_FALSE;
+
+			if (!JSVAL_IS_STRING(array_elem))
+				return JS_FALSE;
+
+			array_elem_obj = JSVAL_TO_STRING(array_elem);
+			if (!array_elem_obj)
+				return JS_FALSE;
+
+			port = JS_EncodeString(js_context, array_elem_obj);
+		}
+
+		fds[i] = get_socket_for_address(ip, port);
+		log(&config, LOG_INFO, "Listening on %s:%s\n", ip, port);
+		fds_len++;
+
+		JS_free(js_context, ip);
+		JS_free(js_context, port);
+
+		/*
+		 * TODO: For now, handle only the first element of the
+		 * "listenAddress" property.
+		 */
+		break;
+	}
+
+	return 0;
+}
+
 /* TODO redesign model procese:
  * - reciclam workerii
  * - procesul parinte functioneaza ca multiplexor de date
@@ -128,10 +288,10 @@ static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
  *   - pipe-urile sunt unidirectionale => in worker trebuie modificat FILE * stream cu o pereche
  *   - stream-urile fac buffer; pot sa am probleme cu buffer pe input atunci cand un worker serveste o noua conexiune
  */
+
 int main(int argc, char **argv)
 {
-	int sock, on = 1, status, opt;
-	struct sockaddr_in servaddr;
+	int status, opt;
 
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
@@ -161,22 +321,11 @@ int main(int argc, char **argv)
 
 	smtp_server_init();
 
-	sock = socket(PF_INET, SOCK_STREAM, 0);
-	assert_log(sock != -1, &config);
-
-	status = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	assert_log(status != -1, &config);
-
-	memset(&servaddr, 0, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	servaddr.sin_port = htons(8025);
-
-	status = bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr));
-	assert_log(status != -1, &config);
-
-	status = listen(sock, 20);
-	assert_log(status != -1, &config);
+	/* Start listening on addresses and ports given in the JS config */
+	if (create_sockets() < 0) {
+		fprintf(stderr, "Error setting up sockets.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
@@ -190,7 +339,9 @@ int main(int argc, char **argv)
 		char *remote_addr;
 
 		smtp_server_context_init(&ctx);
-		client_sock_fd = accept(sock, (struct sockaddr *)&ctx.addr, &addrlen);
+
+		/* TODO: Using only socket fds[0], for now */
+		client_sock_fd = accept(fds[0], (struct sockaddr *)&ctx.addr, &addrlen);
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
 		}

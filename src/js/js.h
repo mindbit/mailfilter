@@ -3,6 +3,8 @@
 
 #include "jsapi.h"
 
+extern JSContext *js_context;
+
 /* Initializes JavaScript engine */
 int js_init(const char *filename);
 

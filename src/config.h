@@ -28,6 +28,7 @@ struct config {
 	/* Global configuration parameters (not included in config file) */
 	const char *path;
 	int daemon;
+	int smtp_debug;
 
 	/* Configuration file parameters */
 	enum {

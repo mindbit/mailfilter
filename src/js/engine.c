@@ -1,5 +1,6 @@
 #include "engine.h"
 #include "../config.h"
+#include "../logging.h"
 
 /* Function Summary */
 /*
@@ -40,8 +41,12 @@ static JSBool logging_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 	property_arr = JS_EncodeString(cx, property_str);
 
 	/* Check if 'type' has a valid value (syslog, stderr, logfile) */
-	if (str_2_val(log_types, property_arr) < 0)
+	if (str_2_val(log_types, property_arr) < 0) {
+		JS_ReportError(cx, "illegal value \"%s\" for \"type\"",
+				property_arr);
+		JS_free(cx, property_arr);
 		return JS_FALSE;
+	}
 
 	config.logging_type = str_2_val(log_types, property_arr);
 	JS_free(cx, property_arr);
@@ -62,8 +67,12 @@ level:
 	property_arr = JS_EncodeString(cx, property_str);
 
 	/* Check if 'level' has a valid value (LOG_EMERG, LOG_ALERT, etc.) */
-	if (str_2_val(log_levels, property_arr) < 0)
+	if (str_2_val(log_levels, property_arr) < 0) {
+		JS_ReportError(cx, "illegal value \"%s\" for \"level\"",
+				property_arr);
+		JS_free(cx, property_arr);
 		return JS_FALSE;
+	}
 
 	config.logging_level = str_2_val(log_levels, property_arr);
 	JS_free(cx, property_arr);
@@ -84,8 +93,12 @@ facility:
 	property_arr = JS_EncodeString(cx, property_str);
 
 	/* Check if 'facility' has a valid value (LOG_EMERG, LOG_ALERT, etc.) */
-	if (str_2_val(log_facilities, property_arr) < 0)
+	if (str_2_val(log_facilities, property_arr) < 0) {
+		JS_ReportError(cx, "illegal value \"%s\" for \"facility\"",
+				property_arr);
+		JS_free(cx, property_arr);
 		return JS_FALSE;
+	}
 
 	config.logging_facility = str_2_val(log_facilities, property_arr);
 	JS_free(cx, property_arr);
@@ -93,7 +106,19 @@ facility:
 	return JS_TRUE;
 }
 
-static JSObject *engine;
+static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
+{
+	/* Check if debugProtocol was assigned a boolean value */
+	if (!JSVAL_IS_BOOLEAN(*vp))
+		return JS_FALSE;
+
+	if (JSVAL_TO_BOOLEAN(*vp) == JS_TRUE)
+		config.smtp_debug = 1;
+	else
+		config.smtp_debug = 0;
+
+	return JS_TRUE;
+}
 
 static JSBool load_module(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -111,25 +136,32 @@ static JSBool load_module(JSContext *cx, unsigned argc, jsval *vp)
 	if (!module_name)
 		return JS_FALSE;
 
-	printf("[STUB] Loading module \"%s\".\n", module_name);
+	log(&config, LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
 
 	JS_free(cx, module_name);
 	return JS_TRUE;
 }
 
+/* Handles the engine object after the script finished executing */
 int js_engine_parse(JSContext *cx, JSObject *global)
 {
-	jsval engine_val, logging_val;
+	JSObject *engine;
+	jsval engine_val, prop_val;
 
 	if (!JS_GetProperty(cx, global, "engine", &engine_val))
 		return -1;
 	engine = JSVAL_TO_OBJECT(engine_val);
 
 	/* Parse 'logging' property. */
-	if (!JS_GetProperty(cx, engine, "logging", &logging_val))
+	if (!JS_GetProperty(cx, engine, "logging", &prop_val))
+		return -1;
+	if (!logging_hdlr(cx, global, &prop_val))
 		return -1;
 
-	if (logging_hdlr(cx, global, &logging_val))
+	/* Parse 'debugProtocol' property. */
+	if (!JS_GetProperty(cx, engine, "debugProtocol", &prop_val))
+		return -1;
+	if (!debug_protocol_hdlr(cx, global, &prop_val))
 		return -1;
 
 	return 0;
@@ -143,6 +175,7 @@ static JSClass engine_class = {
 
 int js_engine_obj_init(JSContext *cx, JSObject *global)
 {
+	JSObject *engine;
 
 	engine = JS_DefineObject(cx, global, "engine", &engine_class, NULL, 0);
 	if (!engine)
