@@ -345,7 +345,7 @@ int main(int argc, char **argv)
 
 		switch (fork()) {
 		case -1:
-			assert_log(0, config); // FIXME
+			assert_log(0, &config); // FIXME
 			break;
 		case 0:
 			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
@@ -361,7 +361,7 @@ int main(int argc, char **argv)
 			signal(SIGPIPE, SIG_IGN);
 
 			client_sock_stream = bfd_alloc(client_sock_fd);
-			assert_log(client_sock_stream != NULL, config);
+			assert_log(client_sock_stream != NULL, &config);
 			log(&config, LOG_INFO, "New connection from %s", remote_addr);
 			ctx.cfg = &config;
 			smtp_server_run(&ctx, client_sock_stream);

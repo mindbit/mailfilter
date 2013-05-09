@@ -54,13 +54,13 @@ int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invok
 	const char *c;
 
 	for (c = cmd; *c != '\0'; c++) {
-		assert_log(*c >= 'A' && *c <= 'Z', &__main_config);
+		assert_log(*c >= 'A' && *c <= 'Z', &config);
 		if (node->next[*c - 'A'] != NULL) {
 			node = node->next[*c - 'A'];
 			continue;
 		}
 		aux = malloc(sizeof(struct smtp_cmd_tree));
-		assert_log(aux != NULL, &__main_config);
+		assert_log(aux != NULL, &config);
 		memset(aux, 0, sizeof(struct smtp_cmd_tree));
 		INIT_LIST_HEAD(&aux->hdlrs);
 		node->next[*c - 'A'] = aux;
@@ -73,7 +73,7 @@ int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invok
 	}
 
 	hlink = malloc(sizeof(struct smtp_cmd_hdlr_list));
-	assert_log(hlink != NULL, &__main_config);
+	assert_log(hlink != NULL, &config);
 	hlink->hdlr = hdlr;
 	hlink->prio = prio;
 	hlink->invokable = invokable;
@@ -672,7 +672,7 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ct
 			continue;
 		if ((buf & CRLF_MASK) == CRLF_MAGIC) {
 			/* we found the EOF sequence (<CR><LF>"."<CR><LF>) */
-			assert_log(fill >= 5, &__main_config);
+			assert_log(fill >= 5, &config);
 			/* discard the (terminating) "."<CR><LF> */
 			buf >>= 24;
 			fill -= 3;
@@ -680,7 +680,7 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ct
 		}
 		/* flush buffer up to the dot; otherwise we get false-positives for
 		 * a line consisting of (only) two dots */
-		assert_log(fill >= 5, &__main_config);
+		assert_log(fill >= 5, &config);
 		while (fill > 3)
 			if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
 				return -EIO;
