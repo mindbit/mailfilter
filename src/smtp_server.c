@@ -105,13 +105,13 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 
 	while ((c = index(buf, '\n'))) {
 		*c = 0;
-		log(&__main_config, LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
+		log(&config, LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
 		bfd_printf(f, "%d-%s\r\n", code, buf);
 		*c = '\n';
 		buf = c + 1;
 	}
 
-	log(&__main_config, LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
+	log(&config, LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
 	if (bfd_printf(f, "%d %s\r\n", code, buf) >= 0) {
 		bfd_flush(f);
 		return 0;

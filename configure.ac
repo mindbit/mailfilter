@@ -8,17 +8,10 @@ AC_OUTPUT(Makefile src/Makefile)
 AC_CONFIG_SRCDIR([src/mailfilter.c])
 AC_CONFIG_HEADERS([config.h])
 
-AC_COMPILE_IFELSE(
-     [AC_LANG_PROGRAM([[#include <libconfig.h>]],
-                      [[const char *value;
-config_t cf;
-value = config_lookup_string(&cf, "key");]])], [], [AC_DEFINE([LIBCONFIG_NEW_API], [1], [Libconfig API changes])])
-
 # Checks for programs.
 AC_PROG_CC
 
 # Checks for libraries.
-AC_SEARCH_LIBS([config_init], [config], , AC_MSG_ERROR([libconfig not found]))
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 AC_SEARCH_LIBS([PQconnectdb], [pq], , AC_MSG_ERROR([libpq not found]))
 AC_SEARCH_LIBS([JS_NewObject], [mozjs185 mozjs], , AC_MSG_ERROR([libmozjs not found]))

@@ -60,10 +60,6 @@ extern const struct str2val_map log_facilities[];
 /* Returns value associated with string given in config */
 int str_2_val(const struct str2val_map *map, const char *str);
 
-int config_parse(struct config *current, struct config *next);
-
 extern struct config config;
 
-// FIXME this is a hack (see mailfilter.c)
-extern struct config __main_config;
 #endif

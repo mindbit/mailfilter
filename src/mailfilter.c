@@ -41,10 +41,6 @@
 #include "js/js.h"
 #include "smtp_server.h"
 
-// FIXME this is used by assert_log() in places where we have no other
-// reference to the main config
-struct config __main_config;
-
 /* Array of server sockets */
 int fds[256], fds_len;
 
