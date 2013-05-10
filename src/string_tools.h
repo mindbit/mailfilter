@@ -111,4 +111,6 @@ typedef int (*expr_expand_callback_t)(struct string_buffer *sb, char key, const 
 
 int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, expr_expand_callback_t cbk, void *priv, size_t *offset);
 
+void string_remove_whitespace(char *str);
+
 #endif

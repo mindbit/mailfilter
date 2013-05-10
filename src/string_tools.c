@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "string_tools.h"
 
@@ -117,4 +118,15 @@ int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, ex
 		*offset = p - expr;
 
 	return err;
+}
+
+void string_remove_whitespace(char *str)
+{
+	char *p, *curr;
+
+	for (p = curr = str; *curr; curr++) {
+		if (!isspace(*curr))
+			*p++ = *curr;
+	}
+	memset(p, 0, curr - p);
 }
