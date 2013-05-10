@@ -15,6 +15,7 @@ AC_PROG_CC
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 AC_SEARCH_LIBS([PQconnectdb], [pq], , AC_MSG_ERROR([libpq not found]))
 AC_SEARCH_LIBS([JS_NewObject], [mozjs185 mozjs], , AC_MSG_ERROR([libmozjs not found]))
+AC_SEARCH_LIBS([__res_mkquery], [resolv], , AC_MSG_ERROR([libresolv not found]))
 
 ## Fix for debian
 CFLAGS="$CFLAGS -I/usr/include/postgresql"
