@@ -28,6 +28,8 @@
 #include "string_tools.h"
 #include "bfd.h"
 
+struct smtp_server_context;
+
 /**
  * A single header: name-value pair.
  */
@@ -83,6 +85,7 @@ enum {
 };
 
 struct im_header *im_header_alloc(const char *name);
+struct im_header *im_header_find(struct smtp_server_context *ctx, const char *name);
 int im_header_feed(struct im_header_context *ctx, char c);
 void im_header_dump(struct list_head *lh);
 void im_header_unfold(struct im_header *hdr);

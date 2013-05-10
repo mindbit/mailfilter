@@ -734,12 +734,9 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 	struct im_header *hdr;
 	struct list_head *lh = ctx->hdrs.next;
 
-	list_for_each_entry(hdr, &ctx->hdrs, lh) {
-		if (strcasecmp(hdr->name, "received"))
-			continue;
+	hdr = im_header_find(ctx, "received");
+	if (hdr)
 		lh = &hdr->lh;
-		break;
-	}
 
 	if ((hdr = create_received_hdr(ctx)) == NULL)
 		return -ENOMEM;

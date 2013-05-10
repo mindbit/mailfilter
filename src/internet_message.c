@@ -22,10 +22,12 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <stdio.h>
 
 #include "internet_message.h"
+#include "smtp_server.h"
 
 static const char *tab_space = "\t ";
 
@@ -47,6 +49,18 @@ struct im_header *im_header_alloc(const char *name)
 	hdr->value = NULL;
 	INIT_LIST_HEAD(&hdr->folding);
 	return hdr;
+}
+
+struct im_header *im_header_find(struct smtp_server_context *ctx, const char *name)
+{
+	struct im_header *hdr;
+
+	list_for_each_entry(hdr, &ctx->hdrs, lh) {
+		if (!strcasecmp(hdr->name, name))
+			return hdr;
+	}
+
+	return NULL;
 }
 
 void im_header_unfold(struct im_header *hdr)
