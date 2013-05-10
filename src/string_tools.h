@@ -23,6 +23,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <list.h>
 
 /* ------------------------- String Buffer ------------------------- */
 
@@ -111,6 +112,31 @@ typedef int (*expr_expand_callback_t)(struct string_buffer *sb, char key, const 
 
 int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, expr_expand_callback_t cbk, void *priv, size_t *offset);
 
+/* ------------------ Generic string functionality ---------------- */
+
+struct kv_pair {
+	char *key;
+	char *value;
+	struct list_head lh;
+};
+
+/*
+ * Parses a string in the form "key1=value1<sep> key2=value2<sep>, ..."
+ * and adds kv_pair elements to the linked list lh. The function also skips
+ * whitespace between key,value pairs. The list contains pointers to places
+ * inside the original string and also alters the original string by
+ * replacing the "=", ";" and whitespace with the null character.
+ *
+ * The caller must free up the storage for the list elements once he no
+ * longer uses them.
+ */
+int string_kv_split(char *str, char delim, struct list_head *lh);
+
+/*
+ * Removes all whitespace from a string by altering the original string
+ * No additional storage is allocated so the user must be careful to pass
+ * a copy of the original string if he needs to preserve the original
+ */
 void string_remove_whitespace(char *str);
 
 #endif

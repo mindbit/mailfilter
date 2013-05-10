@@ -120,6 +120,48 @@ int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, ex
 	return err;
 }
 
+int string_kv_split(char *str, char delim, struct list_head *lh)
+{
+	struct kv_pair *pair;
+	char *p, *tmp, *end, *sep;
+
+	if (!lh)
+		return -EINVAL;
+
+	p = str;
+
+	do {
+		while (*p && isspace(*p))
+			p++;
+
+		end = strchr(p, delim);
+		sep = strchr(p, '=');
+
+		tmp = sep - 1;
+		while (isspace(*tmp))
+			*tmp-- = 0;
+
+		*sep++ = 0;
+		while (isspace(*sep))
+			*sep++ = 0;
+
+		if (end)
+			*end++ = 0;
+
+		pair = malloc(sizeof(*pair));
+		if (!pair)
+			return -ENOMEM;
+
+		pair->key = p;
+		pair->value = sep;
+		list_add_tail(&pair->lh, lh);
+
+		p = end;
+	} while (end);
+
+	return 0;
+}
+
 void string_remove_whitespace(char *str)
 {
 	char *p, *curr;

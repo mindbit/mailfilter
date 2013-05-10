@@ -146,28 +146,21 @@ static int mod_dkim_dns_get_key(void)
 
 static void mod_dkim_parse_signature(char *hdr)
 {
-	char *p, *end, *sep;
+	struct list_head lh;
+	struct kv_pair *entry;
 
 	hdr = strdup(hdr);
+
 	printf("%s: '%s'\n", __func__, hdr);
 
-	p = hdr;
+	INIT_LIST_HEAD(&lh);
+	string_kv_split(hdr, ';', &lh);
 
-	do {
-		end = strchr(p, ';');
-		sep = strchr(p, '=');
+	list_for_each_entry(entry, &lh, lh) {
+		string_remove_whitespace(entry->value);
+		printf("key = '%s', value = '%s'\n", entry->key, entry->value);
+	}
 
-		*sep++ = 0;
-		string_remove_whitespace(p);
-		printf("key = '%s' ", p);
-
-		if (end)
-			*end++ = 0;
-
-		string_remove_whitespace(sep);
-		printf("value = '%s'\n", sep);
-		p = end;
-	} while (end);
 	free(hdr);
 }
 
@@ -181,7 +174,7 @@ static int mod_dkim_hdlr_body(struct smtp_server_context *ctx, const char *cmd, 
 
 	printf("DKIM-Signature header found!\n");
 	mod_dkim_parse_signature(hdr->value);
-	//mod_dkim_dns_get_key();
+	mod_dkim_dns_get_key();
 
 	return SCHS_OK;
 }
