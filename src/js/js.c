@@ -1,4 +1,6 @@
 #include <fcntl.h>
+#include <stdarg.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -15,10 +17,57 @@ static JSRuntime *rt;
 /* The error reporter callback. */
 static void reportError(JSContext *js_context, const char *message, JSErrorReport *report)
 {
-	fprintf(stderr, "%s:%u: error: %s\n",
-			config.path,
-			(unsigned int) report->lineno + 1,
-			message);
+	fprintf(stderr, "%s:%u: error: %s\n", config.path,
+			(unsigned int) report->lineno + 1, message);
+}
+
+jsval js_call(const char *obj, const char *func, jsval arg, ...)
+{
+	JSObject *global, *curr_obj;
+
+	/* Array which stores every "arg" parameter passed to the function */
+	int argc = 0;
+	jsval argv[16], curr_arg, rval;
+	va_list ap;
+
+	/* Used when fetching the given object from the global object */
+	jsval objval;
+
+	/* Build args array with arguments given to this function */
+	va_start(ap, arg);
+	curr_arg = arg;
+	while (!JSVAL_IS_NULL(curr_arg)) {
+		argv[argc++] = curr_arg;
+		curr_arg = va_arg(ap, jsval);
+	}
+	va_end(ap);
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	if (!JS_GetProperty(js_context, global, obj, &objval)) {
+		fprintf(stderr, "%s: object %s does not exist\n",
+				__func__, obj);
+		return JSVAL_NULL;
+	}
+
+	curr_obj = JSVAL_TO_OBJECT(objval);
+
+	/* Get the property from object just to see if it exists */
+	if (!JS_GetProperty(js_context, curr_obj, func, &objval)) {
+		fprintf(stderr, "%s: object %s does not have a %s method\n",
+				__func__, obj, func);
+		return JSVAL_NULL;
+	}
+
+	/* Call the given function */
+	if (!JS_CallFunctionName(js_context, curr_obj, func,
+				argc, argv, &rval)) {
+		fprintf(stderr, "%s: failed calling \"%s.%s\"\n",
+				__func__, obj, func);
+		return JSVAL_NULL;
+	}
+
+	return rval;
 }
 
 int js_init(const char *filename)

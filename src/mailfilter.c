@@ -136,7 +136,7 @@ static int get_socket_for_address(char *ip, char *port)
 	for(p = servinfo; p != NULL; p = p->ai_next) {
 		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 		if (sockfd < 0) {
-			perror("server: socket");
+			perror("socket");
 			continue;
 		}
 
@@ -150,14 +150,14 @@ static int get_socket_for_address(char *ip, char *port)
 		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
 		if (status < 0) {
 			close(sockfd);
-			perror("server: bind");
+			perror("bind");
 			continue;
 		}
 
 		status = listen(sockfd, 20);
 		if (status < 0) {
 			close(sockfd);
-			perror("server: listen");
+			perror("listen");
 			continue;
 		}
 
@@ -165,7 +165,7 @@ static int get_socket_for_address(char *ip, char *port)
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "server: failed to bind to %s:%s\n", ip, port);
+		fprintf(stderr, "failed to bind to %s:%s\n", ip, port);
 		exit(EXIT_FAILURE);
 	}
 
