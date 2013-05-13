@@ -44,8 +44,9 @@ jsval js_call(const char *obj, const char *func, jsval arg, ...)
 
 	global = JS_GetGlobalForScopeChain(js_context);
 
-	if (!JS_GetProperty(js_context, global, obj, &objval)) {
-		fprintf(stderr, "%s: object %s does not exist\n",
+	if (!JS_GetProperty(js_context, global, obj, &objval) ||
+			JSVAL_IS_VOID(objval)) {
+		fprintf(stderr, "%s: ERROR: object '%s' does not exist\n",
 				__func__, obj);
 		return JSVAL_NULL;
 	}
@@ -53,16 +54,17 @@ jsval js_call(const char *obj, const char *func, jsval arg, ...)
 	curr_obj = JSVAL_TO_OBJECT(objval);
 
 	/* Get the property from object just to see if it exists */
-	if (!JS_GetProperty(js_context, curr_obj, func, &objval)) {
-		fprintf(stderr, "%s: object %s does not have a %s method\n",
-				__func__, obj, func);
+	if (!JS_GetProperty(js_context, curr_obj, func, &objval) ||
+			JSVAL_IS_VOID(objval)) {
+		fprintf(stderr, "%s: ERROR: method '%s' not defined in '%s'\n",
+				__func__, func, obj);
 		return JSVAL_NULL;
 	}
 
 	/* Call the given function */
 	if (!JS_CallFunctionName(js_context, curr_obj, func,
 				argc, argv, &rval)) {
-		fprintf(stderr, "%s: failed calling \"%s.%s\"\n",
+		fprintf(stderr, "%s: ERROR: failed calling '%s.%s()'\n",
 				__func__, obj, func);
 		return JSVAL_NULL;
 	}
