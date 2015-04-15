@@ -21,6 +21,69 @@ static void reportError(JSContext *js_context, const char *message, JSErrorRepor
 			(unsigned int) report->lineno + 1, message);
 }
 
+void js_dump_array(JSContext *cx, jsval v) {
+	jsval val;
+
+	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), JS_EncodeString(cx, JS_InternString(cx, "0")), &val)) {
+		printf("arr[0] = ");
+		js_dump_value(cx, val);
+	}
+
+	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), JS_EncodeString(cx, JS_InternString(cx, "1")), &val)) {
+		printf("arr[1] = ");
+		js_dump_value(cx, val);
+	}
+
+}
+
+void js_dump_value(JSContext *cx, jsval v)
+{
+	char *c_str;
+
+	switch (JS_TypeOfValue(cx, v)) {
+		case JSTYPE_OBJECT:
+			if (JSVAL_IS_NULL(v)) {
+				printf("NULL\n");
+				break;
+			}
+			if (JS_IsArrayObject(cx, JSVAL_TO_OBJECT(v))) {
+				js_dump_array(cx, v);
+				break;
+			}
+			printf("OBJECT {\n");
+			printf("}\n");
+			break;
+		case JSTYPE_STRING:
+			c_str = JS_EncodeString(cx, JSVAL_TO_STRING(v));
+			printf("STRING(%zu) \"%s\"\n", strlen(c_str), c_str);
+			JS_free(cx, c_str);
+			break;
+		case JSTYPE_NUMBER:
+			printf("NUMBER(%d)\n", JSVAL_TO_INT(v));
+			break;
+		default:
+			printf("FIXME\n");
+			break;
+	}
+}
+
+char* format_func_name(const char *func) {
+        int i;
+        char* func_name = malloc(9 * sizeof(char));
+
+        strcpy(func_name, "smtp");
+        
+        func_name[4] = func[0];
+        
+        for (i = 5; i < 8; i++) {
+            func_name[i] = tolower((unsigned char) func[i - 4]);
+        }
+
+        func_name[8] = '\0';
+        
+        return func_name;
+}
+
 jsval js_call(const char *obj, const char *func, jsval arg, ...)
 {
 	JSObject *global, *curr_obj;
@@ -69,6 +132,8 @@ jsval js_call(const char *obj, const char *func, jsval arg, ...)
 		return JSVAL_NULL;
 	}
 
+	js_dump_value(js_context, rval);
+
 	return rval;
 }
 
@@ -85,7 +150,7 @@ int js_init(const char *filename)
 		"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub,
 		JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
 		JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
-		JS_FinalizeStub, JSCLASS_NO_OPTIONAL_MEMBERS
+		JS_PropertyStub, JSCLASS_NO_OPTIONAL_MEMBERS
 	};
 
 	/* Create a JS runtime. You always need at least one runtime per process. */
@@ -99,7 +164,7 @@ int js_init(const char *filename)
 	js_context = JS_NewContext(rt, 8192);
 	if (js_context == NULL)
 		return -1;
-	JS_SetOptions(js_context, JSOPTION_VAROBJFIX | JSOPTION_JIT | JSOPTION_METHODJIT);
+	JS_SetOptions(js_context, JSOPTION_VAROBJFIX | JSOPTION_METHODJIT);
 	JS_SetVersion(js_context, JSVERSION_LATEST);
 	JS_SetErrorReporter(js_context, reportError);
 
@@ -107,7 +172,7 @@ int js_init(const char *filename)
 	 * Create the global object in a new compartment.
 	 * You always need a global object per context.
 	 */
-	global = JS_NewCompartmentAndGlobalObject(js_context, &global_class, NULL);
+	global = JS_NewGlobalObject(js_context, &global_class, NULL);
 	if (global == NULL)
 		return -1;
 

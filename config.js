@@ -1,5 +1,5 @@
 engine.logging = {
-	type: "syslog",
+	type: "stderr",
 	level: "debug",
 	facility: "mail"
 };
@@ -20,6 +20,7 @@ engine.loadModule("mod_mysql.so");
 // SMTP servers as a client.
 engine.loadModule("mod_smtp_client.so");
 
+
 smtpServer.listenAddress = [["127.0.0.1", "8025"]];
 
 // Provide the initial SMTP greeting that the server will send to the
@@ -29,7 +30,7 @@ smtpServer.initialGreeting = function () {
 	this.client = new SmtpClientConnection("127.0.0.1", "25");
 
 	// Create connection to SQL server
-	this.db = DriverManager.getConnection("mysql://centos6/mailfilter", "mailfilter");
+	this.db = DriverManager.getConnection("mailfilter", "mailfilter");
 
 	// Create a new record in smtp_transactions and save remote server address and port
 	var pstmt = this.db.createPreparedStatement("INSERT INTO smtp_transactions (remote_addr, remote_port) VALUES(?,?)");
@@ -47,6 +48,7 @@ smtpServer.initialGreeting = function () {
 };
 
 // FIXME smtpServer.getEnvelopeSender() intoarce un obiect SmtpPath care modeleaza struct smtp_path din C
+/*
 smtpServer.smtpMail = function () {
 	var envelopeSender = this.getEnvelopeSender();
 
@@ -90,15 +92,34 @@ smtpServer.messageBody = function () {
 	// getMessageCache() intoarce calea catre fisierul temporar in care e corpul mesajului
 	// client.sendMessage() intoarce SmtpStatus
 };
+*/
+
+smtpServer.smtpData= function() {
+	return [250, "data"];
+}
+
+smtpServer.smtpMail= function() {
+	return [250, "mail"];
+}
+smtpServer.smtpRcpt = function() {
+	return [250, "rcpt"];
+}
 
 smtpServer.smtpRset = function () {
-	return this.client.smtpRset();
+	return [250, "rset"];
+	//return this.client.smtpRset();
 };
 
 smtpServer.smtpQuit = function () {
-	return this.client.smtpRset();
+	return [250, "quit"];
+	//return this.client.smtpRset();
 };
+
+smtpServer.smtpBody = function() {
+	return [250, "body"];
+}
 
 smtpServer.cleanup = function () {
 	this.client.close();
 };
+

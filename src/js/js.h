@@ -25,4 +25,8 @@ void js_stop(void);
  */
 jsval js_call(const char *obj, const char *func, jsval arg, ...);
 
+/* Will be deleted */
+void js_dump_value(JSContext *cx, jsval v);
+void js_dump_array(JSContext *cx, jsval v);
+
 #endif

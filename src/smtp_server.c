@@ -36,6 +36,7 @@
 #include <netdb.h>
 #include <limits.h>
 
+#include "js/js.h"
 
 #include "smtp_server.h"
 #include "smtp.h"
@@ -157,6 +158,10 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		}
 
 		if (ctx->code) {
+			if (cmd != NULL) {
+				js_call("smtpServer", format_func_name(cmd), JSVAL_NULL);
+			}
+			
 			smtp_server_response(stream, ctx->code, ctx->message);
 		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE) {
 			smtp_server_response(stream, 451, "Internal server error");
@@ -214,6 +219,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 		/* Parse SMTP command */
 		c += strspn(c, white);
 		n = strcspn(c, white);
+	
 		ctx->node = &cmd_tree;
 		for (i = 0; i < n; i++) {
 			if (c[i] >= 'a' && c[i] <= 'z')
@@ -821,9 +827,9 @@ void smtp_server_init(void)
 
 	// TODO urmatoarele trebuie sa se intample din config
 	mod_proxy_init();
-	mod_spamassassin_init();
-	mod_clamav_init();
-	mod_log_sql_init();
+	//mod_spamassassin_init();
+	//mod_clamav_init();
+	//mod_log_sql_init();
 }
 
 int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
