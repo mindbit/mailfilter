@@ -94,29 +94,94 @@ smtpServer.messageBody = function () {
 };
 */
 
-smtpServer.smtpData= function() {
-	return [250, "data"];
+smtpServer.smtpInit = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "init from JS";
+	ret['disconnect'] = false;
+	return ret;
 }
 
-smtpServer.smtpMail= function() {
-	return [250, "mail"];
+smtpServer.smtpAuth = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "auth from JS";
+	ret['disconnect'] = false;
+	return ret;
 }
-smtpServer.smtpRcpt = function() {
-	return [250, "rcpt"];
+
+smtpServer.smtpAlou = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "alou from JS";
+	ret['disconnect'] = false;
+	return ret;
 }
+
+smtpServer.smtpAlop = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "alop from JS";
+	ret['disconnect'] = false;
+	return ret;
+}
+
+smtpServer.smtpEhlo = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "ehlo from JS";
+	ret['disconnect'] = false;
+	return ret;
+}
+
+smtpServer.smtpData = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "data from JS";
+	ret['disconnect'] = false;
+	return ret;
+}
+
+smtpServer.smtpMail = function() {
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "mail from JS";
+	ret['disconnect'] = false;
+	return ret;
+}
+
+//smtpServer.smtpRcpt = function() {
+//	var ret = new Array();
+//	ret['code'] = 250;
+//	ret['message'] = "rcpt from JS";
+//	ret['disconnect'] = false;
+//	return ret;
+//}
 
 smtpServer.smtpRset = function () {
-	return [250, "rset"];
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "rset from JS";
+	ret['disconnect'] = false;
+	return ret;
 	//return this.client.smtpRset();
 };
 
 smtpServer.smtpQuit = function () {
-	return [250, "quit"];
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "quit from JS";
+	ret['disconnect'] = false;
+	return ret;
 	//return this.client.smtpRset();
 };
 
 smtpServer.smtpBody = function() {
-	return [250, "body"];
+	var ret = new Array();
+	ret['code'] = 250;
+	ret['message'] = "body from JS";
+	ret['disconnect'] = false;
+	return ret;
 }
 
 smtpServer.cleanup = function () {
