@@ -1,18 +1,35 @@
 #include "smtpserver.h"
 
-jsval create_response(JSContext *cx, int status, const char* message) { 
-	JSObject* response = JS_NewArrayObject(cx, 2, NULL);
-
-	jsval rstatus = INT_TO_JSVAL(status);
-	jsval rstr = STRING_TO_JSVAL(JS_InternString(cx, message));
-	JS_SetElement(cx, response, 0, &rstatus);
-	JS_SetElement(cx, response, 1, &rstr);
-
-	return OBJECT_TO_JSVAL(response);
+jsval create_response(JSContext *cx, int code, const char* message, int disconnect) { 
+	jsval rcode;
+	jsval rmessage;
+	JSObject *obj;
+	jsval rdisconnect; 	// better name? 
+				
+	rcode = INT_TO_JSVAL(code);
+	rdisconnect = disconnect == TRUE ? JSVAL_TRUE : JSVAL_FALSE;
+	
+	obj = JS_NewObject(cx, NULL, NULL, NULL);
+	
+	if (message != NULL) {
+		rmessage = STRING_TO_JSVAL(JS_InternString(cx, message));
+	} else {
+		// TODO
+		// define message property with default value for current code
+		rmessage = STRING_TO_JSVAL(JS_InternString(cx, "default err message"));
+	}
+	
+	JS_DefineProperty(cx, obj, "code", rcode, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
+	
+	JS_DefineProperty(cx, obj, "message", rmessage, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
+	
+	JS_DefineProperty(cx, obj, "disconnect", rdisconnect, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
+	
+	return OBJECT_TO_JSVAL(obj);
 }
 
 JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cInit");
+        jsval rval = create_response(cx, 250, "cInit", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -20,7 +37,7 @@ JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpAuth(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cAuth");
+        jsval rval = create_response(cx, 250, "cAuth", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -28,7 +45,7 @@ JSBool smtpAuth(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpAlou(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cAlou");
+        jsval rval = create_response(cx, 250, "cAlou", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -36,7 +53,7 @@ JSBool smtpAlou(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpAlop(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cAlop");
+        jsval rval = create_response(cx, 250, "cAlop", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -44,7 +61,7 @@ JSBool smtpAlop(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpEhlo(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cEhlo");
+        jsval rval = create_response(cx, 250, "cEhlo", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -52,7 +69,7 @@ JSBool smtpEhlo(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpData(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cData");
+        jsval rval = create_response(cx, 250, "cData", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -60,7 +77,7 @@ JSBool smtpData(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpMail(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cMail");
+        jsval rval = create_response(cx, 250, "cMail", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -68,7 +85,7 @@ JSBool smtpMail(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpRcpt(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cRcpt");
+        jsval rval = create_response(cx, 250, "cRcpt", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -76,7 +93,7 @@ JSBool smtpRcpt(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cRset");
+        jsval rval = create_response(cx, 250, "cRset", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -84,7 +101,7 @@ JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cQuit");
+        jsval rval = create_response(cx, 250, "cQuit", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
@@ -92,7 +109,7 @@ JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 JSBool smtpBody(JSContext *cx, unsigned argc, jsval *vp) {
-        jsval rval = create_response(cx, 250, "cBody");
+        jsval rval = create_response(cx, 250, "cBody", FALSE);
 
 	JS_SET_RVAL(cx, vp, rval);
 
