@@ -3,10 +3,13 @@
 
 #include "js.h"
 
+#define	TRUE	1
+#define	FALSE	0
+
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global);
 
 // Creates Javascript Object with response
-jsval create_response(JSContext *cx, int status, const char* message);
+jsval create_response(JSContext *cx, int status, const char* message, int disconnect);
 
 // C stub handlers
 JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp);
