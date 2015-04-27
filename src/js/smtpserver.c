@@ -23,7 +23,7 @@ jsval create_response(JSContext *cx, int code, const char* message, int disconne
 	return OBJECT_TO_JSVAL(obj);
 }
 
-JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cInit", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -31,7 +31,7 @@ JSBool smtpInit(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpAuth(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpAuth(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cAuth", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -39,7 +39,7 @@ JSBool smtpAuth(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpAlou(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpAlou(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cAlou", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -47,7 +47,7 @@ JSBool smtpAlou(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpAlop(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpAlop(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cAlop", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -55,7 +55,7 @@ JSBool smtpAlop(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpEhlo(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpEhlo(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cEhlo", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -63,7 +63,7 @@ JSBool smtpEhlo(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpData(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpData(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cData", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -71,7 +71,7 @@ JSBool smtpData(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpMail(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpMail(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cMail", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -79,7 +79,7 @@ JSBool smtpMail(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpRcpt(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpRcpt(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "rcpt from C", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -87,7 +87,7 @@ JSBool smtpRcpt(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cRset", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -95,7 +95,7 @@ JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cQuit", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
@@ -103,7 +103,7 @@ JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-JSBool smtpBody(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool smtpBody(JSContext *cx, unsigned argc, jsval *vp) {
         jsval rval = create_response(cx, 250, "cBody", 0);
 
 	JS_SET_RVAL(cx, vp, rval);
