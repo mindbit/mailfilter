@@ -95,93 +95,93 @@ smtpServer.messageBody = function () {
 */
 
 smtpServer.smtpInit = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "init from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "init from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpAuth = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "auth from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "auth from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpAlou = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "alou from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "alou from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpAlop = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "alop from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "alop from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpEhlo = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "ehlo from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "ehlo from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpData = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "data from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "data from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.smtpMail = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "mail from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "mail from JS",
+		"disconnect" : false
+	};
 }
 
 //smtpServer.smtpRcpt = function() {
-//	var ret = new Array();
-//	ret['code'] = 250;
-//	ret['message'] = "rcpt from JS";
-//	ret['disconnect'] = false;
-//	return ret;
+//	return {
+//		"code" : 250,
+//		"message" : "rcpt from JS",
+//		"disconnect" : false
+//	};
 //}
 
 smtpServer.smtpRset = function () {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "rset from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "rset from JS",
+		"disconnect" : false
+	};
 	//return this.client.smtpRset();
 };
 
 smtpServer.smtpQuit = function () {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "quit from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "quit from JS",
+		"disconnect" : false
+	};
 	//return this.client.smtpRset();
 };
 
 smtpServer.smtpBody = function() {
-	var ret = new Array();
-	ret['code'] = 250;
-	ret['message'] = "body from JS";
-	ret['disconnect'] = false;
-	return ret;
+	return {
+		"code" : 250,
+		"message" : "body from JS",
+		"disconnect" : false
+	};
 }
 
 smtpServer.cleanup = function () {
