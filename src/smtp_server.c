@@ -159,7 +159,7 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 
 		if (ctx->code) {
 			if (cmd != NULL) {
-				js_call("smtpServer", format_func_name(cmd), JSVAL_NULL);
+				call_js_handler(cmd);
 			}
 			
 			smtp_server_response(stream, ctx->code, ctx->message);

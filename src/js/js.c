@@ -21,37 +21,42 @@ static void reportError(JSContext *js_context, const char *message, JSErrorRepor
 			(unsigned int) report->lineno + 1, message);
 }
 
-void js_dump_array(JSContext *cx, jsval v) {
-	jsval val;
-
-	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), JS_EncodeString(cx, JS_InternString(cx, "0")), &val)) {
-		printf("arr[0] = ");
-		js_dump_value(cx, val);
+// debugging purpose
+// to be deleted
+void js_dump_response(JSContext *cx, jsval v) {
+	jsval rval;
+	
+	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "code", &rval)) {
+		printf("code = ");
+		js_dump_value(cx, rval);
 	}
 
-	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), JS_EncodeString(cx, JS_InternString(cx, "1")), &val)) {
-		printf("arr[1] = ");
-		js_dump_value(cx, val);
+	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "message", &rval)) {
+		printf("message = ");
+		js_dump_value(cx, rval);
 	}
-
+	
+	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "disconnect", &rval)) {
+		printf("disconnect = ");
+		js_dump_value(cx, rval);
+	}
 }
 
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
-
+	JSString *js_str;
+	
 	switch (JS_TypeOfValue(cx, v)) {
+		case JSTYPE_VOID:
+			printf("VOID\n");
+			break;
 		case JSTYPE_OBJECT:
 			if (JSVAL_IS_NULL(v)) {
 				printf("NULL\n");
 				break;
 			}
-			if (JS_IsArrayObject(cx, JSVAL_TO_OBJECT(v))) {
-				js_dump_array(cx, v);
-				break;
-			}
-			printf("OBJECT {\n");
-			printf("}\n");
+			js_dump_response(cx, v);
 			break;
 		case JSTYPE_STRING:
 			c_str = JS_EncodeString(cx, JSVAL_TO_STRING(v));
@@ -61,27 +66,33 @@ void js_dump_value(JSContext *cx, jsval v)
 		case JSTYPE_NUMBER:
 			printf("NUMBER(%d)\n", JSVAL_TO_INT(v));
 			break;
+		case JSTYPE_BOOLEAN:
+			js_str = JS_ValueToString(cx, v);
+			c_str = JS_EncodeString(cx, js_str);
+			printf("BOOLEAN(%s)\n", c_str);
+			JS_free(cx, c_str);
+			break;
 		default:
 			printf("FIXME\n");
 			break;
 	}
 }
 
-char* format_func_name(const char *func) {
+void call_js_handler(const char *cmd) {
         int i;
-        char* func_name = malloc(9 * sizeof(char));
-
-        strcpy(func_name, "smtp");
+        char handler_name[9];
         
-        func_name[4] = func[0];
+        strcpy(handler_name, "smtp");
+        
+        handler_name[4] = cmd[0];
         
         for (i = 5; i < 8; i++) {
-            func_name[i] = tolower((unsigned char) func[i - 4]);
+            handler_name[i] = tolower((unsigned char) cmd[i - 4]);
         }
 
-        func_name[8] = '\0';
+        handler_name[8] = '\0';
         
-        return func_name;
+        js_call("smtpServer", handler_name, JSVAL_NULL);
 }
 
 jsval js_call(const char *obj, const char *func, jsval arg, ...)
