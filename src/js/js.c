@@ -143,7 +143,7 @@ jsval js_call(const char *obj, const char *func, jsval arg, ...)
 		return JSVAL_NULL;
 	}
 
-	js_dump_value(js_context, rval); //ign
+	
 
 	return rval;
 }
