@@ -21,4 +21,24 @@ static JSBool smtpRset(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool smtpQuit(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool smtpBody(JSContext *cx, unsigned argc, jsval *vp);
 
+// Define C stub functions
+#define DEFINE_HANDLER_STUB(name) \
+	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \
+		jsval rval = create_response(cx, 250, "def" #name, 0); \
+		JS_SET_RVAL(cx, vp, rval); \
+		return JS_TRUE; \
+	} \
+
+DEFINE_HANDLER_STUB(Init);
+DEFINE_HANDLER_STUB(Auth);
+DEFINE_HANDLER_STUB(Alou);
+DEFINE_HANDLER_STUB(Alop);
+DEFINE_HANDLER_STUB(Ehlo);
+DEFINE_HANDLER_STUB(Data);
+DEFINE_HANDLER_STUB(Mail);
+DEFINE_HANDLER_STUB(Rcpt);
+DEFINE_HANDLER_STUB(Rset);
+DEFINE_HANDLER_STUB(Quit);
+DEFINE_HANDLER_STUB(Body);
+
 #endif
