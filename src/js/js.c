@@ -143,7 +143,6 @@ jsval js_call(const char *obj, const char *func, jsval arg, ...)
 		return JSVAL_NULL;
 	}
 
-
 	return rval;
 }
 
