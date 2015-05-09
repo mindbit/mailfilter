@@ -1,5 +1,17 @@
 #include "smtpserver.h"
 
+DEFINE_HANDLER_STUB(Init);
+DEFINE_HANDLER_STUB(Auth);
+DEFINE_HANDLER_STUB(Alou);
+DEFINE_HANDLER_STUB(Alop);
+DEFINE_HANDLER_STUB(Ehlo);
+DEFINE_HANDLER_STUB(Data);
+DEFINE_HANDLER_STUB(Mail);
+DEFINE_HANDLER_STUB(Rcpt);
+DEFINE_HANDLER_STUB(Rset);
+DEFINE_HANDLER_STUB(Quit);
+DEFINE_HANDLER_STUB(Body);
+
 jsval create_response(JSContext *cx, int code, const char* message, int disconnect) { 
 	jsval rmessage;
 	JSObject *obj;
@@ -58,3 +70,4 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 
 	return 0;
 }
+
