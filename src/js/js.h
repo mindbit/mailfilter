@@ -24,9 +24,10 @@ void js_stop(void);
  * arguments. Last parameter of the function should ALWAYS be JSVAL_NULL.
  */
 jsval js_call(const char *obj, const char *func, jsval arg, ...);
+jsval call_js_handler(const char *cmd);
 
 /* Will be deleted */
 void js_dump_value(JSContext *cx, jsval v);
-void js_dump_array(JSContext *cx, jsval v);
+void js_dump_response(JSContext *cx, jsval v);
 
 #endif
