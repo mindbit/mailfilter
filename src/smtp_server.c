@@ -191,6 +191,24 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	return continue_session;
 }
 
+
+int get_handler_index(const char *cmd) {
+	int i;
+	char cmd_lower[4];
+
+	for (i = 0; i < 4; i++) {
+		cmd_lower[i] = tolower((unsigned char) cmd[i]);
+	}
+
+	for (i = 0; i < PREPROCESS_HDLRS_LEN; i++) {
+		if (strcmp(smtp_cmd_hdlrs[i].cmd_name, cmd_lower) == 0) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
 	int continue_session;
