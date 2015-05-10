@@ -170,7 +170,7 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 static JSClass engine_class = {
 	"engine", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
 	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
-	JS_ConvertStub, JS_FinalizeStub, JSCLASS_NO_OPTIONAL_MEMBERS
+	JS_ConvertStub, JS_PropertyStub, JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
 int js_engine_obj_init(JSContext *cx, JSObject *global)

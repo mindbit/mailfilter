@@ -183,7 +183,7 @@ static int create_sockets(void)
 	char *ip, *port;
 
 	int i;
-	jsuint array_len;
+	uint32_t array_len;
 
 	/* Get "global" object */
 	global = JS_GetGlobalForScopeChain(js_context);
