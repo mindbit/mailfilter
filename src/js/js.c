@@ -78,21 +78,21 @@ void js_dump_value(JSContext *cx, jsval v)
 	}
 }
 
-void call_js_handler(const char *cmd) {
-        int i;
-        char handler_name[9];
-        
-        strcpy(handler_name, "smtp");
-        
-        handler_name[4] = cmd[0];
-        
-        for (i = 5; i < 8; i++) {
-            handler_name[i] = tolower((unsigned char) cmd[i - 4]);
-        }
+jsval call_js_handler(const char *cmd) {
+    int i;
+    char handler_name[9];
 
-        handler_name[8] = '\0';
+    strcpy(handler_name, "smtp");
+
+    handler_name[4] = toupper((unsigned char) cmd[0]);
+
+    for (i = 5; i < 8; i++) {
+        handler_name[i] = tolower((unsigned char) cmd[i - 4]);
+    }
+
+    handler_name[8] = '\0';
         
-        js_call("smtpServer", handler_name, JSVAL_NULL);
+    return js_call("smtpServer", handler_name, JSVAL_NULL);
 }
 
 jsval js_call(const char *obj, const char *func, jsval arg, ...)
