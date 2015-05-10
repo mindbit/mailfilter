@@ -107,6 +107,9 @@ int smtp_preprocess_body(struct smtp_server_context *ctx, const char *cmd, const
 	int (*smtp_preprocess_hdlr)(struct smtp_server_context *, const char *, const char *, bfd_t*);
  };
 
+#define DEFINE_SMTP_CMD_HDLR(name) \
+	{ "" #name "\0" , &smtp_preprocess_##name } \
+
 #define SMTP_PRIV_HASH_SIZE 16
 
 struct smtp_priv_hash {
