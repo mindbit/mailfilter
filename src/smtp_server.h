@@ -96,6 +96,17 @@ int smtp_preprocess_rset(struct smtp_server_context *ctx, const char *cmd, const
 int smtp_preprocess_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_preprocess_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 
+/**
+ * SMTP command structure
+ *
+ * Used by a SMTP command to maintain the C preprocess handler
+ * and JS stub function
+ */
+ struct smtp_cmd_hdlr {
+	const char cmd_name[4];
+	int (*smtp_preprocess_hdlr)(struct smtp_server_context *, const char *, const char *, bfd_t*);
+ };
+
 #define SMTP_PRIV_HASH_SIZE 16
 
 struct smtp_priv_hash {
