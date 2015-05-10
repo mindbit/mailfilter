@@ -35,6 +35,11 @@
 #include "internet_message.h"
 #include "bfd.h"
 
+/**
+ * Define the number of preprocess handlers = number of SMTP commands
+ */
+#define	PREPROCESS_HDLRS_LEN	11
+
 struct smtp_server_context;
 
 /**
