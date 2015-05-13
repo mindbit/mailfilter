@@ -53,6 +53,18 @@ int js_get_code(jsval v) {
 	return -1;
 }
 
+int js_get_message(jsval v) {
+	jsval message;
+	char *c_str;
+
+	if (JS_GetProperty(js_context, JSVAL_TO_OBJECT(v), "message", &message)) {
+		c_str = JS_EncodeString(js_context, JSVAL_TO_STRING(message));
+		return c_str;
+	}
+
+	return -1;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
