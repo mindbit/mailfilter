@@ -84,17 +84,17 @@ struct smtp_cmd_tree {
 /**
  * Define SMTP preprocess handlers
  */
-int smtp_preprocess_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_preprocess_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 
 /**
  * SMTP command structure
