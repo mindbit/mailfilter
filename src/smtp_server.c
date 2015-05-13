@@ -662,6 +662,57 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	/* prepare response */
 	ctx->code = 354;
 	ctx->message = strdup("Go ahead");
+
+	smtp_server_response(stream, ctx->code, ctx->message);
+
+	// Parse the BODY content of DATA
+	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
+	struct stat stat;
+
+	assert_mod_log(ctx->body.stream != NULL);
+
+	im_hdr_ctx.max_size = 65536; // FIXME use proper value
+	im_hdr_ctx.hdrs = &ctx->hdrs;
+	//sleep(10);
+	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
+		case 0:
+			insert_received_hdr(ctx);
+			ctx->code = 250;
+			ctx->message = strdup("Mail successfully received");
+			break;
+		case IM_PARSE_ERROR:
+			ctx->code = 500;
+			ctx->message = strdup("Could not parse message headers");
+			return SCHS_ABORT;
+		case IM_OVERRUN:
+			ctx->code = 552;
+			ctx->message = strdup("Message header size exceeds safety limits");
+			return SCHS_ABORT;
+		default:
+			ctx->code = 452;
+			ctx->message = strdup("Insufficient system storage");
+			return SCHS_ABORT;
+	}
+
+	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1) {
+		ctx->code = 452;
+		ctx->message = strdup("Insufficient system storage");
+		return SCHS_ABORT;
+	}
+	ctx->body.size = stat.st_size;
+
+	smtp_set_transaction_state(ctx, module, 0, NULL);
+	//printf("path: %s\n", ctx->body.path); sleep(10);
+	//im_header_write(&ctx->hdrs, stdout);
+
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler(cmd);
+
+	// Get code and message from returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return SCHS_OK;
 	ctx->node = smtp_cmd_lookup("BODY");
 	return SCHS_CHAIN;
 }
