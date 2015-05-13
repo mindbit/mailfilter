@@ -139,53 +139,51 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	int schs, continue_session = 1;
+	int hdlr_idx;
+	int code;
+
 	struct smtp_cmd_hdlr_list *hlink;
+	struct smtp_cmd_hdlr *cmd_hdlr;
+	char *message;
 
 	do {
-		/* Save ctx->node to local var, since it can be changed by a
-		 * command handler *while* we are walking the handler list */
-		struct smtp_cmd_tree *node = ctx->node;
+		code = 0;
+		message = NULL;
+	    hdlr_idx = smtp_get_hdlr_idx(cmd);
 
-		ctx->code = 0;
-		ctx->message = ctx->prev_message = NULL;
+	    if (hdlr_idx != -1) {
+			/* Get the structure with specific handler */
+			cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
 
-		list_for_each_entry(hlink, &node->hdlrs, lh) {
+			/* Call the handler */
+			schs = cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
 
-			if (ctx->prev_message != NULL)
-				free(ctx->prev_message);
-			ctx->prev_code = ctx->code;
-			ctx->prev_message = ctx->message;
-			ctx->code = 0;
-			ctx->message = NULL;
-
-			schs = hlink->hdlr(ctx, cmd, arg, stream);
-
-			if (ctx->code == -1) {
-				ctx->code = ctx->prev_code;
-				ctx->message = ctx->prev_message;
-				ctx->prev_code = 0;
-				ctx->prev_message = NULL;
-			}
 			if (schs == SCHS_ABORT || schs == SCHS_QUIT)
 				continue_session = 0;
-			if (schs == SCHS_BREAK || schs == SCHS_ABORT)
-				break;
+
+			if (ctx->code) {
+				code = ctx->code;
+				message = ctx->message;
+			} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE) {
+				code = 451;
+				message = strdup("Internal server error");
+				smtp_set_transaction_state(ctx, NULL, code, message);
+			}
+		} else {
+			code = 500;
+			message = strdup("Command not implemented");
+			continue_session = 0;
 		}
 
-		if (ctx->code) {
-			if (cmd != NULL) {
-				call_js_handler(cmd);
-			}
-			
-			smtp_server_response(stream, ctx->code, ctx->message);
-		} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE) {
-			smtp_server_response(stream, 451, "Internal server error");
-			smtp_set_transaction_state(ctx, NULL, 451, "Internal server error");
+		smtp_server_response(stream, code, message);
+
+		if (code == 451 || code == 500) {
+			smtp_set_transaction_state(ctx, NULL, code, message);
 		}
-		if (ctx->message)
-			free(ctx->message);
-		if (ctx->prev_message)
-			free(ctx->prev_message);
+
+		if (message) {
+			free(message);
+		}
 	} while (schs == SCHS_CHAIN);
 
 	return continue_session;
