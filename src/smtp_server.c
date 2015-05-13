@@ -212,18 +212,15 @@ int smtp_get_hdlr_idx(const char *cmd) {
 
 int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
-	int continue_session;
-	int hdlr_idx;
+	int continue_session = 1;
 	char buf[SMTP_COMMAND_MAX + 1];
-	struct smtp_cmd_hdlr *cmd_hdlr;
-
+	
 	/* Command handling loop */
 	do {
 		char *c = &buf[0];
 		char tmp;
 		size_t i, n = 0;
 		ssize_t sz;
-		cmd_hdlr = NULL;
 
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
@@ -256,20 +253,6 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 		/* Parse SMTP command */
 		c += strspn(c, white);
 		n = strcspn(c, white);
-	
-		ctx->node = &cmd_tree;
-
-		/*
-		for (i = 0; i < n; i++) {
-			if (c[i] >= 'a' && c[i] <= 'z')
-				c[i] -= 'a' - 'A';
-			if (c[i] < 'A' || c[i] > 'Z')
-				break;
-			if (ctx->node->next[c[i] - 'A'] == NULL)
-				break;
-			ctx->node = ctx->node->next[c[i] - 'A'];
-		}
-		*/
 
 		/* Prepare argument */
 		if (c[n] != '\0') {
@@ -277,17 +260,6 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 			n++;
 		}
 
-		hdlr_idx = get_handler_index(c);
-
-		if (hdlr_idx != -1) {
-			cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
-			cmd_hdlr->smtp_preprocess_hdlr(ctx, c, c + n, stream);
-		} else {
-			smtp_server_response(stream, 500, "Command not implemented");
-			continue;
-		}
-
-		/* Invoke all command handlers */
 		continue_session = smtp_server_process(ctx, c, c + n, stream);
 	} while (continue_session);
 
