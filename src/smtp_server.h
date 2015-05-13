@@ -108,7 +108,7 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
  };
 
 #define DEFINE_SMTP_CMD_HDLR(name) \
-	{ "" #name "\0" , &smtp_preprocess_##name } \
+	{ #name , &smtp_hdlr_##name } \
 
 #define SMTP_PRIV_HASH_SIZE 16
 
