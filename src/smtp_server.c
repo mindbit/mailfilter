@@ -713,8 +713,6 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	ctx->message = js_get_message(ret);
 
 	return SCHS_OK;
-	ctx->node = smtp_cmd_lookup("BODY");
-	return SCHS_CHAIN;
 }
 
 int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ctx)
