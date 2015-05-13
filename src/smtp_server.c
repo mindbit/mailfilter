@@ -834,21 +834,6 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 
 void smtp_server_init(void)
 {
-	memset(&cmd_tree, 0, sizeof(struct smtp_cmd_tree));
-	INIT_LIST_HEAD(&cmd_tree.hdlrs);
-	smtp_cmd_register("INIT", smtp_hdlr_init, 0, 0);
-	smtp_cmd_register("AUTH", smtp_hdlr_auth, 0, 1);
-	smtp_cmd_register("ALOU", smtp_hdlr_alou, 0, 0);
-	smtp_cmd_register("ALOP", smtp_hdlr_alop, 0, 0);
-	smtp_cmd_register("APLP", smtp_hdlr_aplp, 0, 0);
-	smtp_cmd_register("EHLO", smtp_hdlr_ehlo, 0, 1);
-	smtp_cmd_register("MAIL", smtp_hdlr_mail, 0, 1);
-	smtp_cmd_register("RCPT", smtp_hdlr_rcpt, 0, 1);
-	smtp_cmd_register("DATA", smtp_hdlr_data, 0, 1);
-	smtp_cmd_register("BODY", smtp_hdlr_body, 0, 0);
-	smtp_cmd_register("QUIT", smtp_hdlr_quit, 0, 1);
-	smtp_cmd_register("RSET", smtp_hdlr_rset, 0, 1);
-
 	// TODO urmatoarele trebuie sa se intample din config
 	mod_proxy_init();
 	//mod_spamassassin_init();
