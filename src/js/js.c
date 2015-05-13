@@ -53,7 +53,7 @@ int js_get_code(jsval v) {
 	return -1;
 }
 
-int js_get_message(jsval v) {
+char* js_get_message(jsval v) {
 	jsval message;
 	char *c_str;
 
@@ -62,7 +62,7 @@ int js_get_message(jsval v) {
 		return c_str;
 	}
 
-	return -1;
+	return NULL;
 }
 
 void js_dump_value(JSContext *cx, jsval v)
