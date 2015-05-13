@@ -349,21 +349,17 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
 	int ret;
+	int hdlr_idx;
 
 	/* Handle initial greeting */
-	if ((ctx->node = smtp_cmd_lookup("INIT")) != NULL) {
-		if (!smtp_server_process(ctx, NULL, NULL, stream) || !ctx->code)
-			return 0;
-	}
+	if (!smtp_server_process(ctx, "INIT", NULL, stream) || !ctx->code)
+		return 0;
 
 	ret = __smtp_server_run(ctx, stream);
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
-	if ((ctx->node = smtp_cmd_lookup("TERM")) != NULL) {
-		if (!smtp_server_process(ctx, NULL, NULL, stream) || !ctx->code)
-			return 0;
-	}
+
 	smtp_server_context_cleanup(ctx);
 
 	return ret;
