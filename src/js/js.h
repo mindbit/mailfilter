@@ -26,6 +26,9 @@ void js_stop(void);
 jsval js_call(const char *obj, const char *func, jsval arg, ...);
 jsval call_js_handler(const char *cmd);
 
+int js_get_code(jsval v);
+char* js_get_message(jsval v);
+
 /* Will be deleted */
 void js_dump_value(JSContext *cx, jsval v);
 void js_dump_response(JSContext *cx, jsval v);
