@@ -51,13 +51,13 @@ static struct smtp_cmd_hdlr smtp_cmd_hdlrs[PREPROCESS_HDLRS_LEN] = {
 	DEFINE_SMTP_CMD_HDLR(auth),
 	DEFINE_SMTP_CMD_HDLR(alou),
 	DEFINE_SMTP_CMD_HDLR(alop),
+	DEFINE_SMTP_CMD_HDLR(aplp),
 	DEFINE_SMTP_CMD_HDLR(ehlo),
 	DEFINE_SMTP_CMD_HDLR(data),
 	DEFINE_SMTP_CMD_HDLR(mail),
 	DEFINE_SMTP_CMD_HDLR(rcpt),
 	DEFINE_SMTP_CMD_HDLR(rset),
-	DEFINE_SMTP_CMD_HDLR(quit),
-	DEFINE_SMTP_CMD_HDLR(body)
+	DEFINE_SMTP_CMD_HDLR(quit)
 };
 
 struct smtp_cmd_tree cmd_tree;
