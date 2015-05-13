@@ -817,47 +817,6 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 	return 0;
 }
 
-int smtp_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
-{
-	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
-	struct stat stat;
-
-	assert_mod_log(ctx->body.stream != NULL);
-
-	im_hdr_ctx.max_size = 65536; // FIXME use proper value
-	im_hdr_ctx.hdrs = &ctx->hdrs;
-	//sleep(10);
-	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
-	case 0:
-		insert_received_hdr(ctx);
-		ctx->code = 250;
-		ctx->message = strdup("Mail successfully received");
-		break;
-	case IM_PARSE_ERROR:
-		ctx->code = 500;
-		ctx->message = strdup("Could not parse message headers");
-		break;
-	case IM_OVERRUN:
-		ctx->code = 552;
-		ctx->message = strdup("Message header size exceeds safety limits");
-		break;
-	default:
-		ctx->code = 452;
-		ctx->message = strdup("Insufficient system storage");
-	}
-
-	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1) {
-		ctx->code = 452;
-		ctx->message = strdup("Insufficient system storage");
-	}
-	ctx->body.size = stat.st_size;
-
-	smtp_set_transaction_state(ctx, module, 0, NULL);
-	//printf("path: %s\n", ctx->body.path); sleep(10);
-	//im_header_write(&ctx->hdrs, stdout);
-	return SCHS_OK;
-}
-
 int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	ctx->code = 221;
