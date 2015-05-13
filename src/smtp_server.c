@@ -191,10 +191,13 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	return continue_session;
 }
 
-
-int get_handler_index(const char *cmd) {
+int smtp_get_hdlr_idx(const char *cmd) {
 	int i;
 	char cmd_lower[4];
+
+	if (cmd == NULL) {
+		return -1;
+	}
 
 	for (i = 0; i < 4; i++) {
 		cmd_lower[i] = tolower((unsigned char) cmd[i]);
