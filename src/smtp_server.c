@@ -149,9 +149,9 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	do {
 		code = 0;
 		message = NULL;
-	    hdlr_idx = smtp_get_hdlr_idx(cmd);
+		hdlr_idx = smtp_get_hdlr_idx(cmd);
 
-	    if (hdlr_idx != -1) {
+		if (hdlr_idx != -1) {
 			/* Get the structure with specific handler */
 			cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
 
@@ -214,7 +214,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
 	int continue_session = 1;
 	char buf[SMTP_COMMAND_MAX + 1];
-	
+
 	/* Command handling loop */
 	do {
 		char *c = &buf[0];
@@ -884,7 +884,7 @@ int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
 int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__module, int code, const char *message)
 {
 	char *__message;
-	
+
 	/* default param values */
 	if (!code)
 		code = ctx->code;
