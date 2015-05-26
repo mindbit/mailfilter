@@ -706,7 +706,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
-	return SCHS_OK;
+	return js_get_disconnect(ret);
 }
 
 int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ctx)
