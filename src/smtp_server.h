@@ -104,7 +104,7 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
  */
  struct smtp_cmd_hdlr {
 	const char cmd_name[4];
-	int (*smtp_preprocess_hdlr)(struct smtp_server_context *, const char *, const char *, bfd_t*);
+	smtp_cmd_hdlr_t smtp_preprocess_hdlr;
  };
 
 #define DEFINE_SMTP_CMD_HDLR(name) \
