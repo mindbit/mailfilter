@@ -654,10 +654,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 
 	/* prepare response */
-	ctx->code = 354;
-	ctx->message = strdup("Go ahead");
-
-	smtp_server_response(stream, ctx->code, ctx->message);
+	smtp_server_response(stream, 354, "Go ahead");
 
 	// Parse the BODY content of DATA
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
