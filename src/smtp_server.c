@@ -163,7 +163,6 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		} else {
 			code = 451;
 			message = strdup("Internal server error");
-			smtp_set_transaction_state(ctx, NULL, code, message);
 		}
 	} else {
 		code = 500;
@@ -171,10 +170,6 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	}
 
 	smtp_server_response(stream, code, message);
-
-	if (code == 451 || code == 500) {
-		smtp_set_transaction_state(ctx, NULL, code, message);
-	}
 
 	if (message) {
 		free(message);
@@ -332,12 +327,6 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	if (ctx->body.path[0] != '\0')
 		unlink(ctx->body.path);
 	ctx->body.path[0] = '\0';
-
-	ctx->transaction.state.code = 0;
-	if (ctx->transaction.state.message)
-		free(ctx->transaction.state.message);
-	ctx->transaction.state.message = NULL;
-	ctx->transaction.module = NULL;
 }
 
 int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
@@ -692,7 +681,6 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 	ctx->body.size = stat.st_size;
 
-	smtp_set_transaction_state(ctx, module, 0, NULL);
 	//printf("path: %s\n", ctx->body.path); sleep(10);
 	//im_header_write(&ctx->hdrs, stdout);
 
@@ -870,33 +858,4 @@ int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
 		}
 
 	return -ESRCH;
-}
-
-int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__module, int code, const char *message)
-{
-	char *__message;
-
-	/* default param values */
-	if (!code)
-		code = ctx->code;
-
-	if (!message)
-		message = ctx->message;
-
-	/* update ctx->transaction */
-	if (message) {
-		__message = strdup(message);
-		if (__message == NULL)
-			return -ENOMEM;
-		if (ctx->transaction.state.message)
-			free(ctx->transaction.state.message);
-		ctx->transaction.state.message = __message;
-	}
-
-	ctx->transaction.state.code = code;
-
-	if (__module)
-		ctx->transaction.module = __module;
-
-	return 0;
 }
