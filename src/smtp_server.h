@@ -168,20 +168,8 @@ struct smtp_server_context {
 
 	/* Hash of per-module private data */
 	struct list_head priv_hash[SMTP_PRIV_HASH_SIZE];
-
-	/* Current SMTP transaction details */
-	struct {
-
-		struct {
-			int code;
-			char *message;
-		} state;
-
-		const char *module;
-	} transaction;
 };
 
-int smtp_set_transaction_state(struct smtp_server_context *ctx, const char *__module, int code, const char *message);
 
 enum smtp_cmd_hdlr_status {
 	/* Status OK, continue handler chain for current command */
