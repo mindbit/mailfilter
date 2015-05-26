@@ -138,7 +138,7 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 
 int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
-	int schs, continue_session = 1;
+	int disconnect = 1;
 	int hdlr_idx;
 	int code;
 
@@ -146,47 +146,41 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	struct smtp_cmd_hdlr *cmd_hdlr;
 	char *message;
 
-	do {
-		code = 0;
-		message = NULL;
-		hdlr_idx = smtp_get_hdlr_idx(cmd);
+	code = 0;
+	message = NULL;
+	hdlr_idx = smtp_get_hdlr_idx(cmd);
 
-		if (hdlr_idx != -1) {
-			/* Get the structure with specific handler */
-			cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
+	if (hdlr_idx != -1) {
+		/* Get the structure with specific handler */
+		cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
 
-			/* Call the handler */
-			schs = cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
+		/* Call the handler */
+		disconnect = !cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
 
-			if (schs == SCHS_ABORT || schs == SCHS_QUIT)
-				continue_session = 0;
-
-			if (ctx->code) {
-				code = ctx->code;
-				message = ctx->message;
-			} else if (schs != SCHS_CHAIN && schs != SCHS_IGNORE) {
-				code = 451;
-				message = strdup("Internal server error");
-				smtp_set_transaction_state(ctx, NULL, code, message);
-			}
+		if (ctx->code) {
+			code = ctx->code;
+			message = ctx->message;
 		} else {
-			code = 500;
-			message = strdup("Command not implemented");
-			continue_session = 0;
-		}
-
-		smtp_server_response(stream, code, message);
-
-		if (code == 451 || code == 500) {
+			code = 451;
+			message = strdup("Internal server error");
 			smtp_set_transaction_state(ctx, NULL, code, message);
 		}
+	} else {
+		code = 500;
+		message = strdup("Command not implemented");
+	}
 
-		if (message) {
-			free(message);
-		}
-	} while (schs == SCHS_CHAIN);
+	smtp_server_response(stream, code, message);
 
-	return continue_session;
+	if (code == 451 || code == 500) {
+		smtp_set_transaction_state(ctx, NULL, code, message);
+	}
+
+	if (message) {
+		free(message);
+	}
+
+	return disconnect;
 }
 
 int smtp_get_hdlr_idx(const char *cmd) {
