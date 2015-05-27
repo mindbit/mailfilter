@@ -9,8 +9,8 @@ DEFINE_HANDLER_STUB(Data);
 DEFINE_HANDLER_STUB(Mail);
 DEFINE_HANDLER_STUB(Rcpt);
 DEFINE_HANDLER_STUB(Rset);
-DEFINE_HANDLER_STUB(Quit);
 DEFINE_HANDLER_STUB(Body);
+DEFINE_HANDLER_STUB(Clnp);
 
 jsval create_response(JSContext *cx, int code, const char* message, int disconnect) { 
 	jsval rmessage;
@@ -60,7 +60,7 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		JS_FS("smtpRcpt", smtpRcpt, 0, 0),
 		JS_FS("smtpRset", smtpRset, 0, 0),
 		JS_FS("smtpBody", smtpBody, 0, 0),
-		JS_FS("smtpQuit", smtpQuit, 0, 0),
+		JS_FS("smtpClnp", smtpClnp, 0, 0),
 		JS_FS_END
 	};
 
