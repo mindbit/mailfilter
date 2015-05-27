@@ -811,6 +811,7 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	ctx->code = 221;
 	ctx->message = strdup("closing connection");
+	js_set_quitAsserted();
 	return 1;
 }
 
