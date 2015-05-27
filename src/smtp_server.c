@@ -388,7 +388,7 @@ int smtp_auth_login_parse_user(struct smtp_server_context *ctx, const char *arg)
 		if (!ctx->auth_user) {
 			ctx->code = 501;
 			ctx->message = strdup("Cannot decode AUTH parameter");
-			return SCHS_BREAK;
+			return 0;
 		}
 		ctx->node = smtp_cmd_lookup("ALOP");
 		ctx->message = base64_enc("Password:", strlen("Password:"));
@@ -397,7 +397,7 @@ int smtp_auth_login_parse_user(struct smtp_server_context *ctx, const char *arg)
 		ctx->node = smtp_cmd_lookup("ALOU");
 		ctx->message = base64_enc("Username:", strlen("Username:"));
 	}
-	return SCHS_CHAIN;
+	return 0;
 }
 
 int smtp_auth_login_parse_pw(struct smtp_server_context *ctx, const char *arg)
@@ -406,10 +406,10 @@ int smtp_auth_login_parse_pw(struct smtp_server_context *ctx, const char *arg)
 	if (!ctx->auth_pw) {
 		ctx->code = 501;
 		ctx->message = strdup("Cannot decode AUTH parameter");
-		return SCHS_BREAK;
+		return 0;
 	}
 	ctx->code = 250;
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_auth_plain_parse(struct smtp_server_context *ctx, const char *arg)
@@ -425,34 +425,34 @@ int smtp_auth_plain_parse(struct smtp_server_context *ctx, const char *arg)
 		if (!auth_info) {
 			ctx->code = 501;
 			ctx->message = strdup("Cannot decode AUTH parameter");
-			return SCHS_BREAK;
+			return 0;
 		}
 		ctx->auth_user = strdup(auth_info + 1);
 		p = auth_info + strlen(auth_info + 1) + 2;
 		assert_mod_log(p - auth_info < len);
 		ctx->auth_pw = strdup(p);
 		free(auth_info);
-		return SCHS_CHAIN;
+		return 0;
 	}
 
 	/* Request the base64 encoded authentication string */
 	ctx->code = 334;
 	ctx->message = NULL;
-	return SCHS_CHAIN;
+	return 0;
 }
 
 int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
 {
 	ctx->code = 504;
 	ctx->message = strdup("AUTH mechanism not available");
-	return SCHS_BREAK;
+	return 0;
 }
 
 int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	ctx->code = 220;
 	ctx->message = strdup("Mindbit Mail Filter");
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -471,7 +471,7 @@ int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (ctx->auth_user) {
 		ctx->code = 503;
 		ctx->message = strdup("Already Authenticated");
-		return SCHS_OK;
+		return 0;
 	}
 
 	c = strrchr(arg, ' ');
@@ -503,13 +503,13 @@ int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char 
 	assert_mod_log(!ctx->auth_user);
 
 	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
-		return SCHS_BREAK;
+		return 0;
 	buf[sz] = '\0';
 
 	if (!strcmp(buf, "*\r\n")) {
 		ctx->code = 501;
 		ctx->message = strdup("AUTH aborted");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	return smtp_auth_login_parse_user(ctx, buf);
@@ -523,13 +523,13 @@ int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char 
 	assert_mod_log(!ctx->auth_pw);
 
 	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
-		return SCHS_BREAK;
+		return 1;
 	buf[sz] = '\0';
 
 	if (!strcmp(buf, "*\r\n")) {
 		ctx->code = 501;
 		ctx->message = strdup("AUTH aborted");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	return smtp_auth_login_parse_pw(ctx, buf);
@@ -542,12 +542,12 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	if (!ctx->auth_user) {
 		if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
-			return SCHS_BREAK;
+			return 0;
 		buf[sz] = '\0';
 
 		return smtp_auth_plain_parse(ctx, buf);
 	}
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -566,7 +566,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	ctx->code = 250;
 	ctx->message = strdup("AUTH LOGIN PLAIN\nHELP");
 
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -574,19 +574,19 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (ctx->rpath.mailbox.local != NULL) {
 		ctx->code = 503;
 		ctx->message = strdup("Sender already specified");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	if (smtp_path_parse_cmd(&ctx->rpath, arg, "FROM")) {
 		smtp_path_init(&ctx->rpath);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	ctx->code = 250;
 	ctx->message = strdup("Envelope sender ok");
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -596,26 +596,26 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (ctx->rpath.mailbox.local == NULL) {
 		ctx->code = 503;
 		ctx->message = strdup("Must specify envelope sender first");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	path = malloc(sizeof(struct smtp_path));
 	if (path == NULL)
-		return SCHS_BREAK;
+		return 0;
 	smtp_path_init(path);
 
 	if (smtp_path_parse_cmd(path, arg, "TO")) {
 		free(path);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
 	ctx->code = 250;
 	ctx->message = strdup("Recipient ok");
 
-	return SCHS_OK;
+	return 0;
 }
 
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -626,20 +626,20 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (list_empty(&ctx->fpath)) {
 		ctx->code = 503;
 		ctx->message = strdup("Must specify recipient(s) first");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	/* prepare temporary file to store message body */
 	sprintf(ctx->body.path, "/tmp/mailfilter.XXXXXX"); // FIXME sNprintf; cale in loc de /tmp;
 	if ((fd = mkstemp(ctx->body.path)) == -1) {
 		ctx->body.path[0] = '\0';
-		return SCHS_BREAK;
+		return 0;
 	}
 	if ((ctx->body.stream = bfd_alloc(fd)) == NULL) {
 		close(fd);
 		unlink(ctx->body.path);
 		ctx->body.path[0] = '\0';
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	/* prepare response */
@@ -663,21 +663,21 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		case IM_PARSE_ERROR:
 			ctx->code = 500;
 			ctx->message = strdup("Could not parse message headers");
-			return SCHS_ABORT;
+			return 0;
 		case IM_OVERRUN:
 			ctx->code = 552;
 			ctx->message = strdup("Message header size exceeds safety limits");
-			return SCHS_ABORT;
+			return 0;
 		default:
 			ctx->code = 452;
 			ctx->message = strdup("Insufficient system storage");
-			return SCHS_ABORT;
+			return 0;
 	}
 
 	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1) {
 		ctx->code = 452;
 		ctx->message = strdup("Insufficient system storage");
-		return SCHS_ABORT;
+		return 0;
 	}
 	ctx->body.size = stat.st_size;
 
@@ -798,7 +798,7 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	ctx->code = 221;
 	ctx->message = strdup("closing connection");
-	return SCHS_QUIT;
+	return 1;
 }
 
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -806,7 +806,7 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 	smtp_server_context_cleanup(ctx);
 	ctx->code = 250;
 	ctx->message = strdup("State reset complete");
-	return SCHS_OK;
+	return 0;
 }
 
 void smtp_server_init(void)
