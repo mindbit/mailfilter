@@ -342,6 +342,7 @@ int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
+	call_js_handler("CLNP");
 
 	smtp_server_context_cleanup(ctx);
 
