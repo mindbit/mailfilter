@@ -75,6 +75,30 @@ int js_get_disconnect(jsval v) {
 	return 1;
 }
 
+int js_set_quitAsserted() {
+	jsval session, smtpServer;
+	JSObject *global;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return -1;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return -1;
+	}
+
+	// Define and set session.quitAsserted = false
+	if (JS_DefineProperty(js_context, JSVAL_TO_OBJECT(session), "quitAsserted", BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+		return -1;
+	}
+
+	return 1;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
