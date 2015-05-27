@@ -170,27 +170,6 @@ struct smtp_server_context {
 	struct list_head priv_hash[SMTP_PRIV_HASH_SIZE];
 };
 
-
-enum smtp_cmd_hdlr_status {
-	/* Status OK, continue handler chain for current command */
-	SCHS_OK		= 0,
-
-	/* Status not OK, skip remaining handlers for current command */
-	SCHS_BREAK	= 1,
-
-	/* Send response to client and abort session (close connection) */
-	SCHS_ABORT	= 2,
-
-	/* Allow remaining handlers to finish, but close session afterwards */
-	SCHS_QUIT	= 3,
-
-	/* Re-enter handler processing chain */
-	SCHS_CHAIN	= 4,
-
-	/* Same as OK, but ignore the handler not having set any response code */
-	SCHS_IGNORE	= 5
-};
-
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
 extern void smtp_server_init(void);
 extern int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream);
