@@ -65,6 +65,16 @@ char* js_get_message(jsval v) {
 	return NULL;
 }
 
+int js_get_disconnect(jsval v) {
+	jsval disconnect;
+
+	if (JS_GetProperty(js_context, JSVAL_TO_OBJECT(v), "disconnect", &disconnect)) {
+		return JSVAL_TO_BOOLEAN(disconnect);
+	}
+
+	return 1;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
