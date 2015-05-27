@@ -176,6 +176,15 @@ smtpServer.smtpQuit = function () {
 	//return this.client.smtpRset();
 };
 
+smtpServer.smtpClnp = function () {
+	return {
+		"code" : 250,
+		"message" : "cleanup from JS",
+		"disconnect" : false
+	};
+	//return this.client.smtpRset();
+};
+
 smtpServer.smtpBody = function() {
 	return {
 		"code" : 250,
