@@ -561,8 +561,6 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	domain = (char *)arg;
 	domain[strcspn(domain, "\r\n")] = '\0';
 
-	/* Store client identity in the server's context */
-	ctx->identity = strdup(domain);
 	ctx->code = 250;
 	ctx->message = strdup("AUTH LOGIN PLAIN\nHELP");
 
