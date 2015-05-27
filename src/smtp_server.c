@@ -561,10 +561,14 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	domain = (char *)arg;
 	domain[strcspn(domain, "\r\n")] = '\0';
 
-	ctx->code = 250;
-	ctx->message = strdup("AUTH LOGIN PLAIN\nHELP");
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler(cmd);
 
-	return 0;
+	// Get code and message from returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
 }
 
 int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -582,9 +586,14 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 		return 0;
 	}
 
-	ctx->code = 250;
-	ctx->message = strdup("Envelope sender ok");
-	return 0;
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler(cmd);
+
+	// Get code and message from returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
 }
 
 int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -610,10 +619,15 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
-	ctx->code = 250;
-	ctx->message = strdup("Recipient ok");
 
-	return 0;
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler(cmd);
+
+	// Get code and message from returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
 }
 
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -802,9 +816,15 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	smtp_server_context_cleanup(ctx);
-	ctx->code = 250;
-	ctx->message = strdup("State reset complete");
-	return 0;
+
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler(cmd);
+
+	// Get code and message from returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
 }
 
 void smtp_server_init(void)
