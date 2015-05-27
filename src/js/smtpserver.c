@@ -68,6 +68,20 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		return -1;
 	}
 
+	// Create session object (property of smtpServer)
+	JSObject *session;
+	session = JS_NewObject(cx, NULL, NULL, NULL);
+
+	// Define and set session.quitAsserted = false
+	if (JS_DefineProperty(cx, session, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+		return -1;
+	}
+
+	// Define smtpServer.session
+	if (JS_DefineProperty(cx, smtpServer, "session", OBJECT_TO_JSVAL(session), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+		return -1;
+	}
+
 	return 0;
 }
 
