@@ -72,7 +72,7 @@ int js_get_disconnect(jsval v) {
 		return JSVAL_TO_BOOLEAN(disconnect);
 	}
 
-	return 1;
+	return 0;
 }
 
 int js_set_quitAsserted() {
