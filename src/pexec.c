@@ -171,6 +171,5 @@ out_clean:
 		close(pw[0]);
 	if (pw[1] != -1)
 		close(pw[1]);
-	smtp_set_transaction_state(ctx, module, 0, NULL);
 	return ret;
 }
