@@ -668,9 +668,6 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	//sleep(10);
 	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
 		case 0:
-			insert_received_hdr(ctx);
-			ctx->code = 250;
-			ctx->message = strdup("Mail successfully received");
 			break;
 		case IM_PARSE_ERROR:
 			ctx->code = 500;
