@@ -200,15 +200,17 @@ int smtp_get_hdlr_idx(const char *cmd) {
 
 int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 {
-	int continue_session = 1;
 	char buf[SMTP_COMMAND_MAX + 1];
+	char *c;
+	size_t n;
 
 	/* Command handling loop */
 	do {
-		char *c = &buf[0];
 		char tmp;
-		size_t i, n = 0;
+		size_t i;
 		ssize_t sz;
+		c = &buf[0];
+		n = 0;
 
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
@@ -247,9 +249,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 			c[n] = '\0';
 			n++;
 		}
-
-		continue_session = smtp_server_process(ctx, c, c + n, stream);
-	} while (continue_session);
+	} while (!smtp_server_process(ctx, c, c + n, stream));
 
 	return 0;
 }
