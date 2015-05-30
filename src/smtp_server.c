@@ -334,7 +334,7 @@ int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 	int hdlr_idx;
 
 	/* Handle initial greeting */
-	if (!smtp_server_process(ctx, "INIT", NULL, stream) || !ctx->code)
+	if (smtp_server_process(ctx, "INIT", NULL, stream) || !ctx->code)
 		return 0;
 
 	ret = __smtp_server_run(ctx, stream);
