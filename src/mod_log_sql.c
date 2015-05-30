@@ -269,12 +269,5 @@ int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, cons
 void mod_log_sql_init(void)
 {
 	key = smtp_priv_key(module);
-	smtp_cmd_register("INIT", mod_log_sql_hdlr_init, 10, 0);
-	smtp_cmd_register("MAIL", mod_log_sql_hdlr_mail, 1000, 1);
-	smtp_cmd_register("RCPT", mod_log_sql_hdlr_rcpt, 1000, 1);
-	smtp_cmd_register("QUIT", mod_log_sql_hdlr_quit, 1000, 1);
-	smtp_cmd_register("RSET", mod_log_sql_hdlr_rset, -10, 1);
-	smtp_cmd_register("TERM", mod_log_sql_hdlr_term, 1000, 0);
-	smtp_cmd_register("BODY", mod_log_sql_hdlr_body, 1000, 0);
 }
 

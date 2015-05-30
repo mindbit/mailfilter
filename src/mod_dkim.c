@@ -181,5 +181,4 @@ static int mod_dkim_hdlr_body(struct smtp_server_context *ctx, const char *cmd, 
 
 void mod_dkim_init(void)
 {
-	smtp_cmd_register("BODY", mod_dkim_hdlr_body, 50, 0);
 }

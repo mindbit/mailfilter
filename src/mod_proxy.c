@@ -354,16 +354,5 @@ int mod_proxy_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const 
 void mod_proxy_init(void)
 {
 	key = smtp_priv_key(module);
-	smtp_cmd_register("INIT", mod_proxy_hdlr_init, 100, 0);
-	smtp_cmd_register("HELO", mod_proxy_hdlr_helo, 100, 1);
-	smtp_cmd_register("EHLO", mod_proxy_hdlr_ehlo, 100, 1);
-	smtp_cmd_register("ALOP", mod_proxy_hdlr_alop, 100, 0);
-	smtp_cmd_register("APLP", mod_proxy_hdlr_aplp, 100, 0);
-	smtp_cmd_register("MAIL", mod_proxy_hdlr_mail, 100, 1);
-	smtp_cmd_register("RCPT", mod_proxy_hdlr_rcpt, 100, 1);
-	smtp_cmd_register("QUIT", mod_proxy_hdlr_quit, 100, 1);
-	smtp_cmd_register("BODY", mod_proxy_hdlr_body, 100, 0);
-	smtp_cmd_register("TERM", mod_proxy_hdlr_term, 100, 0);
-	smtp_cmd_register("RSET", mod_proxy_hdlr_rset, 100, 1);
 }
 

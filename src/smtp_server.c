@@ -60,61 +60,6 @@ static struct smtp_cmd_hdlr smtp_cmd_hdlrs[PREPROCESS_HDLRS_LEN] = {
 	DEFINE_SMTP_CMD_HDLR(quit)
 };
 
-struct smtp_cmd_tree cmd_tree;
-
-int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable)
-{
-	struct smtp_cmd_tree *node = &cmd_tree, *aux;
-	struct smtp_cmd_hdlr_list *hlink;
-	struct list_head *p;
-	const char *c;
-
-	for (c = cmd; *c != '\0'; c++) {
-		assert_log(*c >= 'A' && *c <= 'Z', &config);
-		if (node->next[*c - 'A'] != NULL) {
-			node = node->next[*c - 'A'];
-			continue;
-		}
-		aux = malloc(sizeof(struct smtp_cmd_tree));
-		assert_log(aux != NULL, &config);
-		memset(aux, 0, sizeof(struct smtp_cmd_tree));
-		INIT_LIST_HEAD(&aux->hdlrs);
-		node->next[*c - 'A'] = aux;
-		node = aux;
-	}
-
-	list_for_each(p, &node->hdlrs) {
-		if (list_entry(p, struct smtp_cmd_hdlr_list, lh)->prio > prio)
-			break;
-	}
-
-	hlink = malloc(sizeof(struct smtp_cmd_hdlr_list));
-	assert_log(hlink != NULL, &config);
-	hlink->hdlr = hdlr;
-	hlink->prio = prio;
-	hlink->invokable = invokable;
-
-	list_add_tail(&hlink->lh, p);
-	return 0;
-}
-
-struct smtp_cmd_tree *smtp_cmd_lookup(const char *cmd)
-{
-	struct smtp_cmd_tree *node = &cmd_tree;
-
-	while (*cmd != '\0' && node != NULL) {
-		char c = *cmd;
-		if (c >= 'a' && c <= 'z')
-			c -= 'a' - 'A';
-		if (c < 'A' || c > 'Z')
-			return NULL;
-		node = node->next[c - 'A'];
-		cmd++;
-	}
-
-	return node;
-}
-
 int smtp_server_response(bfd_t *f, int code, const char *message)
 {
 	char *buf = (char *)message, *c;
@@ -390,11 +335,9 @@ int smtp_auth_login_parse_user(struct smtp_server_context *ctx, const char *arg)
 			ctx->message = strdup("Cannot decode AUTH parameter");
 			return 0;
 		}
-		ctx->node = smtp_cmd_lookup("ALOP");
 		ctx->message = base64_enc("Password:", strlen("Password:"));
 	}
 	else {
-		ctx->node = smtp_cmd_lookup("ALOU");
 		ctx->message = base64_enc("Username:", strlen("Username:"));
 	}
 	return 0;
@@ -416,8 +359,6 @@ int smtp_auth_plain_parse(struct smtp_server_context *ctx, const char *arg)
 {
 	char *auth_info, *p;
 	int len;
-
-	ctx->node = smtp_cmd_lookup("APLP");
 
 	/* Parse (user, pw) from arg = base64(\0username\0password) */
 	if (arg) {

@@ -91,5 +91,4 @@ int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const
 
 void mod_clamav_init(void)
 {
-	smtp_cmd_register("BODY", mod_clamav_hdlr_body, 60, 0);
 }

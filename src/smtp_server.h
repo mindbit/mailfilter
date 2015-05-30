@@ -59,28 +59,6 @@ struct smtp_server_context;
  */
 typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 
-struct smtp_cmd_hdlr_list {
-	smtp_cmd_hdlr_t hdlr;
-	int prio;
-
-	/* Whether this handler is called on *user* command invokation.
-	 * Other type of invokation is "implicit" (by the engine, for
-	 * SCHS_CHAIN return code of command handlers). */
-	int invokable;
-	struct list_head lh;
-};
-
-/**
- * SMTP command tree node.
- *
- * Used by generic command parser to find out what handler to call for
- * each SMTP command.
- */
-struct smtp_cmd_tree {
-	struct smtp_cmd_tree *next[26];
-	struct list_head hdlrs;
-};
-
 /**
  * Define SMTP preprocess handlers
  */

@@ -94,5 +94,4 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 
 void mod_spamassassin_init(void)
 {
-	smtp_cmd_register("BODY", mod_spamassassin_hdlr_body, 50, 0);
 }
