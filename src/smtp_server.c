@@ -138,11 +138,10 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 
 int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
-	int disconnect = 1;
+	int disconnect = 0;
 	int hdlr_idx;
 	int code;
 
-	struct smtp_cmd_hdlr_list *hlink;
 	struct smtp_cmd_hdlr *cmd_hdlr;
 	char *message;
 
@@ -155,7 +154,7 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 		cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
 
 		/* Call the handler */
-		disconnect = !cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
+		disconnect = cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
 
 		if (ctx->code) {
 			code = ctx->code;
