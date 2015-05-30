@@ -97,8 +97,8 @@ int mod_log_sql_end_transaction(struct smtp_server_context *ctx)
 	char id[20], code[10];
 	const char * params[4] = {
 		&code[0],
-		ctx->transaction.state.message,
-		ctx->transaction.module,
+		NULL,
+		NULL,
 		&id[0]
 	};
 	PGresult *res;
@@ -108,7 +108,7 @@ int mod_log_sql_end_transaction(struct smtp_server_context *ctx)
 
 	priv->smtp_transaction_id = 0;
 	snprintf(id, sizeof(id), "%lld", (long long)my_transaction_id);
-	snprintf(code, sizeof(code), "%d", ctx->transaction.state.code);
+	snprintf(code, sizeof(code), "%d", 0);
 
 	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_TRANSACTION_STATE, 4, (const char * const *)params, NULL, NULL, 0);
 
