@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "../config.h"
 #include "js.h"
