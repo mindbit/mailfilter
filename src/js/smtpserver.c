@@ -221,6 +221,14 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		return -1;
 	}
 
+	if (init_smtp_path_class(cx, global)) {
+		return -1;
+	}
+
+	if (init_header_class(cx, global)) {
+		return -1;
+	}
+
 	return 0;
 }
 
