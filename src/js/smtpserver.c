@@ -36,14 +36,10 @@ jsval create_response(JSContext *cx, int code, const char* message, int disconne
 }
 
 static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("smtpPath constructor()\n");
 	return JS_TRUE;
 }
 
 static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("smtpPath toString()\n");
 	return JS_TRUE;
 }
 
@@ -102,26 +98,18 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 }
 
 static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("header construct\n");
 	return JS_TRUE;
 }
 
 static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("header toString()\n");
 	return JS_TRUE;
 }
 
 static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("header getValue()\n");
 	return JS_TRUE;
 }
 
 static JSBool header_refold(JSContext *cx, unsigned argc, jsval *vp) {
-	js_dump(cx, argc, vp);
-	printf("header refold()\n");
 	return JS_TRUE;
 }
 
