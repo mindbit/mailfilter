@@ -35,6 +35,72 @@ jsval create_response(JSContext *cx, int code, const char* message, int disconne
 	return OBJECT_TO_JSVAL(obj);
 }
 
+static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("smtpPath constructor()\n");
+	return JS_TRUE;
+}
+
+static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("smtpPath toString()\n");
+	return JS_TRUE;
+}
+
+int init_smtp_path_class(JSContext *cx, JSObject *global) {
+	static JSClass smtpPath_class = {
+	    "SmtpPath", 0,
+	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
+	    NULL, NULL, NULL, smtpPath_construct, NULL, NULL, NULL, NULL
+	};
+
+	// Create the SmtpPath class
+	JSObject *smtpPathClass = JS_InitClass(cx, global, NULL, &smtpPath_class, smtpPath_construct, 1, NULL, NULL, NULL, NULL);
+
+	if (!smtpPathClass) {
+		return -1;
+	}
+
+	JSObject *proto = JS_GetObjectPrototype(cx, smtpPathClass);
+
+	// Add domains property
+	JSObject *domains = JS_NewArrayObject(cx, 0, NULL);
+
+	if (!domains) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, proto, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	// Add mailbox property
+	JSObject *mailbox = JS_NewObject(cx, NULL, NULL, NULL);
+
+	if (!mailbox) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, mailbox, "local", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, mailbox, "domain", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, proto, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	if (!JS_DefineFunction(cx, proto, "toString", smtpPath_toString, 0, 0)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 {
 	static JSClass smtpserver_class = {
