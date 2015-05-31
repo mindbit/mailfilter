@@ -170,13 +170,13 @@ static int mod_dkim_hdlr_body(struct smtp_server_context *ctx, const char *cmd, 
 
 	hdr = im_header_find(ctx, "dkim-signature");
 	if (!hdr)
-		return SCHS_OK;
+		return 0;
 
 	printf("DKIM-Signature header found!\n");
 	mod_dkim_parse_signature(hdr->value);
 	mod_dkim_dns_get_key();
 
-	return SCHS_OK;
+	return 0;
 }
 
 void mod_dkim_init(void)

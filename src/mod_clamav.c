@@ -47,12 +47,12 @@ int mod_clamav_result(struct smtp_server_context *ctx, bfd_t *fr, int status)
 {
 	if (WEXITSTATUS(status) > 1) {
 		mod_log(LOG_ERR, "clamdscan failed with error\n");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	if (!WEXITSTATUS(status)) {
 		mod_log(LOG_INFO, "message passed\n");
-		return SCHS_IGNORE;
+		return 0;
 	}
 
 	ctx->code = 550;
@@ -79,7 +79,7 @@ int mod_clamav_result(struct smtp_server_context *ctx, bfd_t *fr, int status)
 	} while (0);
 	if (ctx->message == NULL)
 		ctx->message = strdup("This message appears to contain viruses");
-	return SCHS_BREAK;
+	return 0;
 }
 
 int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)

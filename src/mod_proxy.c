@@ -53,7 +53,7 @@ int copy_response_callback(int code, const char *message, int last, void *priv)
 int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	struct mod_proxy_priv *priv;
-	int sock, err, ret = SCHS_ABORT;
+	int sock, err, ret = 0;
 	struct sockaddr_in peer;
 
 	priv = malloc(sizeof(struct mod_proxy_priv));
@@ -86,7 +86,7 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 		goto out_err;
 	}
 
-	return SCHS_OK;
+	return 0;
 out_err:
 	if (sock != -1)
 		close(sock);
@@ -111,7 +111,7 @@ int mod_proxy_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_command(priv->sock, cmd, domain);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -148,11 +148,11 @@ int mod_proxy_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const 
 		goto out_err;
 	ctx->message = sb.s;
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 
 out_err:
 	string_buffer_cleanup(&sb);
-	return SCHS_BREAK;
+	return 0;
 }
 
 int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
@@ -164,15 +164,15 @@ int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
 
 	/* Send command to the real stmp server */
 	if (smtp_client_command(priv->sock, cmd, NULL))
-		return SCHS_BREAK;
+		return 0;
 
 	/* read back the smtp server response */
 	if ((sz = bfd_read_line(priv->sock, buf, SMTP_COMMAND_MAX)) < 0)
-		return SCHS_BREAK;
+		return 0;
 	buf[sz] = '\0';
 
 	if (strlen(buf) < 4)
-		return SCHS_BREAK;
+		return 0;
 
 	/* parse the response code */
 	sep = buf[3];
@@ -183,10 +183,10 @@ int mod_proxy_auth_send_one(struct smtp_server_context *ctx, const char *cmd) {
 	if (ctx->code != 334) {
 		buf[strcspn(buf, "\r\n")] = '\0';
 		ctx->message = strdup(&buf[4]);
-		return SCHS_BREAK;
+		return 0;
 	}
 
-	return SCHS_OK;
+	return 0;
 }
 
 int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -197,27 +197,27 @@ int mod_proxy_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const 
 	/* AUTH LOGIN base64(username) */
 	user64 = base64_enc(ctx->auth_user, strlen(ctx->auth_user));
 	if (!user64)
-		return SCHS_BREAK;
+		return 0;
 
 	err = sprintf(buf, "AUTH LOGIN %s", user64);
 	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(user64);
 
 	err = mod_proxy_auth_send_one(ctx, buf);
-	if (err != SCHS_OK)
+	if (err != 0)
 		return err;
 
 	/* base64(password) */
 	pw64 = base64_enc(ctx->auth_pw, strlen(ctx->auth_pw));
 	if (!pw64)
-		return SCHS_BREAK;
+		return 0;
 
 	err = mod_proxy_auth_send_one(ctx, pw64);
 	free(pw64);
-	if (err != SCHS_OK)
+	if (err != 0)
 		return err;
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -237,17 +237,17 @@ int mod_proxy_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const 
 	/* AUTH PLAIN base64(buf) */
 	auth64 = base64_enc(buf, 2 + strlen(ctx->auth_user) + strlen(ctx->auth_pw));
 	if (!auth64)
-		return SCHS_BREAK;
+		return 0;
 
 	err = sprintf(buf, "AUTH PLAIN %s", auth64);
 	assert_mod_log(err < SMTP_COMMAND_MAX + 1);
 	free(auth64);
 
 	err = mod_proxy_auth_send_one(ctx, buf);
-	if (err != SCHS_OK)
+	if (err != 0)
 		return err;
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -257,7 +257,7 @@ int mod_proxy_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_c_mail(priv->sock, &ctx->rpath);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -265,12 +265,12 @@ int mod_proxy_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const 
 	struct mod_proxy_priv *priv = smtp_priv_lookup(ctx, key);
 
 	if (list_empty(&ctx->fpath))
-		return SCHS_BREAK;
+		return 0;
 
 	smtp_c_rcpt(priv->sock, list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -280,7 +280,7 @@ int mod_proxy_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_command(priv->sock, "QUIT", NULL);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -303,7 +303,7 @@ int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
 	if (ctx->code < 300 || ctx->code > 399) {
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	free(ctx->message);
@@ -322,11 +322,11 @@ int mod_proxy_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const 
 	bfd_flush(priv->sock);
 
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 out_err:
 	/* leave code to 0 (fall back to the default Internal Server
 	 * Error message); update transaction state just to set the module */
-	return SCHS_BREAK;
+	return 0;
 }
 
 int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -336,7 +336,7 @@ int mod_proxy_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_priv_unregister(ctx, key);
 	free(priv);
 
-	return SCHS_IGNORE;
+	return 0;
 }
 
 int mod_proxy_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -346,7 +346,7 @@ int mod_proxy_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const 
 	smtp_client_command(priv->sock, "RSET", NULL);
 	smtp_client_response(priv->sock, copy_response_callback, ctx);
 
-	return ctx->code >= 200 && ctx->code <= 299 ? SCHS_OK : SCHS_BREAK;
+	return ctx->code >= 200 && ctx->code <= 299 ? 0 : 0;
 }
 
 /* void __attribute__((constructor)) my_init() */

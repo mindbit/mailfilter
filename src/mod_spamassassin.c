@@ -61,18 +61,18 @@ int mod_spamassassin_result(struct smtp_server_context *ctx, bfd_t *fr, int stat
 
 	if (WEXITSTATUS(status) > 1) {
 		mod_log(LOG_ERR, "spamc failed with error\n");
-		return SCHS_BREAK;
+		return 0;
 	}
 
 	if (!WEXITSTATUS(status)) {
 		mod_log(LOG_INFO, "message passed\n");
-		return SCHS_IGNORE;
+		return 0;
 	}
 
 	ctx->code = 550;
 	ctx->message = strdup("This message appears to be spam");
 	mod_log(LOG_INFO, "message rejected\n");
-	return SCHS_BREAK;
+	return 0;
 }
 
 int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -81,12 +81,12 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 
 	if (BYPASS_AUTH && ctx->auth_user) {
 		mod_log(LOG_INFO, "bypassed authenticated user\n");
-		return SCHS_IGNORE;
+		return 0;
 	}
 
 	if (ctx->body.size >= BYPASS_SIZE_TRESHOLD) {
 		mod_log(LOG_INFO, "bypassed large message (size=%d, treshold=%d)\n", ctx->body.size, BYPASS_SIZE_TRESHOLD);
-		return SCHS_IGNORE;
+		return 0;
 	}
 
 	return pexec_hdlr_body(ctx, argv, mod_spamassassin_send_headers, mod_spamassassin_result);

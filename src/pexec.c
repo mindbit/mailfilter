@@ -65,7 +65,7 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 	int status = 0, pr[2] = {-1, -1}, pw[2] = {-1, -1};
 	pid_t pid;
 	bfd_t *fr = NULL, *fw = NULL;
-	int ret = SCHS_BREAK;
+	int ret = 0;
 
 	if (pipe(pr))
 		goto out_clean;

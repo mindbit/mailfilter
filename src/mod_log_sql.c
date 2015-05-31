@@ -146,13 +146,13 @@ int mod_log_sql_hdlr_init(struct smtp_server_context *ctx, const char *cmd, cons
 		goto out_err;
 
 	ctx->code = -1;
-	return SCHS_OK;
+	return 0;
 out_err:
 	if (priv->conn != NULL)
 		PQfinish(priv->conn);
 	smtp_priv_unregister(ctx, key);
 	free(priv);
-	return SCHS_ABORT;
+	return 0;
 }
 
 int mod_log_sql_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -170,11 +170,11 @@ int mod_log_sql_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, cons
 	free(params[0]);
 
 	if (res == NULL)
-		return SCHS_BREAK;
+		return 0;
 
 	PQclear(res);
 	ctx->code = -1;
-	return SCHS_OK;
+	return 0;
 }
 
 int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -185,7 +185,7 @@ int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, cons
 	PGresult *res;
 
 	if (list_empty(&ctx->fpath))
-		return SCHS_BREAK;
+		return 0;
 
 	snprintf(id, sizeof(id), "%lld", (long long)priv->smtp_transaction_id);
 	params[1] = smtp_path_to_string(list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
@@ -193,32 +193,32 @@ int mod_log_sql_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, cons
 	free(params[1]);
 
 	if (res == NULL)
-		return SCHS_BREAK;
+		return 0;
 
 	PQclear(res);
 	ctx->code = -1;
-	return SCHS_OK;
+	return 0;
 }
 
 int mod_log_sql_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	if (mod_log_sql_end_transaction(ctx))
-		return SCHS_BREAK;
+		return 0;
 
 	ctx->code = -1;
-	return SCHS_OK;
+	return 0;
 }
 
 int mod_log_sql_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	if (mod_log_sql_end_transaction(ctx))
-		return SCHS_BREAK;
+		return 0;
 
 	if (mod_log_sql_new_transaction(ctx))
-		return SCHS_BREAK;
+		return 0;
 
 	ctx->code = -1;
-	return SCHS_OK;
+	return 0;
 }
 
 int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -232,7 +232,7 @@ int mod_log_sql_hdlr_term(struct smtp_server_context *ctx, const char *cmd, cons
 	smtp_priv_unregister(ctx, key);
 	free(priv);
 
-	return SCHS_IGNORE;
+	return 0;
 }
 
 int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -248,20 +248,20 @@ int mod_log_sql_hdlr_body(struct smtp_server_context *ctx, const char *cmd, cons
 	assert_mod_log(priv);
 
 	if (!priv->smtp_transaction_id)
-		return SCHS_BREAK;
+		return 0;
 
 	snprintf(id, sizeof(id), "%lld", (long long)priv->smtp_transaction_id);
 	snprintf(size, sizeof(size), "%ld", ctx->body.size);
 
 	res = _PQexecPrepared(ctx, priv->conn, PSTMT_UPDATE_SIZE, 2, (const char * const *)params, NULL, NULL, 0);
 	if (res == NULL)
-		return SCHS_BREAK;
+		return 0;
 	PQclear(res);
 
 	/* use previous code and message */
 	ctx->code = -1;
 
-	return SCHS_OK;
+	return 0;
 }
 
 /* void __attribute__((constructor)) my_init() */
