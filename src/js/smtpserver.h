@@ -13,6 +13,13 @@ int init_smtp_path_class(JSContext *cx, JSObject *global);
 static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp);
 
+// Header class methods
+int init_header_class(JSContext *cx, JSObject *global);
+static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp);
+static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp);
+static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp);
+static JSBool header_refold(JSContext *cx, unsigned argc, jsval *vp);
+
 // Define C stub functions
 #define DEFINE_HANDLER_STUB(name) \
 	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \

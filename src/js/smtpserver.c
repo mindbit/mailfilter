@@ -101,6 +101,79 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
+static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("header construct\n");
+	return JS_TRUE;
+}
+
+static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("header toString()\n");
+	return JS_TRUE;
+}
+
+static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("header getValue()\n");
+	return JS_TRUE;
+}
+
+static JSBool header_refold(JSContext *cx, unsigned argc, jsval *vp) {
+	js_dump(cx, argc, vp);
+	printf("header refold()\n");
+	return JS_TRUE;
+}
+
+int init_header_class(JSContext *cx, JSObject *global) {
+	static JSClass header_class = {
+	    "Header", 0,
+	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
+	    NULL, NULL, NULL, header_construct, NULL, NULL, NULL, NULL
+	};
+
+	// Create the SmtpPath class
+	JSObject *headerClass = JS_InitClass(cx, global, NULL, &header_class, header_construct, 1, NULL, NULL, NULL, NULL);
+
+	if (!headerClass) {
+		return -1;
+	}
+
+	JSObject *proto = JS_GetObjectPrototype(cx, headerClass);
+
+	// Define name property
+	if (!JS_DefineProperty(cx, proto, "string", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	// Define parts property
+	JSObject *parts = JS_NewArrayObject(cx, 0, NULL);
+
+	if (!parts) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, proto, "parts", OBJECT_TO_JSVAL(parts), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	// Define other methods
+	if (!JS_DefineFunction(cx, proto, "getValue", header_getValue, 0, 0)) {
+		return -1;
+	}
+
+	if (!JS_DefineFunction(cx, proto, "toString", header_toString, 0, 0)) {
+		return -1;
+	}
+
+	if (!JS_DefineFunction(cx, proto, "refold", header_refold, 1, 0)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 {
 	static JSClass smtpserver_class = {
