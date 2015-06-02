@@ -391,9 +391,14 @@ int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
 
 int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
-	ctx->code = 220;
-	ctx->message = strdup("Mindbit Mail Filter");
-	return 0;
+	// Call the JS handler
+	jsval ret = call_js_handler(cmd);
+
+	// Get code and message returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
 }
 
 int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)

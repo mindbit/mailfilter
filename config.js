@@ -96,7 +96,7 @@ smtpServer.messageBody = function () {
 
 smtpServer.smtpInit = function() {
 	return {
-		"code" : 250,
+		"code" : 220,
 		"message" : "init from JS",
 		"disconnect" : false
 	};
