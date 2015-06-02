@@ -47,7 +47,6 @@ int js_get_code(jsval v) {
 	jsval code;
 
 	if (JS_GetProperty(js_context, JSVAL_TO_OBJECT(v), "code", &code)) {
-		printf("cod=%d\n", JSVAL_TO_INT(code));
 		return JSVAL_TO_INT(code);
 	}
 
