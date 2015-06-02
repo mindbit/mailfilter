@@ -510,7 +510,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
 
-	// Get code and message from returned by JS handler
+	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
@@ -535,7 +535,7 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
 
-	// Get code and message from returned by JS handler
+	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
@@ -569,7 +569,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
 
-	// Get code and message from returned by JS handler
+	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
@@ -642,7 +642,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
 
-	// Get code and message from returned by JS handler
+	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
@@ -764,7 +764,7 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
 
-	// Get code and message from returned by JS handler
+	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
 	ctx->message = js_get_message(ret);
 
