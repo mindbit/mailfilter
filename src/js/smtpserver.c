@@ -179,6 +179,7 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 
 	JSFunctionSpec smtp_command_handlers[] = {
 		JS_FS("smtpInit", smtpInit, 0, 0),
+		JS_FS("smtpAuth", smtpAuth, 0, 0),
 		JS_FS("smtpAlou", smtpAlou, 0, 0),
 		JS_FS("smtpAlop", smtpAlop, 0, 0),
 		JS_FS("smtpEhlo", smtpEhlo, 0, 0),
