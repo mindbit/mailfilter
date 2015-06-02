@@ -80,10 +80,10 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
  * Used by a SMTP command to maintain the C preprocess handler
  * and JS stub function
  */
- struct smtp_cmd_hdlr {
-	const char cmd_name[4];
+struct smtp_cmd_hdlr {
+	const char *cmd_name;
 	smtp_cmd_hdlr_t smtp_preprocess_hdlr;
- };
+};
 
 #define DEFINE_SMTP_CMD_HDLR(name) \
 	{ #name , &smtp_hdlr_##name } \
