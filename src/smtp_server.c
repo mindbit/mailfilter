@@ -92,9 +92,10 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 
 	code = 0;
 	message = NULL;
-	hdlr_idx = smtp_get_hdlr_idx(cmd);
+	for (hdlr_idx = 0; hdlr_idx < PREPROCESS_HDLRS_LEN; hdlr_idx++) {
+		if (strcasecmp(smtp_cmd_hdlrs[hdlr_idx].cmd_name, cmd))
+			continue;
 
-	if (hdlr_idx != -1) {
 		/* Get the structure with specific handler */
 		cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
 
@@ -108,7 +109,11 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 			code = 451;
 			message = strdup("Internal server error");
 		}
-	} else {
+
+		break;
+	}
+
+	if (hdlr_idx >= PREPROCESS_HDLRS_LEN) {
 		code = 500;
 		message = strdup("Command not implemented");
 	}
@@ -120,27 +125,6 @@ int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const 
 	}
 
 	return disconnect;
-}
-
-int smtp_get_hdlr_idx(const char *cmd) {
-	int i;
-	char cmd_lower[4];
-
-	if (cmd == NULL) {
-		return -1;
-	}
-
-	for (i = 0; i < 4; i++) {
-		cmd_lower[i] = tolower((unsigned char) cmd[i]);
-	}
-
-	for (i = 0; i < PREPROCESS_HDLRS_LEN; i++) {
-		if (strcmp(smtp_cmd_hdlrs[i].cmd_name, cmd_lower) == 0) {
-			return i;
-		}
-	}
-
-	return -1;
 }
 
 int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
