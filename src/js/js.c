@@ -99,6 +99,22 @@ int js_set_quitAsserted() {
 	return 1;
 }
 
+int add_path_local(jsval *smtpPath, char *local) {
+	jsval mailbox;
+
+	// Get smtpPath.mailbox property
+	if (JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "mailbox", &mailbox) == JS_FALSE) {
+		return -1;
+	}
+
+	// Set smtpPath.local
+	if (!JS_DefineProperty(js_context, JSVAL_TO_OBJECT(mailbox), "local", STRING_TO_JSVAL(JS_InternString(js_context, local)), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
