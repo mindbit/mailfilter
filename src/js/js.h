@@ -39,6 +39,8 @@ int set_envelope_sender(jsval *smtpPath);
 int add_recipient(jsval *smtpPath);
 jsval new_smtp_path_instance();
 
+// Header class methods
+jsval new_header_instance(char *arg);
 
 /* Will be deleted */
 void js_dump_value(JSContext *cx, jsval v);
