@@ -215,7 +215,6 @@ int add_recipient(jsval *smtpPath) {
 jsval new_smtp_path_instance(char *arg) {
 	jsval path, session, smtpPathClass, smtpServer;
 	JSObject *global;
-	JSObject *proto;
 
 	global = JS_GetGlobalForScopeChain(js_context);
 
@@ -234,7 +233,6 @@ jsval new_smtp_path_instance(char *arg) {
 		return JSVAL_NULL;
 	}
 
-	proto = JS_GetObjectPrototype(js_context, JSVAL_TO_OBJECT(smtpPathClass));
 
 	jsval argv = STRING_TO_JSVAL(JS_InternString(js_context, arg));
 
