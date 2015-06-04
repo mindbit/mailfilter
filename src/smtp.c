@@ -61,7 +61,7 @@ out_err:
 	return NULL;
 }
 
-int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
+int smtp_path_parse(jsval *path, const char *arg, char **trailing)
 {
 	enum {
 		S_INIT,
@@ -72,6 +72,7 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 		S_FINAL
 	} state = S_INIT;
 	const char *token = NULL;
+	char *aux = NULL;
 	struct smtp_domain *domain;
 
 	while (*arg != '\0') {
@@ -93,7 +94,6 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 				continue;
 			}
 			if (*arg == '>') {
-				path->mailbox.local = EMPTY_STRING;
 				arg++;
 				state = S_FINAL;
 				continue;
@@ -105,14 +105,8 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 			if (*arg == ',' || *arg == ':') {
 				if (token == arg)
 					return 1;
-				domain = malloc(sizeof(struct smtp_domain));
-				if (domain == NULL)
-					return 2; // FIXME in cadrul apelant trebuie sa dau alt mesaj de eroare decat syntax err
-				if ((domain->domain = strndup(token, arg - token)) == NULL) {
-					free(domain);
-					return 2; // FIXME
-				}
-				list_add_tail(&domain->lh, &path->domains);
+				aux = strndup(token, arg - token);
+				add_domain(path, aux);
 			}
 			if (*arg == ',') {
 				++arg;
@@ -130,8 +124,10 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 			if (*arg == '@') {
 				if (token == arg)
 					return 1;
-				if ((path->mailbox.local = strndup(token, arg - token)) == NULL)
-					return 2; // FIXME
+
+				aux = strndup(token, arg - token);
+				add_path_local(path, aux);
+
 				state = S_MBOX_DOMAIN;
 				token = ++arg;
 				continue;
@@ -142,8 +138,10 @@ int smtp_path_parse(struct smtp_path *path, const char *arg, char **trailing)
 			if (*arg == '>') {
 				if (token == arg)
 					return 1;
-				if ((path->mailbox.domain.domain = strndup(token, arg - token)) == NULL)
-					return 2; // FIXME
+
+				aux = strndup(token, arg - token);
+				add_path_domain(path, aux);
+
 				state = S_FINAL;
 			}
 			arg++;
