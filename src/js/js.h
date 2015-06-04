@@ -31,6 +31,14 @@ int js_get_code(jsval v);
 char* js_get_message(jsval v);
 int js_get_disconnect(jsval v);
 
+// SmtpPath class methods
+int add_path_local(jsval *smtpPath, char *local);
+int add_path_domain(jsval *smtpPath, char *domain);
+int add_domain(jsval *smtpPath, char *domain);
+int set_envelope_sender(jsval *smtpPath);
+int add_recipient(jsval *smtpPath);
+jsval new_smtp_path_instance();
+
 
 /* Will be deleted */
 void js_dump_value(JSContext *cx, jsval v);
