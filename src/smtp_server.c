@@ -524,24 +524,21 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	struct smtp_path *path;
 
-	if (ctx->rpath.mailbox.local == NULL) {
-		ctx->code = 503;
-		ctx->message = strdup("Must specify envelope sender first");
-		return 0;
-	}
-
 	path = malloc(sizeof(struct smtp_path));
 	if (path == NULL)
 		return 0;
 	smtp_path_init(path);
 
-	if (smtp_path_parse_cmd(path, arg, "TO")) {
+	jsval smtpPath = smtp_path_parse_cmd(arg, "TO");
+
+	if (JSVAL_IS_NULL(smtpPath)) {
 		free(path);
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
 		return 0;
 	}
 
+	add_recipient(&smtpPath);
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
 
 	// If no error until now, call the JS handler
