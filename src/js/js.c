@@ -131,6 +131,30 @@ int add_path_domain(jsval *smtpPath, char *domain) {
 	return 0;
 }
 
+int set_envelope_sender(jsval *smtpPath) {
+	jsval session, smtpServer;
+	JSObject *global;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return -1;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return -1;
+	}
+
+	// Set session.envelopeSender
+	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(session), "envelopeSender", smtpPath)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
