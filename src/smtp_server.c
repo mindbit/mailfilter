@@ -500,12 +500,15 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 		return 0;
 	}
 
-	if (smtp_path_parse_cmd(&ctx->rpath, arg, "FROM")) {
-		smtp_path_init(&ctx->rpath);
+	jsval smtpPath = smtp_path_parse_cmd(arg, "FROM");
+
+	if (JSVAL_IS_NULL(smtpPath)) {
 		ctx->code = 501;
 		ctx->message = strdup("Syntax error");
 		return 0;
 	}
+
+	set_envelope_sender(&smtpPath);
 
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler(cmd);
