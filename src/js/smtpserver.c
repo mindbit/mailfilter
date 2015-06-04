@@ -148,7 +148,7 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	    "SmtpPath", 0,
 	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
 	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
-	    NULL, smtpPath_construct, NULL, smtpPath_construct, NULL, NULL, NULL, NULL
+	    NULL, NULL, NULL, smtpPath_construct, NULL, NULL, NULL, NULL
 	};
 
 	JSObject *proto, *domains, *mailbox, *smtpPathClass;
