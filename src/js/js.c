@@ -155,6 +155,41 @@ int set_envelope_sender(jsval *smtpPath) {
 	return 0;
 }
 
+int add_recipient(jsval *smtpPath) {
+	jsval session, smtpServer, recipients;
+	JSObject *global;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+	uint32_t arr_len;
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return -1;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return -1;
+	}
+
+	// Get current recipients
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(session), "recipients", &recipients)) {
+		return -1;
+	}
+
+	// Get number of recipients
+	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(recipients), &arr_len)) {
+		return -1;
+	}
+
+	// Add recipient
+	if (!JS_DefineElement(js_context, JSVAL_TO_OBJECT(recipients), arr_len, *smtpPath, NULL, NULL, 0)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
