@@ -22,6 +22,7 @@
 #define _SMTP_H
 
 #include "list.h"
+#include "js/js.h"
 
 #define SMTP_COMMAND_MAX 512
 
