@@ -273,7 +273,7 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		JSCLASS_NO_OPTIONAL_MEMBERS
 	};
 
-	JSObject *smtpServer;
+	JSObject *smtpServer, *session, *recipients, *headers;
 
 	smtpServer = JS_DefineObject(cx, global, "smtpServer", &smtpserver_class, NULL, 0);
 	if (!smtpServer)
@@ -298,12 +298,36 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		return -1;
 	}
 
-	// Create session object (property of smtpServer)
-	JSObject *session;
 	session = JS_NewObject(cx, NULL, NULL, NULL);
 
-	// Define and set session.quitAsserted = false
+	// Define and set session properties
 	if (JS_DefineProperty(cx, session, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+		return -1;
+	}
+
+	if (JS_DefineProperty(cx, session, "envelopeSender", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+		return -1;
+	}
+
+	// Add domains property
+	recipients = JS_NewArrayObject(cx, 0, NULL);
+
+	if (!recipients) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, session, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	// Add headers property
+	headers = JS_NewArrayObject(cx, 0, NULL);
+
+	if (!headers) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, session, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
 		return -1;
 	}
 
