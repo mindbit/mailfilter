@@ -131,6 +131,28 @@ int add_path_domain(jsval *smtpPath, char *domain) {
 	return 0;
 }
 
+int add_domain(jsval *smtpPath, char *domain) {
+	jsval domains;
+	uint32_t arr_len;
+
+	// Get smtpPath.domains property
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "domains", &domains)) {
+		return -1;
+	}
+
+	// Get number of recipients
+	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(domains), &arr_len)) {
+		return -1;
+	}
+
+	// Add recipient
+	if (!JS_DefineElement(js_context, JSVAL_TO_OBJECT(domains), arr_len, STRING_TO_JSVAL(JS_InternString(js_context, domain)), NULL, NULL, 0)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int set_envelope_sender(jsval *smtpPath) {
 	jsval session, smtpServer;
 	JSObject *global;
