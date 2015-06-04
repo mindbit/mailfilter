@@ -46,16 +46,17 @@ static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
 	smtpPath = JS_THIS(cx, vp);
 
 	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "mailbox", &mailbox)) {
-		return -1;
+		return JS_FALSE;
 	}
 
 	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local)) {
-		return -1;
+		return JS_FALSE;
 	}
 
 	smtp_path_parse(&smtpPath, c_str, &trailing);
 
 	JS_free(cx, c_str);
+
 	return JS_TRUE;
 }
 
