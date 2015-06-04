@@ -61,6 +61,85 @@ static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval path, domain, local, domains, smtpPath, mailbox;
+	jsval rval;
+	int str_len, domains_len, i;
+
+	smtpPath = JS_THIS(cx, vp);
+
+	// Get domains
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "domains", &domains)) {
+		return JS_FALSE;
+	}
+
+	// Get mailbox
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "mailbox", &mailbox)) {
+		return JS_FALSE;
+	}
+
+	// Get mailbox.local
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local)) {
+		return JS_FALSE;
+	}
+	// Get mailbox.domain
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "domain", &domain)) {
+		return JS_FALSE;
+	}
+
+	// +1 for "@"
+	str_len = JS_GetStringLength(JSVAL_TO_STRING(local))
+			+ JS_GetStringLength(JSVAL_TO_STRING(domain))
+			+ 1;
+
+	// Get number of domains
+	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(domains), &domains_len)) {
+		return -1;
+	}
+
+	for (i = 0; i < domains_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &rval)) {
+			return -1;
+		}
+
+		str_len += JS_GetStringLength(JSVAL_TO_STRING(rval));
+	}
+
+	// Add space for "@" * domains_len and "," * (domains_len - 1)
+	str_len += 2 * domains_len - 1;
+
+	// Add space for "<", ">" and ":"
+	str_len += 3;
+
+	char *c_str = malloc(str_len + 1);
+
+	strcpy(c_str, "<");
+
+	for (i = 0; i < domains_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &rval)) {
+			return -1;
+		}
+
+		strcat(c_str, "@");
+		strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
+
+		if (domains_len != 1 && i < domains_len - 1) {
+			strcat(c_str, ",");
+		}
+	}
+
+	if (domains_len > 0) {
+		strcat(c_str, ":");
+	}
+
+	strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(local)));
+
+	strcat(c_str, "@");
+
+	strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(domain)));
+
+	strcat(c_str, ">");
+
+	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
 	return JS_TRUE;
 }
 
