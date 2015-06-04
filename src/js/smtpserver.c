@@ -36,6 +36,26 @@ jsval create_response(JSContext *cx, int code, const char* message, int disconne
 }
 
 static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval path, mailbox, smtpPath, local;
+
+	path = JS_ARGV(cx, vp)[0];
+
+	char *c_str = JS_EncodeString(cx, JSVAL_TO_STRING(path));
+	char *trailing = c_str;
+
+	smtpPath = JS_THIS(cx, vp);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "mailbox", &mailbox)) {
+		return -1;
+	}
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local)) {
+		return -1;
+	}
+
+	smtp_path_parse(&smtpPath, c_str, &trailing);
+
+	JS_free(cx, c_str);
 	return JS_TRUE;
 }
 
