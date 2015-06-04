@@ -68,20 +68,22 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	    "SmtpPath", 0,
 	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
 	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
-	    NULL, NULL, NULL, smtpPath_construct, NULL, NULL, NULL, NULL
+	    NULL, smtpPath_construct, NULL, smtpPath_construct, NULL, NULL, NULL, NULL
 	};
 
+	JSObject *proto, *domains, *mailbox, *smtpPathClass;
+
 	// Create the SmtpPath class
-	JSObject *smtpPathClass = JS_InitClass(cx, global, NULL, &smtpPath_class, smtpPath_construct, 1, NULL, NULL, NULL, NULL);
+	smtpPathClass = JS_InitClass(cx, global, NULL, &smtpPath_class, smtpPath_construct, 1, NULL, NULL, NULL, NULL);
 
 	if (!smtpPathClass) {
 		return -1;
 	}
 
-	JSObject *proto = JS_GetObjectPrototype(cx, smtpPathClass);
+	proto = JS_GetObjectPrototype(cx, smtpPathClass);
 
 	// Add domains property
-	JSObject *domains = JS_NewArrayObject(cx, 0, NULL);
+	domains = JS_NewArrayObject(cx, 0, NULL);
 
 	if (!domains) {
 		return -1;
@@ -92,7 +94,7 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	}
 
 	// Add mailbox property
-	JSObject *mailbox = JS_NewObject(cx, NULL, NULL, NULL);
+	mailbox = JS_NewObject(cx, NULL, NULL, NULL);
 
 	if (!mailbox) {
 		return -1;
