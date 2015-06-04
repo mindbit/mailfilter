@@ -115,6 +115,22 @@ int add_path_local(jsval *smtpPath, char *local) {
 	return 0;
 }
 
+int add_path_domain(jsval *smtpPath, char *domain) {
+	jsval mailbox;
+
+	// Get smtpPath.mailbox property
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "mailbox", &mailbox)) {
+		return -1;
+	}
+
+	// Set smtpPath.local
+	if (!JS_DefineProperty(js_context, JSVAL_TO_OBJECT(mailbox), "domain", STRING_TO_JSVAL(JS_InternString(js_context, domain)), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
