@@ -223,22 +223,24 @@ int init_header_class(JSContext *cx, JSObject *global) {
 	    NULL, NULL, NULL, header_construct, NULL, NULL, NULL, NULL
 	};
 
+	JSObject *headerClass, *proto, *parts;
+
 	// Create the SmtpPath class
-	JSObject *headerClass = JS_InitClass(cx, global, NULL, &header_class, header_construct, 1, NULL, NULL, NULL, NULL);
+	headerClass = JS_InitClass(cx, global, NULL, &header_class, header_construct, 1, NULL, NULL, NULL, NULL);
 
 	if (!headerClass) {
 		return -1;
 	}
 
-	JSObject *proto = JS_GetObjectPrototype(cx, headerClass);
+	proto = JS_GetObjectPrototype(cx, headerClass);
 
 	// Define name property
-	if (!JS_DefineProperty(cx, proto, "string", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+	if (!JS_DefineProperty(cx, proto, "name", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
 		return -1;
 	}
 
 	// Define parts property
-	JSObject *parts = JS_NewArrayObject(cx, 0, NULL);
+	parts = JS_NewArrayObject(cx, 0, NULL);
 
 	if (!parts) {
 		return -1;
@@ -248,7 +250,7 @@ int init_header_class(JSContext *cx, JSObject *global) {
 		return -1;
 	}
 
-	// Define other methods
+	// Add other properties
 	if (!JS_DefineFunction(cx, proto, "getValue", header_getValue, 0, 0)) {
 		return -1;
 	}
