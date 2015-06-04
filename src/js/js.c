@@ -190,6 +190,38 @@ int add_recipient(jsval *smtpPath) {
 	return 0;
 }
 
+jsval new_smtp_path_instance(char *arg) {
+	jsval path, session, smtpPathClass, smtpServer;
+	JSObject *global;
+	JSObject *proto;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return JSVAL_NULL;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return JSVAL_NULL;
+	}
+
+	// Get smtpPathClass
+	if (!JS_GetProperty(js_context, global, "SmtpPath", &smtpPathClass)) {
+		return JSVAL_NULL;
+	}
+
+	proto = JS_GetObjectPrototype(js_context, JSVAL_TO_OBJECT(smtpPathClass));
+
+	jsval argv = STRING_TO_JSVAL(JS_InternString(js_context, arg));
+
+	JS_CallFunctionName(js_context, global, "SmtpPath",
+				1, &argv, &path);
+
+	return path;
+}
+
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
