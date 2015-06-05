@@ -226,8 +226,15 @@ int init_header_class(JSContext *cx, JSObject *global) {
 
 	JSObject *headerClass, *proto, *parts;
 
+	JSFunctionSpec smtp_header_methods[] = {
+		JS_FS("getString", header_toString, 0, 0),
+		JS_FS("getValue", header_getValue, 0, 0),
+		JS_FS("refold", header_refold, 1, 0),
+		JS_FS_END
+	};
+
 	// Create the SmtpPath class
-	headerClass = JS_InitClass(cx, global, NULL, &header_class, header_construct, 1, NULL, NULL, NULL, NULL);
+	headerClass = JS_InitClass(cx, global, NULL, &header_class, header_construct, 1, NULL, NULL, NULL, &smtp_header_methods);
 
 	if (!headerClass) {
 		return -1;
