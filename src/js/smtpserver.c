@@ -197,10 +197,6 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 		return -1;
 	}
 
-	if (!JS_DefineFunction(cx, proto, "toString", smtpPath_toString, 0, 0)) {
-		return -1;
-	}
-
 	return 0;
 }
 
