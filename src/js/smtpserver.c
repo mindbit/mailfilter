@@ -168,7 +168,7 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 		return -1;
 	}
 
-	proto = JS_GetObjectPrototype(cx, smtpPathClass);
+	proto = JS_GetPrototype(smtpPathClass);
 
 	// Add domains property
 	domains = JS_NewArrayObject(cx, 0, NULL);
@@ -243,7 +243,7 @@ int init_header_class(JSContext *cx, JSObject *global) {
 		return -1;
 	}
 
-	proto = JS_GetObjectPrototype(cx, headerClass);
+	proto = JS_GetPrototype(headerClass);
 
 	// Define name property
 	if (!JS_DefineProperty(cx, proto, "name", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
