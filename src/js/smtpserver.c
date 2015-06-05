@@ -140,6 +140,9 @@ static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
 	strcat(c_str, ">");
 
 	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
+
+	free(c_str);
+
 	return JS_TRUE;
 }
 
