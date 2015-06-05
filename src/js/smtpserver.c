@@ -153,8 +153,13 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 
 	JSObject *proto, *domains, *mailbox, *smtpPathClass;
 
+	JSFunctionSpec smtp_path_methods[] = {
+		JS_FS("getString", smtpPath_toString, 0, 0),
+		JS_FS_END
+	};
+
 	// Create the SmtpPath class
-	smtpPathClass = JS_InitClass(cx, global, NULL, &smtpPath_class, smtpPath_construct, 1, NULL, NULL, NULL, NULL);
+	smtpPathClass = JS_InitClass(cx, global, NULL, &smtpPath_class, smtpPath_construct, 1, NULL, NULL, NULL, &smtp_path_methods);
 
 	if (!smtpPathClass) {
 		return -1;
