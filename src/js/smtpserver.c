@@ -263,10 +263,6 @@ int init_header_class(JSContext *cx, JSObject *global) {
 		return -1;
 	}
 
-	if (!JS_DefineFunction(cx, proto, "toString", header_toString, 0, 0)) {
-		return -1;
-	}
-
 	if (!JS_DefineFunction(cx, proto, "refold", header_refold, 1, 0)) {
 		return -1;
 	}
