@@ -36,27 +36,58 @@ jsval create_response(JSContext *cx, int code, const char* message, int disconne
 }
 
 static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval path, mailbox, smtpPath, local;
+	jsval path, smtpPath;
+	JSObject *domains, *mailbox, *smtpPath_obj;
 
 	path = JS_ARGV(cx, vp)[0];
 
 	char *c_str = JS_EncodeString(cx, JSVAL_TO_STRING(path));
 	char *trailing = c_str;
 
-	smtpPath = JS_THIS(cx, vp);
+	smtpPath_obj = JS_NewObject(cx, 0, 0, 0);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "mailbox", &mailbox)) {
-		return JS_FALSE;
+	// Add toString method
+	if (!JS_DefineFunction(cx, smtpPath_obj, "toString", smtpPath_toString, 0, 0)) {
+		return -1;
 	}
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local)) {
-		return JS_FALSE;
+	// Add domains property
+	domains = JS_NewArrayObject(cx, 0, NULL);
+
+	if (!domains) {
+		return -1;
 	}
+
+	if (!JS_DefineProperty(cx, smtpPath_obj, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	// Add mailbox property
+	mailbox = JS_NewObject(cx, NULL, NULL, NULL);
+
+	if (!mailbox) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, mailbox, "local", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, mailbox, "domain", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	if (!JS_DefineProperty(cx, smtpPath_obj, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+		return -1;
+	}
+
+	smtpPath = OBJECT_TO_JSVAL(smtpPath_obj);
 
 	smtp_path_parse(&smtpPath, c_str, &trailing);
 
 	JS_free(cx, c_str);
 
+	JS_SET_RVAL(cx, vp, smtpPath);
 	return JS_TRUE;
 }
 
