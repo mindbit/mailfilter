@@ -292,7 +292,34 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-static JSBool header_refold(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval name, parts_recv, header;
+	JSObject *header_obj
+
+	name = JS_ARGV(cx, vp)[0];
+	parts_recv = JS_ARGV(cx, vp)[1];
+
+	header_obj = JS_NewObject(cx, 0, 0, 0);
+	header = OBJECT_TO_JSVAL(header_obj);
+
+	// Add getStrng method
+	if (!JS_DefineFunction(cx, header_obj, "toString", header_toString, 0, 0)) {
+		return -1;
+	}
+
+	// Add getValue method
+	if (!JS_DefineFunction(cx, header_obj, "getValue", header_getValue, 0, 0)) {
+		return -1;
+	}
+
+	// Add refold method
+	if (!JS_DefineFunction(cx, header_obj, "refold", header_refold, 0, 0)) {
+		return -1;
+	}
+
+	add_header_properties(&header, &name, &parts_recv);
+
+	JS_SET_RVAL(cx, vp, header);
 	return JS_TRUE;
 }
 
