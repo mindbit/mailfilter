@@ -199,20 +199,30 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
+static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
 
-	if (!domains) {
-		return -1;
+	jsval value, rval, hname;
+
+	jsval header = JS_THIS(cx, vp);
+
+	// Get name
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "hname", &hname)) {
+		return JS_FALSE;
 	}
 
-	if (!JS_DefineProperty(cx, proto, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
-		return -1;
+
+	// Get value
+	if (header_getValue(cx, argc, vp)) {
+		value = *vp;
 	}
 
-	// Add mailbox property
-	mailbox = JS_NewObject(cx, NULL, NULL, NULL);
 
-	if (!mailbox) {
-		return -1;
+	rval = STRING_TO_JSVAL(JS_InternString(cx, "test"));
+
+	JS_SET_RVAL(cx, vp, rval);
+	return JS_TRUE;
+}
+
 	}
 
 	if (!JS_DefineProperty(cx, mailbox, "local", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
