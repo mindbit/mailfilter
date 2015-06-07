@@ -199,8 +199,6 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
-	// Add domains property
-	domains = JS_NewArrayObject(cx, 0, NULL);
 
 	if (!domains) {
 		return -1;
