@@ -317,6 +317,26 @@ int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 	return 0;
 }
 
+jsval new_header_instance(char *name) {
+	jsval header, js_name;
+	JSObject *global, *parts_obj;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	js_name = STRING_TO_JSVAL(JS_InternString(js_context, name));
+
+	parts_obj = JS_NewArrayObject(js_context, 0, NULL);
+
+	jsval js_parts = OBJECT_TO_JSVAL(parts_obj);
+
+	jsval argv[2] = {js_name, js_parts};
+
+	JS_CallFunctionName(js_context, global, "Header",
+				2, argv, &header);
+
+	return header;
+}
+
 	JSObject *global;
 	JSObject *proto;
 
