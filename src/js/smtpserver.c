@@ -223,28 +223,68 @@ static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
+static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval parts, rval;
+
+	jsval header = JS_THIS(cx, vp);
+	uint32_t parts_len;
+	int i;
+
+	// Get domains
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts)) {
+		return JS_FALSE;
 	}
 
-	if (!JS_DefineProperty(cx, mailbox, "local", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+	// Get number of parts
+	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(parts), &parts_len)) {
 		return -1;
 	}
 
-	if (!JS_DefineProperty(cx, mailbox, "domain", STRING_TO_JSVAL(JS_InternString(cx, "")), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+	if (parts_len == 0) {
+		JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, "")));
+
+		return JS_TRUE;
+	}
+
+	char *c_str;
+	char *header_len = 0;
+
+	for (i = 0; i < (int) parts_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
+			return -1;
+		}
+		header_len += JS_GetStringLength(JSVAL_TO_STRING(rval));
+	}
+
+	header_len += 3 * ((int) parts_len - 1);
+
+	c_str = malloc(header_len + 1);
+
+	if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), 0, &rval)) {
 		return -1;
 	}
 
-	if (!JS_DefineProperty(cx, proto, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
-		return -1;
+	strcpy(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
+	strcat(c_str, "\r\n");
+
+	for (i = 1; i < (int) parts_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
+			return -1;
+		}
+
+		strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
+
+		if (i < (int) (parts_len - 1)) {
+			strcat(c_str, "\r\n");
+		}
 	}
 
-	return 0;
-}
+	strcat(c_str, "\0");
 
-static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
-	return JS_TRUE;
-}
+	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
 
-static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
+	free(c_str);
+
 	return JS_TRUE;
 }
 
