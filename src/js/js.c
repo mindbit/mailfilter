@@ -242,8 +242,41 @@ jsval new_smtp_path_instance(char *arg) {
 	return path;
 }
 
-jsval new_header_instance(char *arg) {
-	jsval session, smtpPathClass, smtpServer;
+int add_new_header(jsval *header) {
+	jsval session, smtpServer, headers;
+	JSObject *global;
+	int arr_len;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return -1;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return -1;
+	}
+
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(session), "headers", &headers)) {
+		return -1;
+	}
+
+	// Get number of headers
+	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(headers), &arr_len)) {
+		return -1;
+	}
+
+	// Add header
+	if (!JS_SetElement(js_context, JSVAL_TO_OBJECT(headers), arr_len, header)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 	JSObject *global;
 	JSObject *proto;
 
