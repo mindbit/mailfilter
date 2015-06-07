@@ -92,9 +92,9 @@ static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval path, domain, local, domains, smtpPath, mailbox;
-	jsval rval;
-	int str_len, domains_len, i;
+	jsval domain, local, domains, smtpPath, mailbox, rval;
+	int str_len, i;
+	uint32_t domains_len;
 
 	smtpPath = JS_THIS(cx, vp);
 
@@ -127,7 +127,7 @@ static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
 		return -1;
 	}
 
-	for (i = 0; i < domains_len; i++) {
+	for (i = 0; i < (int) domains_len; i++) {
 		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &rval)) {
 			return -1;
 		}
@@ -169,6 +169,8 @@ static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp) {
 	strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(domain)));
 
 	strcat(c_str, ">");
+
+	strcat(c_str, "\0");
 
 	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
 
