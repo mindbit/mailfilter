@@ -636,7 +636,7 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ct
 	int c;
 
 	while ((c = bfd_getc(in)) >= 0) {
-		if (im_hdr_ctx && im_state == IM_OK) {
+		if (im_state == IM_OK) {
 			im_state = im_header_feed(im_hdr_ctx, c);
 			continue;
 		}
