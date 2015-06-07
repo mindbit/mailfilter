@@ -274,6 +274,46 @@ int add_new_header(jsval *header) {
 		return -1;
 	}
 
+int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
+	int i;
+	uint32_t arr_len;
+	JSObject *parts;
+
+	// Set name property
+	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "hname", name)) {
+		return -1;
+	}
+
+	// Get number of parts received
+	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(*parts_recv), &arr_len)) {
+		return -1;
+	}
+
+	// Define parts property
+	parts = JS_NewArrayObject(js_context, 0, NULL);
+
+	if (!parts) {
+		return -1;
+	}
+
+	// Add parts
+	for (i = 0; i < (int) arr_len; i++) {
+		jsval rval;
+
+		if (!JS_GetElement(js_context, JSVAL_TO_OBJECT(*parts_recv), i, &rval)) {
+			return -1;
+		}
+
+		if (!JS_DefineElement(js_context, parts, i, rval, NULL, NULL, 0)) {
+			return -1;
+		}
+	}
+
+	jsval parts_jsval = OBJECT_TO_JSVAL(parts);
+	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts_jsval)) {
+		return -1;
+	}
+
 	return 0;
 }
 
