@@ -121,41 +121,38 @@ int im_header_refold(struct im_header *hdr, int width)
  * Allocate a new header and initialize the name with the contents of the
  * context string buffer.
  */
-static int im_header_alloc_ctx(struct im_header_context *ctx)
+static jsval im_header_alloc_ctx(struct im_header_context *ctx)
 {
-	struct im_header *hdr = im_header_alloc(ctx->sb.s);
-
-	if (hdr == NULL)
-		return -ENOMEM;
-
+	jsval header = new_header_instance(ctx->sb.s);
 	string_buffer_reset(&ctx->sb);
-	list_add_tail(&hdr->lh, ctx->hdrs);
 
-	return 0;
+	return header;
 }
+
 
 /*
  * Set the value of the "current" (currently being parsed) header to the
  * contents of the context string buffer.
  */
-static int im_header_set_value_ctx(struct im_header_context *ctx)
+static int im_header_set_value_ctx(struct im_header_context *ctx, jsval *header)
 {
-	if ((list_entry(ctx->hdrs->prev, struct im_header, lh)->value = strdup(ctx->sb.s)) == NULL)
-		return -ENOMEM;
+	int ret = add_part_to_header(header, ctx->sb.s);
+
+	add_new_header(header);
+
 	string_buffer_reset(&ctx->sb);
-	return 0;
+	return ret;
 }
 
 /*
  * Add a folding to the "current" (currently being parsed) header. The
  * folding position is the current position in the context string buffer.
  */
-static int im_header_add_fold_ctx(struct im_header_context *ctx)
+static int im_header_add_fold_ctx(struct im_header_context *ctx, jsval *header)
 {
-	struct im_header_folding *fold =
-		im_header_add_fold(list_entry(ctx->hdrs->prev, struct im_header, lh), ctx->sb.cur);
-
-	return fold == NULL ? -ENOMEM : 0;
+	add_part_to_header(header, ctx->sb.s);
+	string_buffer_reset(&ctx->sb);
+	return 0;
 }
 
 /*
@@ -163,27 +160,27 @@ static int im_header_add_fold_ctx(struct im_header_context *ctx)
  */
 int im_header_feed(struct im_header_context *ctx, char c)
 {
+	jsval header;
 	static int start = 0;
+
 	switch (ctx->state) {
 	case IM_H_NAME1:
 		if (strchr(tab_space, c)) {
-			if (list_empty(ctx->hdrs))
-				return IM_PARSE_ERROR;
-			if (im_header_add_fold_ctx(ctx))
+			if (im_header_add_fold_ctx(ctx, &header))
 				return IM_OUT_OF_MEM;
 			if (ctx->curr_size++ >= ctx->max_size)
 				return IM_OVERRUN;
-			if (string_buffer_append_char(&ctx->sb, ' '))
+			if (string_buffer_append_char(&ctx->sb, c))
 				return IM_OUT_OF_MEM;
 			ctx->state = IM_H_FOLD;
 			return IM_OK;
 		}
 		if (start && im_header_set_value_ctx(ctx, &header)) {
-		if (!list_empty(ctx->hdrs) && im_header_set_value_ctx(ctx))
 			return IM_OUT_OF_MEM;
 		}
 
 		start = 1;
+
 		if (c == '\n') {
 			return IM_COMPLETE;
 		}
@@ -194,7 +191,8 @@ int im_header_feed(struct im_header_context *ctx, char c)
 		/* Intentionally fall back to IM_H_NAME2 */
 	case IM_H_NAME2:
 		if (c == ':') {
-			if (im_header_alloc_ctx(ctx))
+			header = im_header_alloc_ctx(ctx);
+			if (JSVAL_IS_NULL(header))
 				return IM_OUT_OF_MEM;
 			ctx->state = IM_H_VAL1;
 			return IM_OK;
