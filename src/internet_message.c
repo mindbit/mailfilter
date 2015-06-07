@@ -163,6 +163,7 @@ static int im_header_add_fold_ctx(struct im_header_context *ctx)
  */
 int im_header_feed(struct im_header_context *ctx, char c)
 {
+	static int start = 0;
 	switch (ctx->state) {
 	case IM_H_NAME1:
 		if (strchr(tab_space, c)) {
@@ -177,8 +178,12 @@ int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FOLD;
 			return IM_OK;
 		}
+		if (start && im_header_set_value_ctx(ctx, &header)) {
 		if (!list_empty(ctx->hdrs) && im_header_set_value_ctx(ctx))
 			return IM_OUT_OF_MEM;
+		}
+
+		start = 1;
 		if (c == '\n') {
 			return IM_COMPLETE;
 		}
