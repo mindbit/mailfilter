@@ -337,6 +337,35 @@ jsval new_header_instance(char *name) {
 	return header;
 }
 
+int add_part_to_header(jsval *header, char *c_str) {
+	jsval part, parts, js_name;
+	JSObject *global, *parts_obj;
+
+	int i;
+	uint32_t parts_len;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get parts array
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts)) {
+		return 1;
+	}
+
+	// Get parts count
+	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(parts), &parts_len)) {
+		return 1;
+	}
+
+	part = STRING_TO_JSVAL(JS_InternString(js_context, c_str));
+
+	// Add part to array
+	if (!JS_SetElement(js_context, JSVAL_TO_OBJECT(parts), parts_len, &part)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 	JSObject *global;
 	JSObject *proto;
 
