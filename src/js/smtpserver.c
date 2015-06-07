@@ -402,7 +402,7 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		return -1;
 	}
 
-	if (!JS_DefineProperty(cx, session, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
+	if (!JS_DefineProperty(cx, session, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT)) {
 		return -1;
 	}
 
