@@ -366,38 +366,6 @@ int add_part_to_header(jsval *header, char *c_str) {
 	return 0;
 }
 
-	JSObject *global;
-	JSObject *proto;
-
-	jsval path;
-
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	// Get smtpServer
-	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
-		return JSVAL_NULL;
-	}
-
-	// Get session
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
-		return JSVAL_NULL;
-	}
-
-	// Get smtpPathClass
-	if (!JS_GetProperty(js_context, global, "SmtpPath", &smtpPathClass)) {
-		return JSVAL_NULL;
-	}
-
-	proto = JS_GetObjectPrototype(js_context, JSVAL_TO_OBJECT(smtpPathClass));
-
-	jsval argv = STRING_TO_JSVAL(JS_InternString(js_context, arg));
-
-	JS_CallFunctionName(js_context, global, "SmtpPath",
-				1, &argv, &path);
-
-	return path;
-}
-
 void js_dump_value(JSContext *cx, jsval v)
 {
 	char *c_str;
