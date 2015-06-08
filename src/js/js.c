@@ -245,7 +245,7 @@ jsval new_smtp_path_instance(char *arg) {
 int add_new_header(jsval *header) {
 	jsval session, smtpServer, headers;
 	JSObject *global;
-	int arr_len;
+	uint32_t arr_len;
 
 	global = JS_GetGlobalForScopeChain(js_context);
 
@@ -338,13 +338,8 @@ jsval new_header_instance(char *name) {
 }
 
 int add_part_to_header(jsval *header, char *c_str) {
-	jsval part, parts, js_name;
-	JSObject *global, *parts_obj;
-
-	int i;
+	jsval part, parts;
 	uint32_t parts_len;
-
-	global = JS_GetGlobalForScopeChain(js_context);
 
 	// Get parts array
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts)) {
