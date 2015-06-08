@@ -225,12 +225,16 @@ static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
 
 static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval parts, rval;
+	jsval header;
 
-	jsval header = JS_THIS(cx, vp);
-	uint32_t parts_len;
+	uint32_t parts_len, header_len;
 	int i;
+	char *c_str;
 
-	// Get domains
+	// Get header
+	header = JS_THIS(cx, vp);
+
+	// Get parts
 	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts)) {
 		return JS_FALSE;
 	}
@@ -246,8 +250,7 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 		return JS_TRUE;
 	}
 
-	char *c_str;
-	char *header_len = 0;
+	header_len = 0;
 
 	for (i = 0; i < (int) parts_len; i++) {
 		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
