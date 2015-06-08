@@ -206,7 +206,7 @@ int im_header_feed(struct im_header_context *ctx, char c)
 		return IM_OK;
 	case IM_H_FOLD:
 		if (strchr(tab_space, c)) {
-			// TODO append to original folding
+			string_buffer_append_char(&ctx->sb, c);
 			return IM_OK;
 		}
 		/* Intentionally fall back to IM_H_VAL1 */
