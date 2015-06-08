@@ -294,7 +294,7 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 
 static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval name, parts_recv, header;
-	JSObject *header_obj
+	JSObject *header_obj;
 
 	name = JS_ARGV(cx, vp)[0];
 	parts_recv = JS_ARGV(cx, vp)[1];
