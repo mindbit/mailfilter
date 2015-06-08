@@ -216,8 +216,8 @@ static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
 		value = *vp;
 	}
 
-
-	rval = STRING_TO_JSVAL(JS_InternString(cx, "test"));
+	rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(hname), JS_InternString(cx, ": ")));
+	rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JSVAL_TO_STRING(value)));
 
 	JS_SET_RVAL(cx, vp, rval);
 	return JS_TRUE;
