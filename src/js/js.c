@@ -278,6 +278,8 @@ int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 	int i;
 	uint32_t arr_len;
 	JSObject *parts;
+	JSObject *parts_obj;
+	jsval parts;
 
 	// Set name property
 	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "hname", name)) {
