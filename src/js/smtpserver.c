@@ -368,6 +368,65 @@ int init_header_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
+static JSBool response_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval name, messages, disconnect;
+	jsval response;
+	JSObject *response_obj, *messages_arr;
+
+	name = JS_ARGV(cx, vp)[0];
+	messages = JS_ARGV(cx, vp)[1];
+	disconnect = JS_ARGV(cx, vp)[2];
+
+	response_obj = JS_NewObject(cx, 0, 0, 0);
+
+	// Add name property
+	if (!JS_SetProperty(cx, response_obj, "name", &name)) {
+		return -1;
+	}
+
+	// Add messages property
+	switch(JS_TypeOfValue(cx, messages)) {
+		case JSTYPE_STRING:
+			// Create the messages array property
+			messages_arr = JS_NewArrayObject(cx, 0, NULL);
+
+			if (!messages_arr) {
+				return -1;
+			}
+
+			// Add message to messages array
+			if (!JS_SetElement(cx, messages_arr, 0, &messages)) {
+				return -1;
+			}
+
+			// Copy the messages to the property
+			jsval aux = OBJECT_TO_JSVAL(messages_arr);
+			if (!JS_SetProperty(cx, response_obj, "messages", &aux)) {
+				return -1;
+			}
+
+			break;
+		case JSTYPE_OBJECT:
+			// Copy the messages to the property
+			if (!JS_SetProperty(cx, response_obj, "messages", &messages)) {
+				return -1;
+			}
+			break;
+		default:
+			return JS_FALSE;
+	}
+
+	// Add disconnect property
+	if (!JS_SetProperty(cx, response_obj, "disconnect", &disconnect)) {
+		return -1;
+	}
+
+	response = OBJECT_TO_JSVAL(response_obj);
+
+	JS_SET_RVAL(cx, vp, response);
+	return JS_TRUE;
+}
+
 int init_smtp_response_class(JSContext *cx, JSObject *global) {
 	static JSClass smtp_response_class = {
 	    "SmtpResponse", 0,
