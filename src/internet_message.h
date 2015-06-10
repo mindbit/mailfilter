@@ -62,6 +62,7 @@ struct im_header_context {
 		IM_H_FOLD,
 		IM_H_FIN
 	} state;
+	int start;
 	struct list_head *hdrs;
 	size_t max_size, curr_size;
 	struct string_buffer sb;
@@ -69,6 +70,7 @@ struct im_header_context {
 
 #define IM_HEADER_CONTEXT_INITIALIZER {\
 	.state = IM_H_NAME1,\
+	.start = 0,\
 	.hdrs = NULL,\
 	.max_size = 0,\
 	.curr_size = 0,\
