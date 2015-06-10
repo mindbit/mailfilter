@@ -172,6 +172,7 @@ void string_remove_whitespace(char *str)
 	}
 	memset(p, 0, curr - p);
 }
+
 void string_remove_beginning_whitespace(char *str)
 {
 	char *p, *curr;
