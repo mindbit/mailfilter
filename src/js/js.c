@@ -291,27 +291,37 @@ int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 
 	// Define parts property
 	parts = JS_NewArrayObject(js_context, 0, NULL);
+	// Add parts property
+	switch(JS_TypeOfValue(js_context, *parts_recv)) {
+		case JSTYPE_STRING:
+			// Create the messages array property
+			parts_obj = JS_NewArrayObject(js_context, 0, NULL);
 
-	if (!parts) {
-		return -1;
-	}
+			if (!parts_obj) {
+				return -1;
+			}
 
-	// Add parts
-	for (i = 0; i < (int) arr_len; i++) {
-		jsval rval;
+			// Add message to messages array
+			if (!JS_SetElement(js_context, parts_obj, 0, parts_recv)) {
+				return -1;
+			}
 
-		if (!JS_GetElement(js_context, JSVAL_TO_OBJECT(*parts_recv), i, &rval)) {
-			return -1;
-		}
+			// Copy the messages to the property
+			parts = OBJECT_TO_JSVAL(parts_obj);
 
-		if (!JS_DefineElement(js_context, parts, i, rval, NULL, NULL, 0)) {
-			return -1;
-		}
-	}
+			if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts)) {
+				return -1;
+			}
 
-	jsval parts_jsval = OBJECT_TO_JSVAL(parts);
-	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts_jsval)) {
-		return -1;
+			break;
+		case JSTYPE_OBJECT:
+			// Copy the messages to the property
+			if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", parts_recv)) {
+				return -1;
+			}
+			break;
+		default:
+			return JS_FALSE;
 	}
 
 	return 0;
