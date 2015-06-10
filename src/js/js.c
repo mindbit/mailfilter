@@ -277,7 +277,6 @@ int add_new_header(jsval *header) {
 int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 	int i;
 	uint32_t arr_len;
-	JSObject *parts;
 	JSObject *parts_obj;
 	jsval parts;
 
