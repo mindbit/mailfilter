@@ -317,10 +317,6 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
-	return JS_TRUE;
-}
-
 static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval name, parts_recv, header;
 	JSObject *header_obj;
