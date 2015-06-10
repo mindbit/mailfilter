@@ -1,4 +1,7 @@
 #include "smtpserver.h"
+#include "../smtp.h"
+#include "js.h"
+#include "string_tools.h"
 
 DEFINE_HANDLER_STUB(Init);
 DEFINE_HANDLER_STUB(Auth);
