@@ -138,5 +138,6 @@ int string_kv_split(char *str, char delim, struct list_head *lh);
  * a copy of the original string if he needs to preserve the original
  */
 void string_remove_whitespace(char *str);
+void string_remove_beginning_whitespace(char *str);
 
 #endif
