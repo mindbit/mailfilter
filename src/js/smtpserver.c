@@ -325,7 +325,6 @@ static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
 	parts_recv = JS_ARGV(cx, vp)[1];
 
 	header_obj = JS_NewObject(cx, 0, 0, 0);
-	header = OBJECT_TO_JSVAL(header_obj);
 
 	// Add getStrng method
 	if (!JS_DefineFunction(cx, header_obj, "toString", header_toString, 0, 0)) {
@@ -342,6 +341,7 @@ static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
 		return -1;
 	}
 
+	header = OBJECT_TO_JSVAL(header_obj);
 	add_header_properties(&header, &name, &parts_recv);
 
 	JS_SET_RVAL(cx, vp, header);
