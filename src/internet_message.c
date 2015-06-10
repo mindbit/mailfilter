@@ -174,9 +174,11 @@ int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FOLD;
 			return IM_OK;
 		}
+		if (ctx->start && im_header_set_value_ctx(ctx, &header)) {
 			return IM_OUT_OF_MEM;
 		}
 
+		ctx->start = 1;
 
 		if (c == '\n') {
 			return IM_COMPLETE;
