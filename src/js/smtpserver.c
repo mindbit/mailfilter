@@ -200,24 +200,39 @@ int init_smtp_path_class(JSContext *cx, JSObject *global) {
 }
 
 static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
-
-	jsval value, rval, hname;
+	jsval value, rval, hname, parts, part;
+	uint32_t parts_len;
+	int i;
 
 	jsval header = JS_THIS(cx, vp);
-
 	// Get name
 	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "hname", &hname)) {
 		return JS_FALSE;
 	}
 
+	// Get parts
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts)) {
+		return JS_FALSE;
+	}
 
-	// Get value
-	if (header_getValue(cx, argc, vp)) {
-		value = *vp;
+	// Get number of parts
+	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(parts), &parts_len)) {
+		return -1;
 	}
 
 	rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(hname), JS_InternString(cx, ": ")));
-	rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JSVAL_TO_STRING(value)));
+
+	for (i = 0; i < (int) parts_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &part)) {
+			return -1;
+		}
+
+		rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JSVAL_TO_STRING(part)));
+
+		if (i < (int) parts_len - 1) {
+			rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JS_InternString(cx, "\r\n")));
+		}
+	}
 
 	JS_SET_RVAL(cx, vp, rval);
 	return JS_TRUE;
