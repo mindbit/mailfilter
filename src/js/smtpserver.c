@@ -244,7 +244,7 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 
 	uint32_t parts_len, header_len;
 	int i;
-	char *c_str;
+	char *c_str, *header_no_wsp;
 
 	// Get header
 	header = JS_THIS(cx, vp);
@@ -282,18 +282,29 @@ static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 		return -1;
 	}
 
-	strcpy(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
-	strcat(c_str, "\r\n");
+	// Remove beginning whitespace chars
+	header_no_wsp = JS_EncodeString(cx, JSVAL_TO_STRING(rval));
+	string_remove_beginning_whitespace(header_no_wsp);
+
+	strcpy(c_str, header_no_wsp);
+	strcat(c_str, " ");
+
+	free(header_no_wsp);
 
 	for (i = 1; i < (int) parts_len; i++) {
 		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
 			return -1;
 		}
 
-		strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
+		// Remove beginning whitespace chars
+		header_no_wsp = JS_EncodeString(cx, JSVAL_TO_STRING(rval));
+		string_remove_beginning_whitespace(header_no_wsp);
+
+		strcat(c_str, header_no_wsp);
+		free(header_no_wsp);
 
 		if (i < (int) (parts_len - 1)) {
-			strcat(c_str, "\r\n");
+			strcat(c_str, " ");
 		}
 	}
 
