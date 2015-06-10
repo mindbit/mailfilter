@@ -368,6 +368,26 @@ int init_header_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
+int init_smtp_response_class(JSContext *cx, JSObject *global) {
+	static JSClass smtp_response_class = {
+	    "SmtpResponse", 0,
+	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
+	    NULL, NULL, NULL, response_construct, NULL, NULL, NULL, NULL
+	};
+
+	JSObject *smtpResponseClass;
+
+	// Create the SmtpPath class
+	smtpResponseClass = JS_InitClass(cx, global, NULL, &smtp_response_class, response_construct, 1, NULL, NULL, NULL, NULL);
+
+	if (!smtpResponseClass) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 {
 	static JSClass smtpserver_class = {
