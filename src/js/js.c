@@ -284,13 +284,6 @@ int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 		return -1;
 	}
 
-	// Get number of parts received
-	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(*parts_recv), &arr_len)) {
-		return -1;
-	}
-
-	// Define parts property
-	parts = JS_NewArrayObject(js_context, 0, NULL);
 	// Add parts property
 	switch(JS_TypeOfValue(js_context, *parts_recv)) {
 		case JSTYPE_STRING:
