@@ -922,6 +922,10 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		return -1;
 	}
 
+	if (init_smtp_client_class(cx, global)) {
+		return -1;
+	}
+
 	return 0;
 }
 
