@@ -3,6 +3,13 @@
 #include "js.h"
 #include "string_tools.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+#include <sys/socket.h>
+#include <sys/types.h>
+
 DEFINE_HANDLER_STUB(Init);
 DEFINE_HANDLER_STUB(Auth);
 DEFINE_HANDLER_STUB(Alou);
@@ -448,6 +455,43 @@ int init_smtp_response_class(JSContext *cx, JSObject *global) {
 	}
 
 	return 0;
+}
+
+static int connect_to_address(char *ip, char *port)
+{
+	int sockfd, status, portno;
+	struct sockaddr_in serv_addr;
+	struct hostent *server;
+
+	portno = atoi(port);
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (sockfd < 0) {
+		// throw exc
+		printf("sock failed\n");
+		return -1;
+	}
+
+	server = gethostbyname(ip);
+
+	if (!server) {
+		// throw exc
+		printf("server failed\n");
+	}
+
+	bzero((char*) &serv_addr, sizeof(serv_addr));
+
+	serv_addr.sin_family = AF_INET;
+
+	bcopy((char *) server->h_addr, (char *) &serv_addr.sin_addr.s_addr, server->h_length);
+	serv_addr.sin_port = htons(portno);
+
+	if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+		// throw new error
+		printf("connect failed\n");
+	}
+
+	return sockfd;
 }
 
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
