@@ -421,6 +421,10 @@ static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp) {
 
 	header_obj = JS_NewObject(cx, 0, 0, 0);
 
+	if (!header_obj) {
+		return JS_FALSE;
+	}
+
 	// Add getStrng method
 	if (!JS_DefineFunction(cx, header_obj, "toString", header_toString, 0, 0)) {
 		return -1;
