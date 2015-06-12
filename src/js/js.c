@@ -128,6 +128,30 @@ int js_set_quitAsserted() {
 	return 1;
 }
 
+int add_path_to_body(char *c_path) {
+	jsval smtpServer, session, path;
+	JSObject *global;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	// Get smtpServer
+	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
+		return -1;
+	}
+	// Get session
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+		return -1;
+	}
+
+	// Add path property
+	path = STRING_TO_JSVAL(JS_InternString(js_context, c_path));
+	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(session), "pathToBody", &path)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int add_path_local(jsval *smtpPath, char *local) {
 	jsval mailbox;
 
