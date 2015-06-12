@@ -468,18 +468,22 @@ int init_header_class(JSContext *cx, JSObject *global) {
 }
 
 static JSBool response_construct(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval name, messages, disconnect;
+	jsval code, messages, disconnect;
 	jsval response;
 	JSObject *response_obj, *messages_arr;
 
-	name = JS_ARGV(cx, vp)[0];
+	code = JS_ARGV(cx, vp)[0];
 	messages = JS_ARGV(cx, vp)[1];
 	disconnect = JS_ARGV(cx, vp)[2];
 
 	response_obj = JS_NewObject(cx, 0, 0, 0);
 
-	// Add name property
-	if (!JS_SetProperty(cx, response_obj, "name", &name)) {
+	if (!response_obj) {
+		return JS_FALSE;
+	}
+
+	// Add code property
+	if (!JS_SetProperty(cx, response_obj, "code", &code)) {
 		return -1;
 	}
 
