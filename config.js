@@ -94,6 +94,11 @@ smtpServer.messageBody = function () {
 };
 */
 
+function relayCmd(cmd) {
+	smtpClient.sendCommand(cmd);
+	return smtpClient.readResponse();
+}
+
 smtpServer.smtpInit = function() {
 	return {
 		"code" : 220,
