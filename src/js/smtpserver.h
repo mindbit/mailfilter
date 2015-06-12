@@ -15,6 +15,7 @@ static JSBool smtpPath_toString(JSContext *cx, unsigned argc, jsval *vp);
 
 // Header class methods
 int init_header_class(JSContext *cx, JSObject *global);
+int delete_header_parts(JSContext *cx, jsval *header);
 static JSBool header_construct(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp);
@@ -28,6 +29,10 @@ static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp
 static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp);
 static JSBool smtpClient_connect(JSContext *cx, unsigned argc, jsval *vp);
+
+// SmtpResponse class methods
+int init_smtp_response_class(JSContext *cx, JSObject *global);
+static JSBool response_construct(JSContext *cx, unsigned argc, jsval *vp);
 
 // Define C stub functions
 #define DEFINE_HANDLER_STUB(name) \
