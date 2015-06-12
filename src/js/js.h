@@ -28,6 +28,7 @@ jsval call_js_handler(const char *cmd);
 
 // Get response properties
 int js_get_code(jsval v);
+char *js_get_message(jsval v);
 char* js_get_message(jsval v);
 int js_get_disconnect(jsval v);
 
