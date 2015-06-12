@@ -100,11 +100,9 @@ function relayCmd(cmd) {
 }
 
 smtpServer.smtpInit = function() {
-	return {
-		"code" : 220,
-		"message" : "init from JS",
-		"disconnect" : false
-	};
+	smtpClient = new SmtpClient("127.0.0.1", "25");
+	smtpClient.connect();
+	return smtpClient.readResponse();
 }
 
 smtpServer.smtpAuth = function() {
@@ -132,73 +130,46 @@ smtpServer.smtpAlop = function() {
 }
 
 smtpServer.smtpEhlo = function() {
-	return {
-		"code" : 250,
-		"message" : "ehlo from JS",
-		"disconnect" : false
-	};
+	return relayCmd("EHLO");
+}
+
+smtpServer.smtpHelo = function() {
+	return relayCmd("HELO");
 }
 
 smtpServer.smtpData = function() {
-	return {
-		"code" : 250,
-		"message" : "data from JS",
-		"disconnect" : false
-	};
+	smtpClient.sendCommand("DATA");
+	var dataResponse = smtpClient.readResponse();
+
+	if (dataResponse.code != 354) {
+		// throw exceptie
+	}
+
+	smtpClient.sendMessageBody(smtpServer.session.headers, smtpServer.session.pathToBody);
+	return smtpClient.readResponse();
 }
 
 smtpServer.smtpMail = function() {
-	return {
-		"code" : 250,
-		"message" : "mail from JS",
-		"disconnect" : false
-	};
+	smtpClient.sendCommand("MAIL", "FROM: " + smtpServer.session.envelopeSender.toString());
+	return smtpClient.readResponse();
 }
 
-//smtpServer.smtpRcpt = function() {
-//	return {
-//		"code" : 250,
-//		"message" : "rcpt from JS",
-//		"disconnect" : false
-//	};
-//}
+smtpServer.smtpRcpt = function() {
+	var lastID = smtpServer.session.recipients.length - 1;
+	var lastRecipient = smtpServer.session.recipients[lastID];
+	smtpClient.sendCommand("RCPT", "TO: " + lastRecipient.toString());
+	return smtpClient.readResponse();
+}
 
 smtpServer.smtpRset = function () {
-	return {
-		"code" : 250,
-		"message" : "rset from JS",
-		"disconnect" : false
-	};
-	//return this.client.smtpRset();
+	return relayCmd("RSET");
 };
 
 smtpServer.smtpQuit = function () {
-	return {
-		"code" : 250,
-		"message" : "quit from JS",
-		"disconnect" : false
-	};
-	//return this.client.smtpRset();
+	return relayCmd("QUIT");
 };
 
 smtpServer.smtpClnp = function () {
-	return {
-		"code" : 250,
-		"message" : "cleanup from JS",
-		"disconnect" : false
-	};
-	//return this.client.smtpRset();
-};
-
-smtpServer.smtpBody = function() {
-	return {
-		"code" : 250,
-		"message" : "body from JS",
-		"disconnect" : false
-	};
-}
-
-smtpServer.cleanup = function () {
-	this.client.close();
+	relayCmd("CLNP");
 };
 
