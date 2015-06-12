@@ -368,7 +368,7 @@ int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 			}
 			break;
 		default:
-			return JS_FALSE;
+			return -1;
 	}
 
 	return 0;
