@@ -568,6 +568,11 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		ctx->body.path[0] = '\0';
 		return 0;
 	}
+
+	if (add_path_to_body(ctx->body.path)) {
+		return 0;
+	}
+
 	if ((ctx->body.stream = bfd_alloc(fd)) == NULL) {
 		close(fd);
 		unlink(ctx->body.path);
