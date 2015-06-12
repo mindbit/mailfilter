@@ -265,6 +265,74 @@ int delete_header_parts(JSContext *cx, jsval *header) {
 	return 0;
 }
 
+static JSBool header_refold(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval hname, value, parts, rval, header;
+	int width, len;
+	char *c_name, *c_value, *p1, *p2, *p3, *c_part;
+
+	width = JSVAL_TO_INT(JS_ARGV(cx, vp)[0]);
+	header = JS_THIS(cx, vp);
+
+	// Get name
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "hname", &hname)) {
+		return JS_FALSE;
+	}
+
+	// Get value
+	if (header_getValue(cx, argc, vp)) {
+		value = *vp;
+	}
+
+	// Delete header parts
+	if (delete_header_parts(cx, &header)) {
+		return JS_FALSE;
+	}
+
+	c_name = JS_EncodeString(cx, JSVAL_TO_STRING(hname));
+	c_value = JS_EncodeString(cx, JSVAL_TO_STRING(value));
+
+	p1 = c_value;
+	p2 = p1;
+	p3 = c_value;
+	len = 0;
+	c_part;
+
+	do {
+		int count = 0;
+		do {
+			len += p2 - p1;
+			p1 = p2;
+
+			if ((p2 = strchr(p1, ' ')) == NULL) {
+				c_part = malloc(strlen(c_value) + 2);
+				c_part[0] = '\t';
+				strncpy(c_part + 1, c_value, strlen(c_value) + 1);
+				add_part_to_header(&header, c_part);
+				free(c_part);
+				free(p3);
+				return JS_TRUE;
+			}
+			p2++;
+			count++;
+		} while (len + p2 - p1 < width);
+
+		// Add tab, then header, then null terminator
+		c_part = malloc(len + 1);
+		c_part[0] = '\t';
+		strncpy(c_part + 1, c_value, len - 1);
+		c_part[len] = '\0';
+
+		// Add this new part to header.parts
+		add_part_to_header(&header, c_part);
+		c_value += len;
+		free(c_part);
+
+		len = 0;
+	} while (1);
+
+	return JS_TRUE;
+}
+
 static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval parts, rval;
 	jsval header;
