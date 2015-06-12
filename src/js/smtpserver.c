@@ -583,6 +583,257 @@ static int connect_to_address(char *ip, char *port)
 	return sockfd;
 }
 
+static JSBool smtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval host, port, client, connection;
+	char *c_host, *c_port;
+	int sockfd;
+
+	client = JS_THIS(cx, vp);
+
+	// Get host
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "host", &host)) {
+		return JS_FALSE;
+	}
+
+	// Get port
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "port", &port)) {
+		return JS_FALSE;
+	}
+
+	c_host = JS_EncodeString(cx, JSVAL_TO_STRING(host));
+	c_port = JS_EncodeString(cx, JSVAL_TO_STRING(port));
+
+	sockfd = connect_to_address(c_host, c_port);
+	connection = INT_TO_JSVAL(sockfd);
+
+	free(c_host);
+	free(c_port);
+
+	if (!JS_SetProperty(cx, JSVAL_TO_OBJECT(client), "connection", &connection)) {
+		return JS_FALSE;
+	}
+
+	return JS_TRUE;
+}
+
+static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval smtpClient, connection, content, response;
+	jsval js_code, js_messages, js_disconnect;
+	JSObject *messages_obj, *global;
+
+	int sockfd, code, lines_count;
+	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
+	ssize_t sz;
+
+	global = JS_GetGlobalForScopeChain(cx);
+	smtpClient = JS_THIS(cx, vp);
+	messages_obj = JS_NewArrayObject(cx, 0, 0);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+		return JS_FALSE;
+	}
+
+	sockfd = JSVAL_TO_INT(connection);
+
+	lines_count = 0;
+	do {
+		sz = 0;
+		do {
+			if (read(sockfd, &buf[sz++], 1) < 0)
+				return JS_FALSE;
+		} while (buf[sz - 1] != '\n');
+		buf[sz] = '\0';
+
+		if (sz < 4)
+			return JS_FALSE;
+
+		sep = buf[3];
+		buf[3] = '\0';
+		code = strtol(buf, &p, 10);
+
+		if ((sep != ' ' && sep != '-') || *p != '\0')
+			return JS_FALSE;
+		if (code < 100 || code > 999)
+			return JS_FALSE;
+
+		if (buf[sz - 1] == '\n')
+			buf[--sz] = '\0';
+		if (buf[sz - 1] == '\r')
+			buf[--sz] = '\0';
+
+		//add response
+		content = STRING_TO_JSVAL(JS_InternString(cx, buf + 4));
+		if (!JS_SetElement(cx, messages_obj, lines_count++, &content)) {
+			return -1;
+		}
+	} while (sep == '-');
+
+	js_code = INT_TO_JSVAL(code);
+	js_messages = OBJECT_TO_JSVAL(messages_obj);
+	js_disconnect = JSVAL_FALSE;
+	jsval argv[] = {js_code, js_messages, js_disconnect};
+
+	JS_CallFunctionName(cx, global, "SmtpResponse",
+				3, argv, &response);
+
+	JS_SET_RVAL(cx, vp, response);
+	return JS_TRUE;
+}
+
+static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval command, args, smtpClient, connection;
+	char *c_str;
+	int sockfd, n;
+
+	command = JS_ARGV(cx, vp)[0];
+
+	if (argc > 1) {
+		args = JS_ARGV(cx, vp)[1];
+	} else {
+		args = JSVAL_NULL;
+	}
+
+	smtpClient = JS_THIS(cx, vp);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+		return JS_FALSE;
+	}
+
+	sockfd = JSVAL_TO_INT(connection);
+
+	if (!JSVAL_IS_NULL(args)) {
+		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, " ")));
+		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JSVAL_TO_STRING(args)));
+	}
+	command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, "\r\n")));
+
+	c_str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
+
+	n = write(sockfd, c_str, strlen(c_str));
+
+	if (n < 0) {
+		printf("write failed\n");
+		return JS_FALSE;
+	}
+
+	js_dump_value(cx, command);
+
+	return JS_TRUE;
+}
+
+static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
+	jsval headers, path, smtpClient, connection, rval;
+	char *c_path;
+	int sockfd, n, i;
+	uint32_t headers_len;
+	FILE *fp;
+
+	headers = JS_ARGV(cx, vp)[0];
+	path = JS_ARGV(cx, vp)[1];
+	smtpClient = JS_THIS(cx, vp);
+
+	// Get number of headers
+	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(headers), &headers_len)) {
+		return JS_FALSE;
+	}
+
+	// Send headers
+	for (i = 0; i < (int) headers_len; i++) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(headers), i, &rval)) {
+			return -1;
+		}
+
+		jsval rvalToString;
+		JS_CallFunctionName(cx, JSVAL_TO_OBJECT(rval), "toString",
+				0, NULL, &rvalToString);
+
+		js_dump_value(cx, rvalToString);
+	}
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+		return JS_FALSE;
+	}
+
+	c_path = JS_EncodeString(cx, JSVAL_TO_STRING(path));
+	fp = fopen(c_path, "r");
+
+	sockfd = JSVAL_TO_INT(connection);
+
+	// TODO: read file and send it to sockfd
+	write(sockfd, "\r\n.\r\n", 5);
+
+	return JS_TRUE;
+}
+
+static JSBool smtp_client_construct(JSContext *cx, unsigned argc, jsval *vp) {
+	JSObject *client_obj;
+	jsval host, port, client;
+
+	host = JS_ARGV(cx, vp)[0];
+	port = JS_ARGV(cx, vp)[1];
+
+	client_obj = JS_NewObject(cx, 0, 0, 0);
+
+	if (!client_obj) {
+		return JS_FALSE;
+	}
+
+	// Add host
+	if (!JS_SetProperty(cx, client_obj, "host", &host)) {
+		return -1;
+	}
+
+	// Add port
+	if (!JS_SetProperty(cx, client_obj, "port", &port)) {
+		return -1;
+	}
+
+	// Add connect method
+	if (!JS_DefineFunction(cx, client_obj, "connect", smtpClient_connect, 2, 0)) {
+		return -1;
+	}
+
+	// Add readResponse method
+	if (!JS_DefineFunction(cx, client_obj, "readResponse", smtpClient_readResponse, 0, 0)) {
+		return -1;
+	}
+
+	// Add sendCommand method
+	if (!JS_DefineFunction(cx, client_obj, "sendCommand", smtpClient_sendCommand, 2, 0)) {
+		return -1;
+	}
+
+	// Add sendMessageBody method
+	if (!JS_DefineFunction(cx, client_obj, "sendMessageBody", smtpClient_sendMessageBody, 2, 0)) {
+		return -1;
+	}
+
+	client = OBJECT_TO_JSVAL(client_obj);
+
+	JS_SET_RVAL(cx, vp, client);
+	return JS_TRUE;
+}
+
+int init_smtp_client_class(JSContext *cx, JSObject *global) {
+	static JSClass smtp_client_class = {
+	    "SmtpClient", 0,
+	    JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
+	    NULL, NULL, NULL, smtp_client_construct, NULL, NULL, NULL, NULL
+	};
+
+	JSObject *smtpResponseClass;
+
+	// Create the SmtpPath class
+	smtpResponseClass = JS_InitClass(cx, global, NULL, &smtp_client_class, smtp_client_construct, 1, NULL, NULL, NULL, NULL);
+
+	if (!smtpResponseClass) {
+		return -1;
+	}
+
+	return 0;
+}
+
 int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 {
 	static JSClass smtpserver_class = {
