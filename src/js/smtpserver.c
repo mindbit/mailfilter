@@ -248,6 +248,23 @@ static JSBool header_toString(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
+int delete_header_parts(JSContext *cx, jsval *header) {
+	jsval parts;
+	int i;
+
+	// Get parts array
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(*header), "parts", &parts)) {
+		return 1;
+	}
+
+	// Get parts count
+	if (!JS_SetArrayLength(cx, JSVAL_TO_OBJECT(parts), 0)) {
+		return 1;
+	}
+
+	return 0;
+}
+
 static JSBool header_getValue(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval parts, rval;
 	jsval header;
