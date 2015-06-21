@@ -22,6 +22,18 @@ static void reportError(JSContext *js_context, const char *message, JSErrorRepor
 			(unsigned int) report->lineno + 1, message);
 }
 
+jsval js_create_response(jsval *argv) {
+	jsval response;
+	JSObject *global;
+
+	global = JS_GetGlobalForScopeChain(js_context);
+
+	JS_CallFunctionName(js_context, global, "SmtpResponse",
+				3, argv, &response);
+
+	return response;
+}
+
 int js_get_code(jsval v) {
 	jsval code;
 
