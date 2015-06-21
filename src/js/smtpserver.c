@@ -576,8 +576,8 @@ static int connect_to_address(char *ip, char *port)
 	serv_addr.sin_port = htons(portno);
 
 	if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-		// throw new error
-		printf("connect failed\n");
+		JS_ReportError(js_context, "Cannot connect to %s:%s!", ip, port);
+		return -1;
 	}
 
 	return sockfd;
