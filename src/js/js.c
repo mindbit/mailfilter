@@ -22,27 +22,6 @@ static void reportError(JSContext *js_context, const char *message, JSErrorRepor
 			(unsigned int) report->lineno + 1, message);
 }
 
-// debugging purpose
-// to be deleted
-void js_dump_response(JSContext *cx, jsval v) {
-	jsval rval;
-	
-	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "code", &rval)) {
-		printf("code = ");
-		js_dump_value(cx, rval);
-	}
-
-	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "message", &rval)) {
-		printf("message = ");
-		js_dump_value(cx, rval);
-	}
-	
-	if (JS_GetProperty(cx, JSVAL_TO_OBJECT(v), "disconnect", &rval)) {
-		printf("disconnect = ");
-		js_dump_value(cx, rval);
-	}
-}
-
 int js_get_code(jsval v) {
 	jsval code;
 
