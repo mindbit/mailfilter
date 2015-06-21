@@ -119,24 +119,21 @@ int js_set_quitAsserted() {
 	return 1;
 }
 
-int add_path_to_body(char *c_path) {
-	jsval smtpServer, session, path;
+int add_body_stream(bfd_t *body_stream) {
+	jsval smtpClient, bodyStream;
 	JSObject *global;
 
 	global = JS_GetGlobalForScopeChain(js_context);
 
-	// Get smtpServer
-	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
-		return -1;
-	}
-	// Get session
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
+	// Get smtpClient
+	if (!JS_GetProperty(js_context, global, "smtpClient", &smtpClient)) {
 		return -1;
 	}
 
+	bodyStream = PRIVATE_TO_JSVAL(body_stream);
+
 	// Add path property
-	path = STRING_TO_JSVAL(JS_InternString(js_context, c_path));
-	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(session), "pathToBody", &path)) {
+	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(smtpClient), "bodyStream", &bodyStream)) {
 		return -1;
 	}
 

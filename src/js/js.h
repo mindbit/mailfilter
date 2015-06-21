@@ -2,6 +2,7 @@
 #define _JS_H
 
 #include <jsapi.h>
+#include "../bfd.h"
 
 #ifdef DEBUG
 
@@ -41,7 +42,7 @@ int add_recipient(jsval *smtpPath);
 jsval new_smtp_path_instance();
 
 // Header class methods
-int add_path_to_body(char *c_path);
+int add_body_stream(bfd_t *body_stream);
 int add_header_properties(jsval *header, jsval *name, jsval *parts_recv);
 int add_part_to_header(jsval *header, char *c_str);
 jsval new_header_instance(char *name);
