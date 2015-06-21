@@ -23,26 +23,22 @@ DEFINE_HANDLER_STUB(Body);
 DEFINE_HANDLER_STUB(Clnp);
 
 jsval create_response(JSContext *cx, int code, const char* message, int disconnect) { 
-	jsval rmessage;
-	JSObject *obj;
-	
-	obj = JS_NewObject(cx, NULL, NULL, NULL);
-	
+	jsval rmessage, response, js_code, js_message, js_disconnect;
+	JSObject *messages_arr;
+
 	if (message != NULL) {
-		rmessage = STRING_TO_JSVAL(JS_InternString(cx, message));
+		js_message = STRING_TO_JSVAL(JS_InternString(cx, message));
 	} else {
-		// TODO
-		// define message property with default value for current code
-		rmessage = STRING_TO_JSVAL(JS_InternString(cx, "default err message"));
+		js_message = STRING_TO_JSVAL(JS_InternString(cx, "default err message"));
 	}
-	
-	JS_DefineProperty(cx, obj, "code", INT_TO_JSVAL(code), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
-	
-	JS_DefineProperty(cx, obj, "message", rmessage, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
-	
-	JS_DefineProperty(cx, obj, "disconnect", INT_TO_JSVAL(disconnect), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
-	
-	return OBJECT_TO_JSVAL(obj);
+
+	js_code = INT_TO_JSVAL(code);
+	js_disconnect = JSVAL_FALSE;
+
+	jsval argv[] = {js_code, js_message, js_disconnect};
+
+	response = js_create_response(argv);
+	return response;
 }
 
 static JSBool smtpPath_construct(JSContext *cx, unsigned argc, jsval *vp) {
