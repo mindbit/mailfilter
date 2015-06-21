@@ -107,6 +107,7 @@ int smtp_path_parse(jsval *path, const char *arg, char **trailing)
 					return 1;
 				aux = strndup(token, arg - token);
 				add_domain(path, aux);
+				free(aux);
 			}
 			if (*arg == ',') {
 				++arg;
@@ -127,6 +128,7 @@ int smtp_path_parse(jsval *path, const char *arg, char **trailing)
 
 				aux = strndup(token, arg - token);
 				add_path_local(path, aux);
+				free(aux);
 
 				state = S_MBOX_DOMAIN;
 				token = ++arg;
@@ -141,6 +143,7 @@ int smtp_path_parse(jsval *path, const char *arg, char **trailing)
 
 				aux = strndup(token, arg - token);
 				add_path_domain(path, aux);
+				free(aux);
 
 				state = S_FINAL;
 			}
