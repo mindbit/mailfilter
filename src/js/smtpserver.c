@@ -1,5 +1,6 @@
 #include "smtpserver.h"
 #include "../smtp.h"
+#include "../bfd.h"
 #include "js.h"
 #include "string_tools.h"
 
@@ -584,9 +585,10 @@ static int connect_to_address(char *ip, char *port)
 }
 
 static JSBool smtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval host, port, client, connection;
+	jsval host, port, client, connection, clientStream;
 	char *c_host, *c_port;
 	int sockfd;
+	bfd_t *client_stream;
 
 	client = JS_THIS(cx, vp);
 
@@ -604,36 +606,41 @@ static JSBool smtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	c_port = JS_EncodeString(cx, JSVAL_TO_STRING(port));
 
 	sockfd = connect_to_address(c_host, c_port);
-	connection = INT_TO_JSVAL(sockfd);
+
+	client_stream = bfd_alloc(sockfd);
+	clientStream = PRIVATE_TO_JSVAL(client_stream);
+
+	if (!JS_SetProperty(cx, JSVAL_TO_OBJECT(client), "clientStream", &clientStream)) {
+		return JS_FALSE;
+	}
 
 	free(c_host);
 	free(c_port);
-
-	if (!JS_SetProperty(cx, JSVAL_TO_OBJECT(client), "connection", &connection)) {
-		return JS_FALSE;
-	}
 
 	return JS_TRUE;
 }
 
 static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval smtpClient, connection, content, response;
+	jsval smtpClient, connection, content, response, clientStream;
 	jsval js_code, js_messages, js_disconnect;
 	JSObject *messages_obj, *global;
 
 	int sockfd, code, lines_count;
 	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
 	ssize_t sz;
+	bfd_t *client_stream;
 
 	global = JS_GetGlobalForScopeChain(cx);
 	smtpClient = JS_THIS(cx, vp);
 	messages_obj = JS_NewArrayObject(cx, 0, 0);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
 		return JS_FALSE;
 	}
 
-	sockfd = JSVAL_TO_INT(connection);
+	client_stream = JSVAL_TO_PRIVATE(clientStream);
+
+	sockfd = client_stream->fd;
 
 	lines_count = 0;
 	do {
@@ -681,9 +688,10 @@ static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval command, args, smtpClient, connection;
+	jsval command, args, smtpClient, clientStream;
 	char *c_str;
-	int sockfd, n;
+	int n;
+	bfd_t *client_stream;
 
 	command = JS_ARGV(cx, vp)[0];
 
@@ -695,26 +703,28 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 
 	smtpClient = JS_THIS(cx, vp);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
 		return JS_FALSE;
 	}
 
-	sockfd = JSVAL_TO_INT(connection);
+	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
 	if (!JSVAL_IS_NULL(args)) {
 		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, " ")));
 		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JSVAL_TO_STRING(args)));
 	}
-	command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, "\r\n")));
+	command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, "\r\n\0")));
 
 	c_str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
 
-	n = write(sockfd, c_str, strlen(c_str));
-
-	if (n < 0) {
-		printf("write failed\n");
+	if (bfd_puts(client_stream, c_str) < 0) {
+		free(c_str);
+		bfd_close(client_stream);
 		return JS_FALSE;
 	}
+
+	bfd_flush(client_stream);
+	free(c_str);
 
 	js_dump_value(cx, command);
 
@@ -723,14 +733,52 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 
 static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval headers, path, smtpClient, connection, rval;
-	char *c_path;
-	int sockfd, n, i;
+	char *c_path, *c_header;
+	int sockfd, n, i, bodyfd;
 	uint32_t headers_len;
 	FILE *fp;
+	bfd_t *client_stream, *body_stream;
 
 	headers = JS_ARGV(cx, vp)[0];
 	path = JS_ARGV(cx, vp)[1];
 	smtpClient = JS_THIS(cx, vp);
+
+	// If no path, then use the default path where the body was saved
+	if (argc == 1 || JSVAL_IS_NULL(path)) {
+		jsval clientStream, bodyStream;
+
+		if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
+			return JS_FALSE;
+		}
+
+		client_stream = JSVAL_TO_PRIVATE(clientStream);
+
+		if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "bodyStream", &bodyStream)) {
+			return JS_FALSE;
+		}
+
+		body_stream = JSVAL_TO_PRIVATE(bodyStream);
+	} else {
+		c_path = JS_EncodeString(cx, JSVAL_TO_STRING(path));
+		fp = fopen(c_path, "r");
+
+		if (!fp) {
+			JS_ReportError(js_context, "The file %s cannot be opened!", c_path);
+			free(c_path);
+			return JS_FALSE;
+		}
+
+		bodyfd = fileno(fp);
+
+		if (bodyfd < 0) {
+			JS_ReportError(js_context, "The file %s cannot be opened!", c_path);
+			free(c_path);
+			return JS_FALSE;
+		}
+
+		free(c_path);
+		body_stream = bfd_alloc(bodyfd);
+	}
 
 	// Get number of headers
 	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(headers), &headers_len)) {
@@ -743,24 +791,46 @@ static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp
 			return -1;
 		}
 
-		jsval rvalToString;
+		jsval header;
 		JS_CallFunctionName(cx, JSVAL_TO_OBJECT(rval), "toString",
-				0, NULL, &rvalToString);
+				0, NULL, &header);
 
-		js_dump_value(cx, rvalToString);
+		c_header = JS_EncodeString(cx, JSVAL_TO_STRING(header));
+
+		if (bfd_puts(client_stream, c_header) < 0) {
+			free(c_header);
+			bfd_close(client_stream);
+			return JS_FALSE;
+		}
+
+
+		if (bfd_puts(client_stream, "\r\n") < 0) {
+			free(c_header);
+			bfd_close(client_stream);
+			return JS_FALSE;
+		}
+
+		free(c_header);
 	}
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "connection", &connection)) {
+	if (bfd_puts(client_stream, "\r\n") < 0) {
+		bfd_close(client_stream);
 		return JS_FALSE;
 	}
 
-	c_path = JS_EncodeString(cx, JSVAL_TO_STRING(path));
-	fp = fopen(c_path, "r");
+	// Put message body in the buffer
+	if (bfd_puts(client_stream, body_stream->wb) < 0) {
+		return JS_FALSE;
+	}
 
-	sockfd = JSVAL_TO_INT(connection);
+	if (bfd_puts(client_stream, "\r\n.\r\n") < 0) {
+		bfd_close(client_stream);
+		return JS_FALSE;
+	}
 
-	// TODO: read file and send it to sockfd
-	write(sockfd, "\r\n.\r\n", 5);
+
+	// Flush message body
+	bfd_flush(client_stream);
 
 	return JS_TRUE;
 }
