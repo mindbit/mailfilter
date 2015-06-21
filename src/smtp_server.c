@@ -605,6 +605,11 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 			return 0;
 	}
 
+	// Add the file bfd stream to smtpClient.bodyStream
+	if (add_body_stream(ctx->body.stream)) {
+		return 0;
+	}
+
 	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1) {
 		ctx->code = 452;
 		ctx->message = strdup("Insufficient system storage");
