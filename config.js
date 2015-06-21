@@ -142,10 +142,10 @@ smtpServer.smtpData = function() {
 	var dataResponse = smtpClient.readResponse();
 
 	if (dataResponse.code != 354) {
-		// throw exceptie
+		throw dataResponse.code + " " + dataResponse.messages;
 	}
 
-	smtpClient.sendMessageBody(smtpServer.session.headers, smtpServer.session.pathToBody);
+	smtpClient.sendMessageBody(smtpServer.session.headers, null);
 	return smtpClient.readResponse();
 }
 
