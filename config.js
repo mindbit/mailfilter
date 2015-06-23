@@ -134,12 +134,12 @@ smtpServer.smtpAlop = function() {
 	};
 }
 
-smtpServer.smtpEhlo = function() {
-	return relayCmd("EHLO");
+smtpServer.smtpEhlo = function(hostname) {
+	return relayCmd("EHLO", hostname);
 }
 
-smtpServer.smtpHelo = function() {
-	return relayCmd("HELO");
+smtpServer.smtpHelo = function(hostname) {
+	return relayCmd("HELO", hostname);
 }
 
 smtpServer.smtpData = function() {
