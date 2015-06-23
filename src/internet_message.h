@@ -27,6 +27,7 @@
 #include "list.h"
 #include "string_tools.h"
 #include "bfd.h"
+#include <jsapi.h>
 
 struct smtp_server_context;
 
@@ -62,7 +63,7 @@ struct im_header_context {
 		IM_H_FOLD,
 		IM_H_FIN
 	} state;
-	int start;
+	jsval header;
 	struct list_head *hdrs;
 	size_t max_size, curr_size;
 	struct string_buffer sb;
@@ -70,7 +71,7 @@ struct im_header_context {
 
 #define IM_HEADER_CONTEXT_INITIALIZER {\
 	.state = IM_H_NAME1,\
-	.start = 0,\
+	.header = JSVAL_NULL,\
 	.hdrs = NULL,\
 	.max_size = 0,\
 	.curr_size = 0,\

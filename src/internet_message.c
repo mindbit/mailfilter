@@ -121,12 +121,12 @@ int im_header_refold(struct im_header *hdr, int width)
  * Allocate a new header and initialize the name with the contents of the
  * context string buffer.
  */
-static jsval im_header_alloc_ctx(struct im_header_context *ctx)
+static int im_header_alloc_ctx(struct im_header_context *ctx)
 {
-	jsval header = new_header_instance(ctx->sb.s);
+	ctx->header = new_header_instance(ctx->sb.s);
 	string_buffer_reset(&ctx->sb);
 
-	return header;
+	return JSVAL_IS_NULL(ctx->header) ? 1 : 0;
 }
 
 
@@ -134,12 +134,11 @@ static jsval im_header_alloc_ctx(struct im_header_context *ctx)
  * Set the value of the "current" (currently being parsed) header to the
  * contents of the context string buffer.
  */
-static int im_header_set_value_ctx(struct im_header_context *ctx, jsval *header)
+static int im_header_set_value_ctx(struct im_header_context *ctx)
 {
-	int ret = add_part_to_header(header, ctx->sb.s);
-
-	add_new_header(header);
-
+	int ret = add_part_to_header(&ctx->header, ctx->sb.s);
+	add_new_header(&ctx->header);
+	ctx->header = JSVAL_NULL;
 	string_buffer_reset(&ctx->sb);
 	return ret;
 }
@@ -148,9 +147,9 @@ static int im_header_set_value_ctx(struct im_header_context *ctx, jsval *header)
  * Add a folding to the "current" (currently being parsed) header. The
  * folding position is the current position in the context string buffer.
  */
-static int im_header_add_fold_ctx(struct im_header_context *ctx, jsval *header)
+static int im_header_add_fold_ctx(struct im_header_context *ctx)
 {
-	add_part_to_header(header, ctx->sb.s);
+	add_part_to_header(&ctx->header, ctx->sb.s);
 	string_buffer_reset(&ctx->sb);
 	return 0;
 }
@@ -160,12 +159,10 @@ static int im_header_add_fold_ctx(struct im_header_context *ctx, jsval *header)
  */
 int im_header_feed(struct im_header_context *ctx, char c)
 {
-	jsval header;
-
 	switch (ctx->state) {
 	case IM_H_NAME1:
 		if (strchr(tab_space, c)) {
-			if (im_header_add_fold_ctx(ctx, &header))
+			if (im_header_add_fold_ctx(ctx))
 				return IM_OUT_OF_MEM;
 			if (ctx->curr_size++ >= ctx->max_size)
 				return IM_OVERRUN;
@@ -174,24 +171,22 @@ int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FOLD;
 			return IM_OK;
 		}
-		if (ctx->start && im_header_set_value_ctx(ctx, &header)) {
+		if (!JSVAL_IS_NULL(ctx->header) && im_header_set_value_ctx(ctx)) {
 			return IM_OUT_OF_MEM;
 		}
-
-		ctx->start = 1;
 
 		if (c == '\n') {
 			return IM_COMPLETE;
 		}
 		if (c == '\r') {
 			ctx->state = IM_H_FIN;
+			printf("fin=%s\n", ctx->sb.s);
 			return IM_OK;
 		}
 		/* Intentionally fall back to IM_H_NAME2 */
 	case IM_H_NAME2:
 		if (c == ':') {
-			header = im_header_alloc_ctx(ctx);
-			if (JSVAL_IS_NULL(header))
+			if (im_header_alloc_ctx(ctx))
 				return IM_OUT_OF_MEM;
 			ctx->state = IM_H_VAL1;
 			return IM_OK;
