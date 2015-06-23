@@ -162,6 +162,8 @@ int im_header_feed(struct im_header_context *ctx, char c)
 	switch (ctx->state) {
 	case IM_H_NAME1:
 		if (strchr(tab_space, c)) {
+			if (JSVAL_IS_NULL(ctx->header))
+				return IM_PARSE_ERROR;
 			if (im_header_add_fold_ctx(ctx))
 				return IM_OUT_OF_MEM;
 			if (ctx->curr_size++ >= ctx->max_size)
