@@ -10,6 +10,7 @@
 #include "../config.h"
 #include "js.h"
 #include "engine.h"
+#include "../string_tools.h"
 
 JSContext *js_context;
 
@@ -46,9 +47,10 @@ int js_get_code(jsval v) {
 
 char *js_get_message(jsval v) {
 	jsval messages, msg, rval;
-	ssize_t messages_len;
+	uint32_t messages_len;
 	char *c_str;
 	int i;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(v), "messages", &messages)) {
 		return NULL;
@@ -56,32 +58,40 @@ char *js_get_message(jsval v) {
 
 	switch(JS_TypeOfValue(js_context, messages)) {
 		case JSTYPE_STRING:
-			c_str = JS_EncodeString(js_context, JSVAL_TO_STRING(msg));
+			c_str = JS_EncodeString(js_context, JSVAL_TO_STRING(messages));
 			return c_str;
+
 		case JSTYPE_OBJECT:
 			if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(messages), &messages_len)) {
 				return NULL;
 			}
 
-			rval = STRING_TO_JSVAL(JS_InternString(js_context, ""));
-
 			for (i = 0; i < (int) messages_len; i++) {
 				if (!JS_GetElement(js_context, JSVAL_TO_OBJECT(messages), i, &msg)) {
-					return -1;
+					goto out_err;
 				}
 
-				rval = STRING_TO_JSVAL(JS_ConcatStrings(js_context, JSVAL_TO_STRING(rval), JSVAL_TO_STRING(msg)));
+				c_str = JS_EncodeString(js_context, JSVAL_TO_STRING(msg));
+
+				if (string_buffer_append_string(&sb, c_str))
+					goto out_err;
 
 				if (i < (int) messages_len - 1) {
-					rval = STRING_TO_JSVAL(JS_ConcatStrings(js_context, JSVAL_TO_STRING(rval), JS_InternString(js_context, "\n")));
+					if (string_buffer_append_char(&sb, '\n'))
+						goto out_err;
 				}
+
+				free(c_str);
 			}
 
-			return JS_EncodeString(js_context, JSVAL_TO_STRING(rval));
+			return sb.s;
 		default:
 			break;
 	}
 
+out_err:
+	free(c_str);
+	string_buffer_cleanup(&sb);
 	return NULL;
 }
 
