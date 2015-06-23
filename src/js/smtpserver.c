@@ -625,7 +625,7 @@ static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval js_code, js_messages, js_disconnect;
 	JSObject *messages_obj, *global;
 
-	int sockfd, code, lines_count;
+	int code, lines_count;
 	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
 	ssize_t sz;
 	bfd_t *client_stream;
@@ -640,15 +640,14 @@ static JSBool smtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 
 	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
-	sockfd = client_stream->fd;
-
 	lines_count = 0;
 	do {
 		sz = 0;
 		do {
-			if (read(sockfd, &buf[sz++], 1) < 0)
+			buf[SMTP_COMMAND_MAX] = '\n';
+			if ((sz = bfd_read_line(client_stream, buf, SMTP_COMMAND_MAX)) <= 0)
 				return JS_FALSE;
-		} while (buf[sz - 1] != '\n');
+		} while (buf[SMTP_COMMAND_MAX] != '\n');
 		buf[sz] = '\0';
 
 		if (sz < 4)
