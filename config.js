@@ -94,8 +94,13 @@ smtpServer.messageBody = function () {
 };
 */
 
-function relayCmd(cmd) {
-	smtpClient.sendCommand(cmd);
+function relayCmd(cmd, args) {
+	if (args != null) {
+		smtpClient.sendCommand(cmd, args);
+	} else {
+		smtpClient.sendCommand(cmd);
+	}
+
 	return smtpClient.readResponse();
 }
 
