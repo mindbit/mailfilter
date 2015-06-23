@@ -16,6 +16,7 @@ DEFINE_HANDLER_STUB(Auth);
 DEFINE_HANDLER_STUB(Alou);
 DEFINE_HANDLER_STUB(Alop);
 DEFINE_HANDLER_STUB(Ehlo);
+DEFINE_HANDLER_STUB(Helo);
 DEFINE_HANDLER_STUB(Data);
 DEFINE_HANDLER_STUB(Mail);
 DEFINE_HANDLER_STUB(Rcpt);
@@ -940,6 +941,7 @@ int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
 		JS_FS("smtpAlou", smtpAlou, 0, 0),
 		JS_FS("smtpAlop", smtpAlop, 0, 0),
 		JS_FS("smtpEhlo", smtpEhlo, 0, 0),
+		JS_FS("smtpHelo", smtpHelo, 0, 0),
 		JS_FS("smtpData", smtpData, 0, 0),
 		JS_FS("smtpMail", smtpMail, 0, 0),
 		JS_FS("smtpRcpt", smtpRcpt, 0, 0),

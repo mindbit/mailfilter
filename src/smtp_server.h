@@ -38,7 +38,7 @@
 /**
  * Define the number of preprocess handlers = number of SMTP commands
  */
-#define	PREPROCESS_HDLRS_LEN	11
+#define	PREPROCESS_HDLRS_LEN	12
 
 struct smtp_server_context;
 
@@ -68,6 +68,7 @@ int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
 int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
