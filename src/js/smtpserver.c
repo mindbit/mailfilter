@@ -691,6 +691,7 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 	char *c_str;
 	int n;
 	bfd_t *client_stream;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
 	command = JS_ARGV(cx, vp)[0];
 
@@ -708,26 +709,41 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 
 	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
-	if (!JSVAL_IS_NULL(args)) {
-		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, " ")));
-		command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JSVAL_TO_STRING(args)));
-	}
-	command = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(command), JS_InternString(cx, "\r\n\0")));
-
+	// Add command name
 	c_str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
+	if (string_buffer_append_string(&sb, c_str))
+		goto out_err_free;
 
-	if (bfd_puts(client_stream, c_str) < 0) {
+	free(c_str);
+
+	if (string_buffer_append_char(&sb, ' '))
+		goto out_err;
+
+	if (!JSVAL_IS_NULL(args)) {
+		c_str = JS_EncodeString(cx, JSVAL_TO_STRING(args));
+		if (string_buffer_append_string(&sb, c_str))
+			goto out_err_free;
 		free(c_str);
-		bfd_close(client_stream);
-		return JS_FALSE;
+	}
+
+	if (string_buffer_append_string(&sb, "\r\n\0"))
+		goto out_err;
+
+	if (bfd_puts(client_stream, sb.s) < 0) {
+		goto out_err;
 	}
 
 	bfd_flush(client_stream);
-	free(c_str);
-
-	js_dump_value(cx, command);
+	string_buffer_cleanup(&sb);
 
 	return JS_TRUE;
+
+out_err_free:
+	free(c_str);
+out_err:
+	string_buffer_cleanup(&sb);
+	bfd_close(client_stream);
+	return JS_FALSE;
 }
 
 static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
