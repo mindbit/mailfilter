@@ -53,6 +53,7 @@ static struct smtp_cmd_hdlr smtp_cmd_hdlrs[PREPROCESS_HDLRS_LEN] = {
 	DEFINE_SMTP_CMD_HDLR(alop),
 	DEFINE_SMTP_CMD_HDLR(aplp),
 	DEFINE_SMTP_CMD_HDLR(ehlo),
+	DEFINE_SMTP_CMD_HDLR(helo),
 	DEFINE_SMTP_CMD_HDLR(data),
 	DEFINE_SMTP_CMD_HDLR(mail),
 	DEFINE_SMTP_CMD_HDLR(rcpt),
@@ -471,6 +472,18 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
 	return 0;
 }
 
+int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+{
+	// If no error until now, call the JS handler
+	jsval ret = call_js_handler_with_arg(cmd, arg);
+
+	// Get code and message returned by JS handler
+	ctx->code = js_get_code(ret);
+	ctx->message = js_get_message(ret);
+
+	return js_get_disconnect(ret);
+}
+
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
 	char *domain;
@@ -483,7 +496,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	domain[strcspn(domain, "\r\n")] = '\0';
 
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler(cmd);
+	jsval ret = call_js_handler_with_arg(cmd, arg);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
