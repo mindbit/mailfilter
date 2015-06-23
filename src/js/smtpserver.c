@@ -748,7 +748,7 @@ out_err:
 }
 
 static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval headers, path, smtpClient, connection, rval;
+	jsval headers, path, smtpClient, connection, rval, clientStream;
 	char *c_path, *c_header;
 	int sockfd, n, i, bodyfd;
 	uint32_t headers_len;
@@ -761,13 +761,7 @@ static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp
 
 	// If no path, then use the default path where the body was saved
 	if (argc == 1 || JSVAL_IS_NULL(path)) {
-		jsval clientStream, bodyStream;
-
-		if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
-			return JS_FALSE;
-		}
-
-		client_stream = JSVAL_TO_PRIVATE(clientStream);
+		jsval bodyStream;
 
 		if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "bodyStream", &bodyStream)) {
 			return JS_FALSE;
@@ -795,6 +789,12 @@ static JSBool smtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp
 		free(c_path);
 		body_stream = bfd_alloc(bodyfd);
 	}
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
+		return JS_FALSE;
+	}
+
+	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
 	// Get number of headers
 	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(headers), &headers_len)) {
