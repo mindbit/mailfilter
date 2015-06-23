@@ -175,6 +175,5 @@ smtpServer.smtpQuit = function () {
 };
 
 smtpServer.smtpClnp = function () {
-	relayCmd("CLNP");
 };
 
