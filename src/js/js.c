@@ -469,6 +469,26 @@ jsval call_js_handler(const char *cmd) {
     return js_call("smtpServer", handler_name, JSVAL_NULL);
 }
 
+jsval call_js_handler_with_arg(const char *cmd, char *arg) {
+    int i;
+    char handler_name[9];
+
+
+    strcpy(handler_name, "smtp");
+
+    handler_name[4] = toupper((unsigned char) cmd[0]);
+
+    for (i = 5; i < 8; i++) {
+        handler_name[i] = tolower((unsigned char) cmd[i - 4]);
+    }
+
+    handler_name[8] = '\0';
+
+    jsval js_arg = STRING_TO_JSVAL(JS_InternString(js_context, arg));
+
+    return js_call("smtpServer", handler_name, js_arg, JSVAL_NULL);
+}
+
 jsval js_call(const char *obj, const char *func, jsval arg, ...)
 {
 	JSObject *global, *curr_obj;
