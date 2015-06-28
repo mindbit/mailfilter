@@ -325,6 +325,9 @@ int add_new_header(jsval *header) {
 		return -1;
 	}
 
+	return 0;
+}
+
 int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
 	int i;
 	uint32_t arr_len;
@@ -414,42 +417,6 @@ int add_part_to_header(jsval *header, char *c_str) {
 	}
 
 	return 0;
-}
-
-void js_dump_value(JSContext *cx, jsval v)
-{
-	char *c_str;
-	JSString *js_str;
-	
-	switch (JS_TypeOfValue(cx, v)) {
-		case JSTYPE_VOID:
-			printf("VOID\n");
-			break;
-		case JSTYPE_OBJECT:
-			if (JSVAL_IS_NULL(v)) {
-				printf("NULL\n");
-				break;
-			}
-			js_dump_response(cx, v);
-			break;
-		case JSTYPE_STRING:
-			c_str = JS_EncodeString(cx, JSVAL_TO_STRING(v));
-			printf("STRING(%zu) \"%s\"\n", strlen(c_str), c_str);
-			JS_free(cx, c_str);
-			break;
-		case JSTYPE_NUMBER:
-			printf("NUMBER(%d)\n", JSVAL_TO_INT(v));
-			break;
-		case JSTYPE_BOOLEAN:
-			js_str = JS_ValueToString(cx, v);
-			c_str = JS_EncodeString(cx, js_str);
-			printf("BOOLEAN(%s)\n", c_str);
-			JS_free(cx, c_str);
-			break;
-		default:
-			printf("FIXME\n");
-			break;
-	}
 }
 
 jsval call_js_handler(const char *cmd) {
