@@ -771,7 +771,6 @@ void smtp_server_init(void)
 	mod_proxy_init();
 	//mod_spamassassin_init();
 	//mod_clamav_init();
-	//mod_log_sql_init();
 }
 
 int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
