@@ -1,3 +1,17 @@
+Building and installing
+-----------------------
+
+To build on Ubuntu systems, the following packages are needed (tested on
+Ubuntu 14.04 Trusty Tahr):
+	autoconf
+	libtool
+	libmozjs-17.0-dev
+	libssl-dev
+
+
+Obsolete build instructions
+---------------------------
+
 # yum install git spamassassin screen
 # chkconfig spamassassin on
 # service spamassassin start

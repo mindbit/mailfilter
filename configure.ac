@@ -13,7 +13,7 @@ AC_PROG_CC
 
 # Checks for libraries.
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
-AC_SEARCH_LIBS([JS_NewObject], [mozjs185 mozjs], , AC_MSG_ERROR([libmozjs not found]))
+AC_SEARCH_LIBS([JS_NewObject], [mozjs-17.0 mozjs], , AC_MSG_ERROR([libmozjs not found]))
 AC_SEARCH_LIBS([__res_mkquery], [resolv], , AC_MSG_ERROR([libresolv not found]))
 
 ## Special check for SpiderMonkey
@@ -22,7 +22,7 @@ AC_MSG_CHECKING(for jsapi.h)
 found="no"
 for sm_path in /usr/include/js \
 		/usr/include/mozjs \
-		/usr/include/smjs; do
+		/usr/include/js-17.0; do
 	if test -x $sm_path && test "$found"=="no"; then
 		CFLAGS="$CFLAGS -I$sm_path"
 		found="yes"
