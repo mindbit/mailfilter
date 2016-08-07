@@ -1,7 +1,7 @@
-#include "smtpserver.h"
-#include "../smtp.h"
-#include "../bfd.h"
-#include "js.h"
+#include "js_smtpserver.h"
+#include "smtp.h"
+#include "bfd.h"
+#include "js_main.h"
 #include "string_tools.h"
 
 #include <arpa/inet.h>

@@ -19,7 +19,8 @@
  */
 
 #define _XOPEN_SOURCE 500
-#define _BSD_SOURCE
+#define _POSIX_C_SOURCE 201112L
+
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -38,7 +39,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include "js/js.h"
+#include "js_main.h"
 #include "smtp_server.h"
 
 /* Array of server sockets */

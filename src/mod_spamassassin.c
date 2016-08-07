@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <jsapi.h>
 
 #include "smtp_server.h"
 

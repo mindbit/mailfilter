@@ -22,6 +22,7 @@
 #include <netinet/in.h>
 #include <arpa/nameser.h>
 #include <resolv.h>
+#include <jsapi.h>
 
 #include "mod_dkim.h"
 

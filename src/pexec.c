@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <jsapi.h>
 
 #include "pexec.h"
 #include "bfd.h"

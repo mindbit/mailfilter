@@ -7,10 +7,10 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#include "../config.h"
-#include "js.h"
-#include "engine.h"
-#include "../string_tools.h"
+#include "js_main.h"
+#include "js_engine.h"
+#include "string_tools.h"
+#include "config.h"
 
 JSContext *js_context;
 

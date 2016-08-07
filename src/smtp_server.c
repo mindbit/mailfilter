@@ -19,8 +19,8 @@
  */
 
 #define _XOPEN_SOURCE 500
+#define _POSIX_C_SOURCE 201112L
 #define _GNU_SOURCE
-#define _BSD_SOURCE
 
 #include <errno.h>
 #include <string.h>
@@ -36,7 +36,9 @@
 #include <netdb.h>
 #include <limits.h>
 
-#include "js/js.h"
+#include <strings.h> // for index(); TODO: cleanup
+
+#include "js_main.h"
 
 #include "smtp_server.h"
 #include "smtp.h"

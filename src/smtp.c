@@ -20,6 +20,7 @@
 
 #define _GNU_SOURCE
 #include <string.h>
+#include <jsapi.h>
 
 #include "smtp.h"
 #include "string_tools.h"

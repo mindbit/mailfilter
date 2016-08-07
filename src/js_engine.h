@@ -1,7 +1,7 @@
 #ifndef _ENGINE_H
 #define _ENGINE_H
 
-#include "js.h"
+#include <jsapi.h>
 
 int js_engine_obj_init(JSContext *cx, JSObject *global);
 
