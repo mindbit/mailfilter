@@ -2,7 +2,7 @@
 #define _JS_H
 
 #include <jsapi.h>
-#include "../bfd.h"
+#include "bfd.h"
 
 #ifdef DEBUG
 

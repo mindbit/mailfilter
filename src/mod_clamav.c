@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <jsapi.h>
 
 #include "smtp_server.h"
 #include "string_tools.h"

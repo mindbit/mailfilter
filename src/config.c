@@ -28,10 +28,6 @@
 #include "logging.h"
 #include "string_tools.h"
 
-#ifdef HAVE_CONFIG_H
-#include "../config.h"
-#endif
-
 /* Main server configuration */
 struct config config = {
 	.path = "/etc/mailfilter.js",

@@ -28,6 +28,7 @@
 
 #include "internet_message.h"
 #include "smtp_server.h"
+#include "js_main.h"
 
 static const char *tab_space = "\t ";
 

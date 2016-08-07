@@ -29,6 +29,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
+#include <jsapi.h>
 
 #include "mod_proxy.h"
 #include "smtp_client.h"
