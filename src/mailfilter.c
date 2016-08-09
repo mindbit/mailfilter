@@ -38,9 +38,120 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
+
+#include <jsmisc.h>
 
 #include "js_main.h"
+#include "js_engine.h"
+#include "js_smtpserver.h"
 #include "smtp_server.h"
+
+// FIXME
+#define assert_log(...)
+#define assert_mod_log(...)
+
+JSContext *js_context; // FIXME make static
+static JSRuntime *js_runtime;
+
+static int js_init(const char *filename)
+{
+	JSObject *global;
+
+	int fd;
+	void *buf;
+	off_t len;
+
+	/* The class of the global object. */
+	static JSClass global_class = {
+		"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub,
+		JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+		JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
+		JS_PropertyStub, JSCLASS_NO_OPTIONAL_MEMBERS
+	};
+
+	/*
+	 * Create a JS runtime. Each runtime has an owner thread, which is
+	 * by default the current thread at the time when the runtime is
+	 * created. Note that mailfilter is NOT multi-threaded.
+	 */
+	js_runtime = JS_NewRuntime(8 * 1024 * 1024);
+	if (js_runtime == NULL)
+		return -1;
+	/* Create a context. You always need a context per runtime. */
+	js_context = JS_NewContext(js_runtime, 8192);
+	if (js_context == NULL)
+		return -1;
+	JS_SetOptions(js_context, JSOPTION_VAROBJFIX | JSOPTION_METHODJIT);
+	JS_SetVersion(js_context, JSVERSION_LATEST);
+	JS_MiscSetErrorReporter(js_context);
+
+	/*
+	 * Create the global object in a new compartment.
+	 * You always need a global object per context.
+	 */
+	global = JS_NewGlobalObject(js_context, &global_class, NULL);
+	if (global == NULL)
+		return -1;
+
+	/*
+	 * Populate the global object with the standard JavaScript
+	 * function and object classes, such as Object, Array, Date.
+	 */
+	if (!JS_InitStandardClasses(js_context, global))
+		return -1;
+
+	if (!JS_MiscInit(js_context, global))
+		return -1;
+
+	/* Read the file into memory */
+	fd = open(filename, O_RDONLY, 0);
+	if (fd < 0) {
+		perror(filename);
+		return -1;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	if (len == (off_t) -1) {
+		close(fd);
+		perror("lseek");
+		return -1;
+	}
+
+	buf = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+	if (buf == MAP_FAILED) {
+		close(fd);
+		perror("mmap");
+		return -1;
+	}
+
+	/* Initialize global objects */
+	if (js_engine_init(js_context, global))
+		return -1;
+	if (js_smtp_server_obj_init(js_context, global))
+		return -1;
+
+	/* Run script */
+	JS_EvaluateScript(js_context, global, buf, len, filename, 0, NULL);
+
+	// FIXME maybe parse the debugProtocol property, which should
+	// be in smtpServer instead of engine
+#if 0
+	/* Evaluate the changes caused by the script */
+	if (js_engine_parse(js_context, global))
+		return -1;
+#endif
+
+	return 0;
+}
+
+void js_stop(void)
+{
+	/* Clean things up and shut down SpiderMonkey. */
+	JS_DestroyContext(js_context);
+	JS_DestroyRuntime(js_runtime);
+	JS_ShutDown();
+}
 
 /* Array of server sockets */
 int fds[256], fds_len;
@@ -258,7 +369,7 @@ static int create_sockets(void)
 		}
 
 		fds[i] = get_socket_for_address(ip, port);
-		log(&config, LOG_INFO, "Listening on %s:%s\n", ip, port);
+		JS_Log(JS_LOG_INFO, "Listening on %s:%s\n", ip, port);
 		fds_len++;
 
 		JS_free(js_context, ip);
@@ -288,7 +399,8 @@ static int create_sockets(void)
 
 int main(int argc, char **argv)
 {
-	int status, opt;
+	int status, opt, daemon = 1;
+	char *config_path = "config.js";
 
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
@@ -298,10 +410,10 @@ int main(int argc, char **argv)
 	while ((opt = getopt(argc, argv, "hdc:")) != -1) {
 		switch (opt) {
 		case 'c':
-			config.path = strdup(optarg);
+			config_path = optarg;
 			break;
 		case 'd':
-			config.daemon = 0;
+			daemon = 0;
 			break;
 		case 'h':
 			show_help(argv[0]);
@@ -313,8 +425,8 @@ int main(int argc, char **argv)
 	}
 
 	/* Intialize JavaScript engine */
-	status = js_init(config.path);
-	assert_log(status != -1, &config);
+	if (js_init(config_path))
+		goto out;
 
 	smtp_server_init();
 
@@ -326,7 +438,7 @@ int main(int argc, char **argv)
 
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
-	log(&config, LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
+	JS_Log(JS_LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
 
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
@@ -363,11 +475,10 @@ int main(int argc, char **argv)
 
 			client_sock_stream = bfd_alloc(client_sock_fd);
 			assert_log(client_sock_stream != NULL, &config);
-			log(&config, LOG_INFO, "New connection from %s", remote_addr);
-			ctx.cfg = &config;
+			JS_Log(JS_LOG_INFO, "New connection from %s", remote_addr);
 			smtp_server_run(&ctx, client_sock_stream);
 			bfd_close(client_sock_stream);
-			log(&config, LOG_INFO, "Closed connection to %s", remote_addr);
+			JS_Log(JS_LOG_INFO, "Closed connection to %s", remote_addr);
 			js_stop();
 			exit(EXIT_SUCCESS);
 		default:
@@ -376,5 +487,7 @@ int main(int argc, char **argv)
 		}
 	} while (1);
 
-	return 0;
+out:
+	js_stop();
+	return 1;
 }

@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <jsapi.h>
+#include <jsmisc.h>
 
 #include "smtp_server.h"
 #include "string_tools.h"
@@ -47,12 +47,12 @@ int mod_clamav_send_headers(struct smtp_server_context *ctx, bfd_t *fw)
 int mod_clamav_result(struct smtp_server_context *ctx, bfd_t *fr, int status)
 {
 	if (WEXITSTATUS(status) > 1) {
-		mod_log(LOG_ERR, "clamdscan failed with error\n");
+		JS_Log(JS_LOG_ERR, "clamdscan failed with error\n");
 		return 0;
 	}
 
 	if (!WEXITSTATUS(status)) {
-		mod_log(LOG_INFO, "message passed\n");
+		JS_Log(JS_LOG_INFO, "message passed\n");
 		return 0;
 	}
 

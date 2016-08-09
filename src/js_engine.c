@@ -1,111 +1,36 @@
-#include "js_engine.h"
-#include "config.h"
-#include "logging.h"
+#include <syslog.h>
+#include <jsmisc.h>
 
-/* Function Summary */
-/*
- * PROPERTY HANDLERS:
- *
- * 1. logging_hdlr()
- *	- Handles the object passed to the 'logging' property.
- *
- * NATIVE FUNCTIONS:
- *
- * 1. load_module()
- *	- Implementation of the "engine.loadModule()" function.
- */
+#include "mailfilter.h"
 
-/* FIXME: Print appropriate errors when bad values are given */
-static JSBool logging_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
+static JSBool engine_openlog(JSContext *cx, unsigned argc, jsval *vp)
 {
-	JSObject *logging_obj;
-	jsval property_value;
-	JSString *property_str;
-	char *property_arr;
+	static char ident[40] = "mailfilter";
+	size_t len = sizeof(ident) - 1;
+	int facility = LOG_DAEMON;
 
-	/* Check if an object is assigned to 'logging' property */
-	if (JSVAL_IS_PRIMITIVE(*vp))
-		return JS_FALSE;
-
-	/* Get the value of the 'type' property */
-	logging_obj = JSVAL_TO_OBJECT(*vp);
-	if (!JS_GetProperty(cx, logging_obj, "type", &property_value))
-		return JS_FALSE;
-
-	if (JSVAL_IS_VOID(property_value))
-		goto level; /* type not specified, jump to level */
-
-	if (!JSVAL_IS_STRING(property_value))
-		return JS_FALSE;
-	property_str = JSVAL_TO_STRING(property_value);
-	property_arr = JS_EncodeString(cx, property_str);
-
-	/* Check if 'type' has a valid value (syslog, stderr, logfile) */
-	if (str_2_val(log_types, property_arr) < 0) {
-		JS_ReportError(cx, "illegal value \"%s\" for \"type\"",
-				property_arr);
-		JS_free(cx, property_arr);
-		return JS_FALSE;
+	if (argc >= 1) {
+		JSString *str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
+		len = JS_EncodeStringToBuffer(str, ident, len);
+		if (len < 0 || len >= sizeof(ident))
+			len = sizeof(ident) - 1;
+		ident[len] = '\0';
 	}
 
-	config.logging_type = str_2_val(log_types, property_arr);
-	JS_free(cx, property_arr);
+	if (argc >= 2)
+		JS_ValueToECMAInt32(cx, JS_ARGV(cx, vp)[1], &facility);
 
+	openlog(ident, LOG_PID, facility);
 
-level:
-	/* Get the value of the 'level' property */
-	logging_obj = JSVAL_TO_OBJECT(*vp);
-	if (!JS_GetProperty(cx, logging_obj, "level", &property_value))
-		return JS_FALSE;
-
-	if (JSVAL_IS_VOID(property_value))
-		goto facility; /* level not specified, jump to facility */
-
-	if (!JSVAL_IS_STRING(property_value))
-		return JS_FALSE;
-	property_str = JSVAL_TO_STRING(property_value);
-	property_arr = JS_EncodeString(cx, property_str);
-
-	/* Check if 'level' has a valid value (LOG_EMERG, LOG_ALERT, etc.) */
-	if (str_2_val(log_levels, property_arr) < 0) {
-		JS_ReportError(cx, "illegal value \"%s\" for \"level\"",
-				property_arr);
-		JS_free(cx, property_arr);
-		return JS_FALSE;
-	}
-
-	config.logging_level = str_2_val(log_levels, property_arr);
-	JS_free(cx, property_arr);
-
-
-facility:
-	/* Get the value of the 'facility' property */
-	logging_obj = JSVAL_TO_OBJECT(*vp);
-	if (!JS_GetProperty(cx, logging_obj, "facility", &property_value))
-		return JS_FALSE;
-
-	if (JSVAL_IS_VOID(property_value))
-		return JS_TRUE; /* facility not specified, leave it default */
-
-	if (!JSVAL_IS_STRING(property_value))
-		return JS_FALSE;
-	property_str = JSVAL_TO_STRING(property_value);
-	property_arr = JS_EncodeString(cx, property_str);
-
-	/* Check if 'facility' has a valid value (LOG_EMERG, LOG_ALERT, etc.) */
-	if (str_2_val(log_facilities, property_arr) < 0) {
-		JS_ReportError(cx, "illegal value \"%s\" for \"facility\"",
-				property_arr);
-		JS_free(cx, property_arr);
-		return JS_FALSE;
-	}
-
-	config.logging_facility = str_2_val(log_facilities, property_arr);
-	JS_free(cx, property_arr);
+	// FIXME for better portability, do not pass vsyslog directly;
+	// instead create a wrapper function that translates priority
+	// from JS_LOG_* to LOG_*
+	JS_LogSetCallback(vsyslog);
 
 	return JS_TRUE;
 }
 
+#if 0
 static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 {
 	/* Check if debugProtocol was assigned a boolean value */
@@ -119,6 +44,7 @@ static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 
 	return JS_TRUE;
 }
+#endif
 
 static JSBool load_module(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -136,12 +62,13 @@ static JSBool load_module(JSContext *cx, unsigned argc, jsval *vp)
 	if (!module_name)
 		return JS_FALSE;
 
-	log(&config, LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
+	JS_Log(JS_LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
 
 	JS_free(cx, module_name);
 	return JS_TRUE;
 }
 
+#if 0
 /* Handles the engine object after the script finished executing */
 int js_engine_parse(JSContext *cx, JSObject *global)
 {
@@ -152,12 +79,6 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 		return -1;
 	engine = JSVAL_TO_OBJECT(engine_val);
 
-	/* Parse 'logging' property. */
-	if (!JS_GetProperty(cx, engine, "logging", &prop_val))
-		return -1;
-	if (!logging_hdlr(cx, global, &prop_val))
-		return -1;
-
 	/* Parse 'debugProtocol' property. */
 	if (!JS_GetProperty(cx, engine, "debugProtocol", &prop_val))
 		return -1;
@@ -166,6 +87,7 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 
 	return 0;
 }
+#endif
 
 static JSClass engine_class = {
 	"engine", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
@@ -173,16 +95,60 @@ static JSClass engine_class = {
 	JS_ConvertStub, JS_PropertyStub, JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
-int js_engine_obj_init(JSContext *cx, JSObject *global)
+static const struct {
+	const char *name;
+	int value;
+} engine_props[] = {
+	// syslog facilities
+	{"LOG_DAEMON",	LOG_DAEMON },
+	{"LOG_USER",	LOG_USER },
+	{"LOG_MAIL",	LOG_MAIL },
+	{"LOG_LOCAL0",	LOG_LOCAL0},
+	{"LOG_LOCAL1",	LOG_LOCAL1},
+	{"LOG_LOCAL2",	LOG_LOCAL2},
+	{"LOG_LOCAL3",	LOG_LOCAL3},
+	{"LOG_LOCAL4",	LOG_LOCAL4},
+	{"LOG_LOCAL5",	LOG_LOCAL5},
+	{"LOG_LOCAL6",	LOG_LOCAL6},
+	{"LOG_LOCAL7",	LOG_LOCAL7},
+	// syslog priorities
+	{"LOG_EMERG",	LOG_EMERG},
+	{"LOG_ALERT",	LOG_ALERT},
+	{"LOG_CRIT",	LOG_CRIT},
+	{"LOG_ERR",	LOG_ERR},
+	{"LOG_WARNING",	LOG_WARNING},
+	{"LOG_NOTICE",	LOG_NOTICE},
+	{"LOG_INFO",	LOG_INFO},
+	{"LOG_DEBUG",	LOG_DEBUG},
+};
+
+static JSFunctionSpec engine_functions[] = {
+	JS_FS("openlog", engine_openlog, 2, 0),
+	JS_FS("loadModule", load_module, 1, 0),
+	JS_FS_END
+};
+
+int js_engine_init(JSContext *cx, JSObject *global)
 {
 	JSObject *engine;
+	unsigned i;
 
 	engine = JS_DefineObject(cx, global, "engine", &engine_class, NULL, 0);
 	if (!engine)
 		return -1;
 
-	if (!JS_DefineFunction(cx, engine, "loadModule", load_module, 1, 0))
+	if (!JS_DefineFunctions(cx, engine, engine_functions))
 		return -1;
+
+	for (i = 0; i < ARRAY_SIZE(engine_props); i++) {
+		JSBool status = JS_DefineProperty(cx, engine,
+				engine_props[i].name,
+				INT_TO_JSVAL(engine_props[i].value),
+				NULL, NULL,
+				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
+		if (!status)
+			return -1;
+	}
 
 	return 0;
 }

@@ -29,11 +29,15 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
-#include <jsapi.h>
+#include <jsmisc.h>
 
 #include "mod_proxy.h"
 #include "smtp_client.h"
 #include "base64.h"
+
+// FIXME
+#define assert_log(...)
+#define assert_mod_log(...)
 
 static uint64_t key;
 static const char *module = "proxy";
@@ -73,17 +77,17 @@ int mod_proxy_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const 
 	inet_aton(proxy_host, &peer.sin_addr); // FIXME: we should use getaddrinfo()
 
 	if (connect(sock, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == -1) {
-		mod_log(LOG_ERR, "could not connect to %s, port %d\n", proxy_host, proxy_port);
+		JS_Log(JS_LOG_ERR, "could not connect to %s, port %d\n", proxy_host, proxy_port);
 		goto out_err;
 	}
-	mod_log(LOG_DEBUG, "connected to %s, port %d\n", proxy_host, proxy_port);
+	JS_Log(JS_LOG_DEBUG, "connected to %s, port %d\n", proxy_host, proxy_port);
 
 	priv->sock = bfd_alloc(sock);
 	if (!priv->sock)
 		goto out_err;
 
 	if ((err = smtp_client_response(priv->sock, copy_response_callback, ctx)) < 0) {
-		mod_log(LOG_ERR, "error %d reading initial greeting\n", err);
+		JS_Log(JS_LOG_ERR, "error %d reading initial greeting\n", err);
 		goto out_err;
 	}
 

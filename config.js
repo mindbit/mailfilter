@@ -1,12 +1,5 @@
-engine.logging = {
-	type: "stderr",
-	level: "debug",
-	facility: "mail"
-};
-
-// Enable logging of everything that is received and sent on the SMTP
-// connection.
-engine.debugProtocol = true;
+// Switch logging to syslog
+engine.openlog();
 
 // Load the "sql" module. Registers the global "sql" object, which has
 // the getConnection(url) method.
@@ -20,8 +13,13 @@ engine.loadModule("mod_mysql.so");
 // SMTP servers as a client.
 engine.loadModule("mod_smtp_client.so");
 
-
+// Configure address/port pairs for listening to incoming SMTP
+// connections.
 smtpServer.listenAddress = [["127.0.0.1", "8025"]];
+
+// Enable logging of everything that is received and sent on the SMTP
+// connection.
+smtpServer.debugProtocol = true;
 
 // Provide the initial SMTP greeting that the server will send to the
 // client, as an SmtpStatus object.
