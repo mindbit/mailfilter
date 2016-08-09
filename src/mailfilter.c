@@ -42,6 +42,7 @@
 
 #include <jsmisc.h>
 
+#include "config.h"
 #include "js_main.h"
 #include "js_engine.h"
 #include "js_smtpserver.h"
@@ -424,6 +425,8 @@ int main(int argc, char **argv)
 		}
 	}
 
+	JS_Log(JS_LOG_INFO, "%s\n", VERSION_STR);
+
 	/* Intialize JavaScript engine */
 	if (js_init(config_path))
 		goto out;
@@ -438,7 +441,7 @@ int main(int argc, char **argv)
 
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
-	JS_Log(JS_LOG_INFO, "mailfilter 0.1 startup complete; ready to accept connections\n");
+	JS_Log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
 
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
