@@ -31,7 +31,6 @@
 #include <netinet/ip.h> /* superset of previous */
 
 #include "smtp.h"
-#include "logging.h"
 #include "internet_message.h"
 #include "bfd.h"
 
@@ -101,9 +100,6 @@ struct smtp_priv_hash {
  * SMTP server context.
  */
 struct smtp_server_context {
-	/* Server configuration */
-	struct config *cfg;
-
 	/* Remote end address */
 	struct sockaddr_in addr;
 

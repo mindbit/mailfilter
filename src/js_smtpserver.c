@@ -11,6 +11,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+extern JSContext *js_context; // FIXME pass through arguments
+
 DEFINE_HANDLER_STUB(Init);
 DEFINE_HANDLER_STUB(Auth);
 DEFINE_HANDLER_STUB(Alou);

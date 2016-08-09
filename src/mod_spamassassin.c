@@ -35,7 +35,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
-#include <jsapi.h>
+#include <jsmisc.h>
 
 #include "smtp_server.h"
 
@@ -61,18 +61,18 @@ int mod_spamassassin_result(struct smtp_server_context *ctx, bfd_t *fr, int stat
 	}
 
 	if (WEXITSTATUS(status) > 1) {
-		mod_log(LOG_ERR, "spamc failed with error\n");
+		JS_Log(JS_LOG_ERR, "spamc failed with error\n");
 		return 0;
 	}
 
 	if (!WEXITSTATUS(status)) {
-		mod_log(LOG_INFO, "message passed\n");
+		JS_Log(JS_LOG_INFO, "message passed\n");
 		return 0;
 	}
 
 	ctx->code = 550;
 	ctx->message = strdup("This message appears to be spam");
-	mod_log(LOG_INFO, "message rejected\n");
+	JS_Log(JS_LOG_INFO, "message rejected\n");
 	return 0;
 }
 
@@ -81,12 +81,12 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 	const char *argv[] = {"/usr/bin/spamc", "-c", "-x", NULL};
 
 	if (BYPASS_AUTH && ctx->auth_user) {
-		mod_log(LOG_INFO, "bypassed authenticated user\n");
+		JS_Log(JS_LOG_INFO, "bypassed authenticated user\n");
 		return 0;
 	}
 
 	if (ctx->body.size >= BYPASS_SIZE_TRESHOLD) {
-		mod_log(LOG_INFO, "bypassed large message (size=%d, treshold=%d)\n", ctx->body.size, BYPASS_SIZE_TRESHOLD);
+		JS_Log(JS_LOG_INFO, "bypassed large message (size=%d, treshold=%d)\n", ctx->body.size, BYPASS_SIZE_TRESHOLD);
 		return 0;
 	}
 

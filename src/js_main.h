@@ -12,14 +12,6 @@ some macros (like JSVAL_NULL).
 
 #endif
 
-extern JSContext *js_context;
-
-/* Initializes JavaScript engine */
-int js_init(const char *filename);
-
-/* Closes JavaScript engine and frees its resources */
-void js_stop(void);
-
 /*
  * Calls the given function of the given predefined object with the given
  * arguments. Last parameter of the function should ALWAYS be JSVAL_NULL.

@@ -38,11 +38,17 @@
 
 #include <strings.h> // for index(); TODO: cleanup
 
+#include <jsmisc.h>
+
 #include "js_main.h"
 
 #include "smtp_server.h"
 #include "smtp.h"
 #include "base64.h"
+
+// FIXME
+#define assert_log(...)
+#define assert_mod_log(...)
 
 //static uint64_t key;
 static const char *module = "server";
@@ -69,13 +75,13 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 
 	while ((c = index(buf, '\n'))) {
 		*c = 0;
-		log(&config, LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
+		JS_Log(JS_LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
 		bfd_printf(f, "%d-%s\r\n", code, buf);
 		*c = '\n';
 		buf = c + 1;
 	}
 
-	log(&config, LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
+	JS_Log(JS_LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
 	if (bfd_printf(f, "%d %s\r\n", code, buf) >= 0) {
 		bfd_flush(f);
 		return 0;
@@ -147,11 +153,11 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
 			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0) {
-				mod_log(LOG_ERR, "Socket read error (%s). Aborting", strerror(errno));
+				JS_Log(JS_LOG_ERR, "Socket read error (%s). Aborting", strerror(errno));
 				return -1;
 			}
 			if (!sz) {
-				mod_log(LOG_ERR, "Lost connection to client");
+				JS_Log(JS_LOG_ERR, "Lost connection to client");
 				return -1;
 			}
 			n++;
@@ -162,7 +168,7 @@ int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 		for (c += strlen(c) - 1; c >= &buf[0] && (*c == '\n' || *c == '\r'); c--);
 		tmp = *++c;
 		*c = '\0';
-		mod_log(LOG_DEBUG, ">>> %s", &buf[0]);
+		JS_Log(JS_LOG_DEBUG, ">>> %s", &buf[0]);
 		*c = tmp;
 		c = &buf[0];
 

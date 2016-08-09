@@ -28,7 +28,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <signal.h>
-#include <jsapi.h>
+#include <jsmisc.h>
 
 #include "pexec.h"
 #include "bfd.h"
@@ -79,7 +79,7 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 
 	switch ((pid = fork())) {
 	case -1:
-		mod_log(LOG_ERR, "could not spawn child process\n");
+		JS_Log(JS_LOG_ERR, "could not spawn child process\n");
 		goto out_clean;
 	case 0:
 		/* child; pipe ends that we're not interested in (the ones used
@@ -98,18 +98,18 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 	pw[0] = -1;
 
 	if (pexec_send_headers(ctx, fw)) {
-		mod_log(LOG_ERR, "could not copy message headers\n");
+		JS_Log(JS_LOG_ERR, "could not copy message headers\n");
 		goto out_err;
 	}
 
 	if (bfd_puts(fw, "\r\n") < 0) {
-		mod_log(LOG_ERR, "could not copy message header delimiter\n");
+		JS_Log(JS_LOG_ERR, "could not copy message header delimiter\n");
 		goto out_err;
 	}
 
 	bfd_seek(ctx->body.stream, 0, SEEK_SET);
 	if (bfd_copy(ctx->body.stream, fw)) {
-		mod_log(LOG_ERR, "could not copy message body\n");
+		JS_Log(JS_LOG_ERR, "could not copy message body\n");
 		goto out_err;
 	}
 
@@ -148,7 +148,7 @@ out_err:
 	if (!WIFEXITED(status))
 		waitpid(pid, &status, WNOHANG);
 	if (WIFEXITED(status)) {
-		mod_log(LOG_ERR, "execv(%s) failed\n", argv[0]);
+		JS_Log(JS_LOG_ERR, "execv(%s) failed\n", argv[0]);
 		goto out_clean;
 	}
 	/* cleanup when child process seems to be dead */

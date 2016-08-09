@@ -1,5 +1,5 @@
-#ifndef _SMTP_SERVER_H
-#define _SMTP_SERVER_H
+#ifndef _JS_SMTP_SERVER_H
+#define _JS_SMTP_SERVER_H
 
 #include <jsapi.h>
 
