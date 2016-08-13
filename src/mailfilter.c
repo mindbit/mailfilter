@@ -431,8 +431,6 @@ int main(int argc, char **argv)
 	if (js_init(config_path))
 		goto out;
 
-	smtp_server_init();
-
 	/* Start listening on addresses and ports given in the JS config */
 	if (create_sockets() < 0) {
 		fprintf(stderr, "Error setting up sockets.\n");
