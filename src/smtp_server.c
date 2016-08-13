@@ -217,15 +217,9 @@ void smtp_path_cleanup(struct smtp_path *path)
 
 void smtp_server_context_init(struct smtp_server_context *ctx)
 {
-	int i;
-
 	memset(ctx, 0, sizeof(struct smtp_server_context));
 	smtp_path_init(&ctx->rpath);
 	INIT_LIST_HEAD(&ctx->fpath);
-
-	for (i = 0; i < SMTP_PRIV_HASH_SIZE; i++)
-		INIT_LIST_HEAD(&ctx->priv_hash[i]);
-
 	INIT_LIST_HEAD(&ctx->hdrs);
 }
 
@@ -771,46 +765,4 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 	ctx->message = js_get_message(ret);
 
 	return js_get_disconnect(ret);
-}
-
-int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv)
-{
-	struct smtp_priv_hash *h;
-
-	h = malloc(sizeof(struct smtp_priv_hash));
-	if (h == NULL)
-		return -ENOMEM;
-
-	h->key = key;
-	h->priv = priv;
-	list_add_tail(&h->lh, &ctx->priv_hash[smtp_priv_bucket(key)]);
-
-	return 0;
-}
-
-void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key)
-{
-	struct smtp_priv_hash *h;
-	int i = smtp_priv_bucket(key);
-
-	list_for_each_entry(h, &ctx->priv_hash[i], lh)
-		if (h->key == key)
-			return h->priv;
-
-	return NULL;
-}
-
-int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key)
-{
-	struct smtp_priv_hash *h;
-	int i = smtp_priv_bucket(key);
-
-	list_for_each_entry(h, &ctx->priv_hash[i], lh)
-		if (h->key == key) {
-			list_del(&h->lh);
-			free(h);
-			return 0;
-		}
-
-	return -ESRCH;
 }
