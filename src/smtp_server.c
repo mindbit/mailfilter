@@ -52,21 +52,27 @@
 
 //static uint64_t key;
 
-// map SMTP commands to handlers
-static struct smtp_cmd_hdlr smtp_cmd_hdlrs[PREPROCESS_HDLRS_LEN] = {
-	DEFINE_SMTP_CMD_HDLR(init),
-	DEFINE_SMTP_CMD_HDLR(auth),
-	DEFINE_SMTP_CMD_HDLR(alou),
-	DEFINE_SMTP_CMD_HDLR(alop),
-	DEFINE_SMTP_CMD_HDLR(aplp),
-	DEFINE_SMTP_CMD_HDLR(ehlo),
-	DEFINE_SMTP_CMD_HDLR(helo),
-	DEFINE_SMTP_CMD_HDLR(data),
-	DEFINE_SMTP_CMD_HDLR(mail),
-	DEFINE_SMTP_CMD_HDLR(rcpt),
-	DEFINE_SMTP_CMD_HDLR(rset),
-	DEFINE_SMTP_CMD_HDLR(quit)
+/**
+ * @brief SMTP command handler prototype
+ */
+typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+
+/**
+ * @brief SMTP command handler table element
+ */
+struct smtp_cmd_hdlr {
+	const char *name;
+	smtp_cmd_hdlr_t hdlr;
 };
+
+#define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
+
+/**
+ * @brief SMTP command handler table
+ *
+ * Map SMTP commands to handlers
+ */
+static struct smtp_cmd_hdlr smtp_cmd_table[];
 
 int smtp_server_response(bfd_t *f, int code, const char *message)
 {
@@ -94,16 +100,16 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 	int idx;
 	int status;
 
-	for (idx = 0; idx < PREPROCESS_HDLRS_LEN; idx++)
-		if (!strcasecmp(smtp_cmd_hdlrs[idx].cmd_name, cmd))
+	for (idx = 0; smtp_cmd_table[idx].name; idx++)
+		if (!strcasecmp(smtp_cmd_table[idx].name, cmd))
 			break;
 
-	if (idx >= PREPROCESS_HDLRS_LEN) {
+	if (!smtp_cmd_table[idx].hdlr) {
 		smtp_server_response(stream, 500, "Command not implemented");
 		return 0;
 	}
 
-	status = smtp_cmd_hdlrs[idx].smtp_preprocess_hdlr(ctx, cmd, arg, stream);
+	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, stream);
 
 	if (ctx->code) {
 		smtp_server_response(stream, ctx->code, ctx->message);
@@ -789,3 +795,18 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	return js_get_disconnect(ret);
 }
+
+static struct smtp_cmd_hdlr smtp_cmd_table[] = {
+	SMTP_CMD_HDLR_INIT(init),
+#if 0
+	SMTP_CMD_HDLR_INIT(auth),
+#endif
+	SMTP_CMD_HDLR_INIT(ehlo),
+	SMTP_CMD_HDLR_INIT(helo),
+	SMTP_CMD_HDLR_INIT(data),
+	SMTP_CMD_HDLR_INIT(mail),
+	SMTP_CMD_HDLR_INIT(rcpt),
+	SMTP_CMD_HDLR_INIT(rset),
+	SMTP_CMD_HDLR_INIT(quit),
+	{NULL, NULL}
+};

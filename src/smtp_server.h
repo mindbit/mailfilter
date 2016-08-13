@@ -32,61 +32,6 @@
 
 #include "smtp.h"
 #include "internet_message.h"
-#include "bfd.h"
-
-/**
- * Define the number of preprocess handlers = number of SMTP commands
- */
-#define	PREPROCESS_HDLRS_LEN	12
-
-struct smtp_server_context;
-
-/**
- * SMTP command handler prototype.
- *
- * FIXME: this help is innacurate ...
- *
- * cmd
- *		The (SMTP) command that is being handled.
- * 
- * in
- * 		Communication socket stream.
- *
- * priv
- * 		Private data passed back to the command handler, as passed to
- * 		smtp_cmd_register() on handler registration.
- */
-typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-
-/**
- * Define SMTP preprocess handlers
- */
-int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
-
-/**
- * SMTP command structure
- *
- * Used by a SMTP command to maintain the C preprocess handler
- * and JS stub function
- */
-struct smtp_cmd_hdlr {
-	const char *cmd_name;
-	smtp_cmd_hdlr_t smtp_preprocess_hdlr;
-};
-
-#define DEFINE_SMTP_CMD_HDLR(name) \
-	{ #name , &smtp_hdlr_##name } \
 
 /**
  * SMTP server context.
