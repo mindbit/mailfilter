@@ -88,14 +88,6 @@ struct smtp_cmd_hdlr {
 #define DEFINE_SMTP_CMD_HDLR(name) \
 	{ #name , &smtp_hdlr_##name } \
 
-#define SMTP_PRIV_HASH_SIZE 16
-
-struct smtp_priv_hash {
-	uint64_t key;
-	void *priv;
-	struct list_head lh;
-};
-
 /**
  * SMTP server context.
  */
@@ -140,42 +132,10 @@ struct smtp_server_context {
 
 	/* SMTP message to send back to client */
 	char *message, *prev_message;
-
-	/* Hash of per-module private data */
-	struct list_head priv_hash[SMTP_PRIV_HASH_SIZE];
 };
 
 extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
 extern int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
-extern int smtp_priv_register(struct smtp_server_context *ctx, uint64_t key, void *priv);
-extern void *smtp_priv_lookup(struct smtp_server_context *ctx, uint64_t key);
-extern int smtp_priv_unregister(struct smtp_server_context *ctx, uint64_t key);
-
-static inline int smtp_priv_bucket(uint64_t key)
-{
-	int i, ret = 0;
-
-	for (i = 0; i < 8; i++) {
-		ret += key & 0xff;
-		key >>= 8;
-	}
-
-	return ret % SMTP_PRIV_HASH_SIZE;
-}
-
-static inline uint64_t smtp_priv_key(const char *str)
-{
-	uint64_t ret = 0;
-	int i = 0;
-
-	while (*str != '\0') {
-		if (++i > 8)
-			return ret;
-		ret = (ret << 8) | *(unsigned char *)(str++);
-	}
-
-	return ret;
-}
 
 #endif
