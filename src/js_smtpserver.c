@@ -694,6 +694,8 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 	char *c_str;
 	int n;
 	bfd_t *client_stream;
+	// FIXME don't use "sb"; write directly to stream because it's
+	// buffered anyway
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
 	command = JS_ARGV(cx, vp)[0];
@@ -729,7 +731,7 @@ static JSBool smtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 		free(c_str);
 	}
 
-	if (string_buffer_append_string(&sb, "\r\n\0"))
+	if (string_buffer_append_string(&sb, "\r\n"))
 		goto out_err;
 
 	if (bfd_puts(client_stream, sb.s) < 0) {

@@ -214,7 +214,7 @@ static void show_help(const char *argv0)
 			"\n"
 			"Valid options:\n"
 			"  -c <path>       Read configuration file from <path>\n"
-			"  -d              Do not fork to background; log everything to stderr\n"
+			"  -d              Debug mode (do not fork worker processes)\n"
 			"  -h              Show this help\n"
 			"\n",
 			argv0);
@@ -400,7 +400,7 @@ static int create_sockets(void)
 
 int main(int argc, char **argv)
 {
-	int status, opt, daemon = 1;
+	int status, opt, debug = 0;
 	char *config_path = "config.js";
 
 	struct sigaction sigchld_act = {
@@ -414,7 +414,7 @@ int main(int argc, char **argv)
 			config_path = optarg;
 			break;
 		case 'd':
-			daemon = 0;
+			debug = 1;
 			break;
 		case 'h':
 			show_help(argv[0]);
@@ -444,9 +444,7 @@ int main(int argc, char **argv)
 	do {
 		socklen_t addrlen = sizeof(struct sockaddr_in);
 		struct smtp_server_context ctx;
-		bfd_t *client_sock_stream;
 		int client_sock_fd;
-		char *remote_addr;
 
 		smtp_server_context_init(&ctx);
 
@@ -455,15 +453,17 @@ int main(int argc, char **argv)
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
 		}
-		remote_addr = inet_ntoa(ctx.addr.sin_addr);
+
+		if (debug) {
+			smtp_server_main(&ctx, client_sock_fd);
+			continue;
+		}
 
 		switch (fork()) {
 		case -1:
 			assert_log(0, &config); // FIXME
 			break;
 		case 0:
-			//printf("pid: %d sleeping\n", getpid()); fflush(stdout); sleep(8);
-
 			/* __pexec_hdlr_body() always calls waitpid() for child processes,
 			 * so we reinstall the default signal handler */
 			signal(SIGCHLD, SIG_DFL);
@@ -474,12 +474,7 @@ int main(int argc, char **argv)
 			 * properly recover from the error. */
 			signal(SIGPIPE, SIG_IGN);
 
-			client_sock_stream = bfd_alloc(client_sock_fd);
-			assert_log(client_sock_stream != NULL, &config);
-			JS_Log(JS_LOG_INFO, "New connection from %s", remote_addr);
-			smtp_server_run(&ctx, client_sock_stream);
-			bfd_close(client_sock_stream);
-			JS_Log(JS_LOG_INFO, "Closed connection to %s", remote_addr);
+			smtp_server_main(&ctx, client_sock_fd);
 			js_stop();
 			exit(EXIT_SUCCESS);
 		default:

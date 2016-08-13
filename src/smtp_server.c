@@ -51,7 +51,6 @@
 #define assert_mod_log(...)
 
 //static uint64_t key;
-static const char *module = "server";
 
 // map SMTP commands to handlers
 static struct smtp_cmd_hdlr smtp_cmd_hdlrs[PREPROCESS_HDLRS_LEN] = {
@@ -75,13 +74,13 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 
 	while ((c = index(buf, '\n'))) {
 		*c = 0;
-		JS_Log(JS_LOG_DEBUG, "[%s] <<< %d-%s", module, code, buf);
+		JS_Log(JS_LOG_DEBUG, "<<< %d-%s\n", code, buf);
 		bfd_printf(f, "%d-%s\r\n", code, buf);
 		*c = '\n';
 		buf = c + 1;
 	}
 
-	JS_Log(JS_LOG_DEBUG, "[%s] <<< %d %s", module, code, buf);
+	JS_Log(JS_LOG_DEBUG, "<<< %d %s\n", code, buf);
 	if (bfd_printf(f, "%d %s\r\n", code, buf) >= 0) {
 		bfd_flush(f);
 		return 0;
@@ -90,106 +89,131 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 	return -1;
 }
 
-int smtp_server_process(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
-	int disconnect = 0;
-	int hdlr_idx;
-	int code;
+	int idx;
+	int status;
 
-	struct smtp_cmd_hdlr *cmd_hdlr;
-	char *message;
+	for (idx = 0; idx < PREPROCESS_HDLRS_LEN; idx++)
+		if (!strcasecmp(smtp_cmd_hdlrs[idx].cmd_name, cmd))
+			break;
 
-	code = 0;
-	message = NULL;
-	for (hdlr_idx = 0; hdlr_idx < PREPROCESS_HDLRS_LEN; hdlr_idx++) {
-		if (strcasecmp(smtp_cmd_hdlrs[hdlr_idx].cmd_name, cmd))
-			continue;
-
-		/* Get the structure with specific handler */
-		cmd_hdlr = &smtp_cmd_hdlrs[hdlr_idx];
-
-		/* Call the handler */
-		disconnect = cmd_hdlr->smtp_preprocess_hdlr(ctx, cmd, arg, stream);
-
-		if (ctx->code) {
-			code = ctx->code;
-			message = ctx->message;
-		} else {
-			code = 451;
-			message = strdup("Internal server error");
-		}
-
-		break;
+	if (idx >= PREPROCESS_HDLRS_LEN) {
+		smtp_server_response(stream, 500, "Command not implemented");
+		return 0;
 	}
 
-	if (hdlr_idx >= PREPROCESS_HDLRS_LEN) {
-		code = 500;
-		message = strdup("Command not implemented");
-	}
+	status = smtp_cmd_hdlrs[idx].smtp_preprocess_hdlr(ctx, cmd, arg, stream);
 
-	smtp_server_response(stream, code, message);
+	if (ctx->code) {
+		smtp_server_response(stream, ctx->code, ctx->message);
+		free(ctx->message);
+	} else
+		smtp_server_response(stream, 451, "Internal server error");
 
-	if (message) {
-		free(message);
-	}
-
-	return disconnect;
+	return status;
 }
 
-int __smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
+/**
+ * @brief	Read line from buffered file descriptor and trim "\r\n"
+ *
+ * If the line in the input stream is longer than the supplied buffer,
+ * subsequent reads are performed in the same buffer and older data is
+ * overwritten.
+ *
+ * The resulting string in the buffer is always null-terminated.
+ *
+ * @param[in]	stream The input buffered file descriptor
+ * @param[in]	buf Buffer to store data that is read from the file
+ * @param[in]	size Buffer size
+ * @param[out]	size String length after "\r\n" was trimmed and
+ *		excluding the null-terminator
+ *
+ * @return	Positive value: successful read; indicates how many
+ *		times the buffer was written to.
+ *		0: no data could be read from the stream (e.g. socket
+ *		closed).
+ *		Negative value: POSIX error code indicating read error.
+ */
+static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
 {
-	char buf[SMTP_COMMAND_MAX + 1];
-	char *c;
-	size_t n;
+	ssize_t len;
+	int writes = 0;
 
-	/* Command handling loop */
+	if (!stream || !buf || !size || *size < 2)
+		return -EINVAL;
+
 	do {
-		char tmp;
-		size_t i;
-		ssize_t sz;
-		c = &buf[0];
-		n = 0;
+		buf[*size - 2] = '\n';
+		len = bfd_read_line(stream, buf, *size - 1);
 
-		do {
-			buf[SMTP_COMMAND_MAX] = '\n';
-			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0) {
-				JS_Log(JS_LOG_ERR, "Socket read error (%s). Aborting", strerror(errno));
-				return -1;
-			}
-			if (!sz) {
-				JS_Log(JS_LOG_ERR, "Lost connection to client");
-				return -1;
-			}
-			n++;
-		} while (buf[SMTP_COMMAND_MAX] != '\n');
-		buf[sz] = '\0';
+		if (len < 0)
+			return -errno;
 
-		/* Log received command (without the trailing '\n') */
-		for (c += strlen(c) - 1; c >= &buf[0] && (*c == '\n' || *c == '\r'); c--);
-		tmp = *++c;
-		*c = '\0';
-		JS_Log(JS_LOG_DEBUG, ">>> %s", &buf[0]);
-		*c = tmp;
-		c = &buf[0];
+		if (!len)
+			return 0;
 
-		/* reject oversized commands */
-		if (n > 1) {
-			smtp_server_response(stream, 421, "Command too long");
-			return -1;
-		}
+		writes++;
+	} while (buf[*size - 2] != '\n');
 
-		/* Parse SMTP command */
-		c += strspn(c, white);
-		n = strcspn(c, white);
+	/* Add null termination and strip \r\n sequence */
+	do {
+		buf[len--] = '\0';
+	} while (len >= 0 && (buf[len] == '\r' || buf[len] == '\n'));
 
-		/* Prepare argument */
-		if (c[n] != '\0') {
-			c[n] = '\0';
-			n++;
-		}
-	} while (!smtp_server_process(ctx, c, c + n, stream));
+	*size = len + 1;
+	return writes;
+}
 
-	return 0;
+/**
+ * @brief 	Read and handle a single SMTP command from the client
+ * @return	0 on normal command completion;
+ *		Negative error code on error.
+ */
+static int smtp_server_read_and_handle(struct smtp_server_context *ctx, bfd_t *stream)
+{
+	char buf[SMTP_COMMAND_MAX];
+	size_t n = sizeof(buf);
+	char *c = &buf[0];
+	int status;
+
+	status = smtp_server_read_line(stream, buf, &n);
+
+	if (status < 0) {
+		JS_Log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
+		return status;
+	}
+
+	if (!status) {
+		JS_Log(JS_LOG_ERR, "Lost connection to client\n");
+		return -ECONNABORTED;
+	}
+
+	/* Log received command */
+	JS_Log(JS_LOG_DEBUG, ">>> %s\n", &buf[0]);
+
+	/* reject oversized commands */
+	if (status > 1) {
+		smtp_server_response(stream, 500, "Command too long");
+		return 0;
+	}
+
+	if (!n) {
+		smtp_server_response(stream, 500, "Bad syntax");
+		return 0;
+	}
+
+	/* Parse SMTP command */
+	c += strspn(c, white);
+	n = strcspn(c, white);
+
+	/* Prepare argument */
+	if (c[n] != '\0') {
+		c[n] = '\0';
+		n++;
+	}
+
+	return smtp_server_handle_cmd(ctx, c, c + n, stream);
 }
 
 void smtp_path_init(struct smtp_path *path)
@@ -260,16 +284,22 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	ctx->body.path[0] = '\0';
 }
 
-int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
+void smtp_server_main(struct smtp_server_context *ctx, int client_sock_fd)
 {
-	int ret;
 	int hdlr_idx;
+	bfd_t *stream;
+	char *remote_addr;
+
+	remote_addr = inet_ntoa(ctx->addr.sin_addr);
+	stream = bfd_alloc(client_sock_fd);
+	assert_log(client_sock_stream != NULL, &config);
+	JS_Log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
 
 	/* Handle initial greeting */
-	if (smtp_server_process(ctx, "INIT", NULL, stream) || !ctx->code)
-		return 0;
+	if (smtp_server_handle_cmd(ctx, "INIT", NULL, stream) || !ctx->code)
+		goto out_clean;
 
-	ret = __smtp_server_run(ctx, stream);
+	while (!smtp_server_read_and_handle(ctx, stream));
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
@@ -277,7 +307,9 @@ int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream)
 
 	smtp_server_context_cleanup(ctx);
 
-	return ret;
+out_clean:
+	bfd_close(stream);
+	JS_Log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
 jsval smtp_path_parse_cmd(const char *arg, const char *word)
@@ -488,15 +520,6 @@ int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char 
 
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
 {
-	char *domain;
-
-	/* We must break the rules and modify arg to strip the terminating newline. Otherwise
-	 * the server to which we're proxying gets confused, since it expects the \r\n line
-	 * ending. smtp_client_command already appends this.
-	 */
-	domain = (char *)arg;
-	domain[strcspn(domain, "\r\n")] = '\0';
-
 	// If no error until now, call the JS handler
 	jsval ret = call_js_handler_with_arg(cmd, arg);
 

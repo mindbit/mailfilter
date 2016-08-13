@@ -95,9 +95,6 @@ struct smtp_server_context {
 	/* Remote end address */
 	struct sockaddr_in addr;
 
-	/* Command tree node that is currently being run */
-	struct smtp_cmd_tree *node;
-
 	/* Client identity specified in EHLO command */
 	char *identity;
 
@@ -128,14 +125,13 @@ struct smtp_server_context {
 	} body;
 
 	/* SMTP status code to send back to client */
-	int code, prev_code;
+	int code;
 
 	/* SMTP message to send back to client */
-	char *message, *prev_message;
+	char *message;
 };
 
-extern int smtp_cmd_register(const char *cmd, smtp_cmd_hdlr_t hdlr, int prio, int invokable);
-extern int smtp_server_run(struct smtp_server_context *ctx, bfd_t *stream);
+extern void smtp_server_main(struct smtp_server_context *ctx, int client_sock_fd);
 extern void smtp_server_context_init(struct smtp_server_context *ctx);
 
 #endif
