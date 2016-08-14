@@ -30,6 +30,8 @@
 #define MAXPACKET		8192
 #define BUFRSZ			1024
 
+#if 0
+
 static int mod_dkim_dns_get_key(void)
 {
 	int len, qdcount, n, type, ancount, rdlength = 0, c;
@@ -183,3 +185,5 @@ static int mod_dkim_hdlr_body(struct smtp_server_context *ctx, const char *cmd, 
 void mod_dkim_init(void)
 {
 }
+
+#endif

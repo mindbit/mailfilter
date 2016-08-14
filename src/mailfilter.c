@@ -129,7 +129,7 @@ static int js_init(const char *filename)
 	/* Initialize global objects */
 	if (js_engine_init(js_context, global))
 		return -1;
-	if (js_smtp_server_obj_init(js_context, global))
+	if (js_smtp_init(js_context, global))
 		return -1;
 
 	/* Run script */
@@ -301,8 +301,9 @@ static int create_sockets(void)
 	/* Get "global" object */
 	global = JS_GetGlobalForScopeChain(js_context);
 
-	if (!JS_GetProperty(js_context, global, "smtpServer", &server_val))
+	if (!JS_GetProperty(js_context, global, "SmtpServer", &server_val))
 		return -1;
+	// FIXME smtpserver is NULL if property was not found
 	smtpserver = JSVAL_TO_OBJECT(server_val);
 
 	if (!JS_GetProperty(js_context, smtpserver, "listenAddress", &prop_val))
@@ -442,20 +443,18 @@ int main(int argc, char **argv)
 	JS_Log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
 
 	do {
-		socklen_t addrlen = sizeof(struct sockaddr_in);
-		struct smtp_server_context ctx;
+		struct sockaddr_in peer;
+		socklen_t addrlen = sizeof(peer);
 		int client_sock_fd;
 
-		smtp_server_context_init(&ctx);
-
 		/* TODO: Using only socket fds[0], for now */
-		client_sock_fd = accept(fds[0], (struct sockaddr *)&ctx.addr, &addrlen);
+		client_sock_fd = accept(fds[0], (struct sockaddr *)&peer, &addrlen);
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
 		}
 
 		if (debug) {
-			smtp_server_main(&ctx, client_sock_fd);
+			smtp_server_main(client_sock_fd, &peer);
 			continue;
 		}
 
@@ -474,7 +473,7 @@ int main(int argc, char **argv)
 			 * properly recover from the error. */
 			signal(SIGPIPE, SIG_IGN);
 
-			smtp_server_main(&ctx, client_sock_fd);
+			smtp_server_main(client_sock_fd, &peer);
 			js_stop();
 			exit(EXIT_SUCCESS);
 		default:

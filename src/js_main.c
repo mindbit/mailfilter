@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <jsmisc.h>
 
 #include "js_main.h"
 #include "string_tools.h"
@@ -405,92 +406,4 @@ int add_part_to_header(jsval *header, char *c_str) {
 	}
 
 	return 0;
-}
-
-jsval call_js_handler(const char *cmd) {
-    int i;
-    char handler_name[9];
-
-    strcpy(handler_name, "smtp");
-
-    handler_name[4] = toupper((unsigned char) cmd[0]);
-
-    for (i = 5; i < 8; i++) {
-        handler_name[i] = tolower((unsigned char) cmd[i - 4]);
-    }
-
-    handler_name[8] = '\0';
-        
-    return js_call("smtpServer", handler_name, JSVAL_NULL);
-}
-
-jsval call_js_handler_with_arg(const char *cmd, char *arg) {
-    int i;
-    char handler_name[9];
-
-
-    strcpy(handler_name, "smtp");
-
-    handler_name[4] = toupper((unsigned char) cmd[0]);
-
-    for (i = 5; i < 8; i++) {
-        handler_name[i] = tolower((unsigned char) cmd[i - 4]);
-    }
-
-    handler_name[8] = '\0';
-
-    jsval js_arg = STRING_TO_JSVAL(JS_InternString(js_context, arg));
-
-    return js_call("smtpServer", handler_name, js_arg, JSVAL_NULL);
-}
-
-jsval js_call(const char *obj, const char *func, jsval arg, ...)
-{
-	JSObject *global, *curr_obj;
-
-	/* Array which stores every "arg" parameter passed to the function */
-	int argc = 0;
-	jsval argv[16], curr_arg, rval;
-	va_list ap;
-
-	/* Used when fetching the given object from the global object */
-	jsval objval;
-
-	/* Build args array with arguments given to this function */
-	va_start(ap, arg);
-	curr_arg = arg;
-	while (!JSVAL_IS_NULL(curr_arg)) {
-		argv[argc++] = curr_arg;
-		curr_arg = va_arg(ap, jsval);
-	}
-	va_end(ap);
-
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	if (!JS_GetProperty(js_context, global, obj, &objval) ||
-			JSVAL_IS_VOID(objval)) {
-		fprintf(stderr, "%s: ERROR: object '%s' does not exist\n",
-				__func__, obj);
-		return JSVAL_NULL;
-	}
-
-	curr_obj = JSVAL_TO_OBJECT(objval);
-
-	/* Get the property from object just to see if it exists */
-	if (!JS_GetProperty(js_context, curr_obj, func, &objval) ||
-			JSVAL_IS_VOID(objval)) {
-		fprintf(stderr, "%s: ERROR: method '%s' not defined in '%s'\n",
-				__func__, func, obj);
-		return JSVAL_NULL;
-	}
-
-	/* Call the given function */
-	if (!JS_CallFunctionName(js_context, curr_obj, func,
-				argc, argv, &rval)) {
-		fprintf(stderr, "%s: ERROR: failed calling '%s.%s()'\n",
-				__func__, obj, func);
-		return JSVAL_NULL;
-	}
-
-	return rval;
 }

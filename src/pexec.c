@@ -33,6 +33,8 @@
 #include "pexec.h"
 #include "bfd.h"
 
+#if 0
+
 int pexec(char * const *argv, int fd_in, int fd_out)
 {
 	int i, fd_err;
@@ -174,3 +176,5 @@ out_clean:
 		close(pw[1]);
 	return ret;
 }
+
+#endif

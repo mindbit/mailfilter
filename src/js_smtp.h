@@ -3,7 +3,7 @@
 
 #include <jsapi.h>
 
-int js_smtp_server_obj_init(JSContext *cx, JSObject *global);
+int js_smtp_init(JSContext *cx, JSObject *global);
 
 // Creates Javascript Object with response
 jsval create_response(JSContext *cx, int status, const char* message, int disconnect);
@@ -33,13 +33,5 @@ static JSBool smtpClient_connect(JSContext *cx, unsigned argc, jsval *vp);
 // SmtpResponse class methods
 int init_smtp_response_class(JSContext *cx, JSObject *global);
 static JSBool response_construct(JSContext *cx, unsigned argc, jsval *vp);
-
-// Define C stub functions
-#define DEFINE_HANDLER_STUB(name) \
-	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \
-		jsval rval = create_response(cx, 250, "def" #name, 0); \
-		JS_SET_RVAL(cx, vp, rval); \
-		return JS_TRUE; \
-	} \
 
 #endif

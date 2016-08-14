@@ -56,10 +56,12 @@ struct im_header *im_header_find(struct smtp_server_context *ctx, const char *na
 {
 	struct im_header *hdr;
 
+#if 0
 	list_for_each_entry(hdr, &ctx->hdrs, lh) {
 		if (!strcasecmp(hdr->name, name))
 			return hdr;
 	}
+#endif
 
 	return NULL;
 }
