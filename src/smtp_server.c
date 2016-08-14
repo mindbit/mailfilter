@@ -292,9 +292,10 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 
 void smtp_server_main(struct smtp_server_context *ctx, int client_sock_fd)
 {
-	int hdlr_idx;
 	bfd_t *stream;
-	char *remote_addr;
+	int code;
+	char *remote_addr, *message;
+	jsval init;
 
 	remote_addr = inet_ntoa(ctx->addr.sin_addr);
 	stream = bfd_alloc(client_sock_fd);
@@ -302,7 +303,22 @@ void smtp_server_main(struct smtp_server_context *ctx, int client_sock_fd)
 	JS_Log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
 
 	/* Handle initial greeting */
-	if (smtp_server_handle_cmd(ctx, "INIT", NULL, stream) || !ctx->code)
+	init = call_js_handler("INIT");
+
+	if (js_get_disconnect(init))
+		goto out_clean;
+
+	code = js_get_code(init);
+	if (!code) {
+		smtp_server_response(stream, 451, "Internal server error");
+		goto out_clean;
+	}
+
+	message = js_get_message(init);
+	smtp_server_response(stream, code, message);
+	free(message);
+
+	if (code < 200 || code >= 300)
 		goto out_clean;
 
 	while (!smtp_server_read_and_handle(ctx, stream));
@@ -403,18 +419,6 @@ int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
 	ctx->code = 504;
 	ctx->message = strdup("AUTH mechanism not available");
 	return 0;
-}
-
-int smtp_hdlr_init(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
-{
-	// Call the JS handler
-	jsval ret = call_js_handler(cmd);
-
-	// Get code and message returned by JS handler
-	ctx->code = js_get_code(ret);
-	ctx->message = js_get_message(ret);
-
-	return js_get_disconnect(ret);
 }
 
 int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
@@ -797,7 +801,6 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 }
 
 static struct smtp_cmd_hdlr smtp_cmd_table[] = {
-	SMTP_CMD_HDLR_INIT(init),
 #if 0
 	SMTP_CMD_HDLR_INIT(auth),
 #endif
