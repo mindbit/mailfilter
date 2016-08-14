@@ -12,14 +12,6 @@ some macros (like JSVAL_NULL).
 
 #endif
 
-/*
- * Calls the given function of the given predefined object with the given
- * arguments. Last parameter of the function should ALWAYS be JSVAL_NULL.
- */
-jsval js_call(const char *obj, const char *func, jsval arg, ...);
-jsval call_js_handler(const char *cmd);
-jsval call_js_handler_with_arg(const char *cmd, char *arg);
-
 // Get response properties
 int js_get_code(jsval v);
 char *js_get_message(jsval v);

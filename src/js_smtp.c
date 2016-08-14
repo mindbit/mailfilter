@@ -13,19 +13,6 @@
 
 extern JSContext *js_context; // FIXME pass through arguments
 
-DEFINE_HANDLER_STUB(Init);
-DEFINE_HANDLER_STUB(Auth);
-DEFINE_HANDLER_STUB(Alou);
-DEFINE_HANDLER_STUB(Alop);
-DEFINE_HANDLER_STUB(Ehlo);
-DEFINE_HANDLER_STUB(Helo);
-DEFINE_HANDLER_STUB(Data);
-DEFINE_HANDLER_STUB(Mail);
-DEFINE_HANDLER_STUB(Rcpt);
-DEFINE_HANDLER_STUB(Rset);
-DEFINE_HANDLER_STUB(Body);
-DEFINE_HANDLER_STUB(Clnp);
-
 jsval create_response(JSContext *cx, int code, const char* message, int disconnect) { 
 	jsval rmessage, response, js_code, js_message, js_disconnect;
 	JSObject *messages_arr;
@@ -924,78 +911,87 @@ int init_smtp_client_class(JSContext *cx, JSObject *global) {
 	return 0;
 }
 
-int js_smtp_server_obj_init(JSContext *cx, JSObject *global)
+static JSClass SmtpServer_class = {
+	"SmtpServer", 0, JS_PropertyStub, JS_PropertyStub,
+	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
+	JS_ResolveStub, JS_ConvertStub, NULL,
+	JSCLASS_NO_OPTIONAL_MEMBERS
+};
+
+static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
-	static JSClass smtpserver_class = {
-		"smtpServer", 0, JS_PropertyStub, JS_PropertyStub,
-		JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-		JS_ResolveStub, JS_ConvertStub, JS_PropertyStub,
-		JSCLASS_NO_OPTIONAL_MEMBERS
-	};
+	JSObject *obj, *recipients, *headers;
+	//jsval host, port, client;
 
-	JSObject *smtpServer, *session, *recipients, *headers;
+	//host = JS_ARGV(cx, vp)[0];
+	//port = JS_ARGV(cx, vp)[1];
 
-	smtpServer = JS_DefineObject(cx, global, "smtpServer", &smtpserver_class, NULL, 0);
-	if (!smtpServer)
-		return -1;
-
-	JSFunctionSpec smtp_command_handlers[] = {
-		JS_FS("smtpInit", smtpInit, 0, 0),
-		JS_FS("smtpAuth", smtpAuth, 0, 0),
-		JS_FS("smtpAlou", smtpAlou, 0, 0),
-		JS_FS("smtpAlop", smtpAlop, 0, 0),
-		JS_FS("smtpEhlo", smtpEhlo, 0, 0),
-		JS_FS("smtpHelo", smtpHelo, 0, 0),
-		JS_FS("smtpData", smtpData, 0, 0),
-		JS_FS("smtpMail", smtpMail, 0, 0),
-		JS_FS("smtpRcpt", smtpRcpt, 0, 0),
-		JS_FS("smtpRset", smtpRset, 0, 0),
-		JS_FS("smtpBody", smtpBody, 0, 0),
-		JS_FS("smtpClnp", smtpClnp, 0, 0),
-		JS_FS_END
-	};
-
-	if (JS_DefineFunctions(cx, smtpServer, smtp_command_handlers) == JS_FALSE) {
-		return -1;
-	}
-
-	session = JS_NewObject(cx, NULL, NULL, NULL);
+	obj = JS_NewObjectForConstructor(cx, &SmtpServer_class, vp);
+	if (!obj)
+		return JS_FALSE;
 
 	// Define and set session properties
-	if (JS_DefineProperty(cx, session, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
-		return -1;
-	}
+	if (!JS_DefineProperty(cx, obj, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE))
+		return JS_FALSE;
 
-	if (JS_DefineProperty(cx, session, "envelopeSender", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
-		return -1;
-	}
+	if (!JS_DefineProperty(cx, obj, "envelopeSender", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
+		return JS_FALSE;
 
-	// Add domains property
 	recipients = JS_NewArrayObject(cx, 0, NULL);
+	if (!recipients)
+		return JS_FALSE;
 
-	if (!recipients) {
-		return -1;
-	}
+	if (!JS_DefineProperty(cx, obj, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, session, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT)) {
-		return -1;
-	}
-
-	// Add headers property
 	headers = JS_NewArrayObject(cx, 0, NULL);
+	if (!headers)
+		return JS_FALSE;
 
-	if (!headers) {
-		return -1;
+	if (!JS_DefineProperty(cx, obj, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+		return JS_FALSE;
+
+	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
+	return JS_TRUE;
+}
+
+#define DEFINE_HANDLER_STUB(name) \
+	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \
+		jsval rval = create_response(cx, 250, "def" #name, 0); \
+		JS_SET_RVAL(cx, vp, rval); \
+		return JS_TRUE; \
 	}
 
-	if (!JS_DefineProperty(cx, session, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT)) {
-		return -1;
-	}
+DEFINE_HANDLER_STUB(Init);
+DEFINE_HANDLER_STUB(Auth);
+DEFINE_HANDLER_STUB(Ehlo);
+DEFINE_HANDLER_STUB(Helo);
+DEFINE_HANDLER_STUB(Data);
+DEFINE_HANDLER_STUB(Mail);
+DEFINE_HANDLER_STUB(Rcpt);
+DEFINE_HANDLER_STUB(Rset);
+DEFINE_HANDLER_STUB(Body);
+DEFINE_HANDLER_STUB(Clnp);
 
-	// Define smtpServer.session
-	if (JS_DefineProperty(cx, smtpServer, "session", OBJECT_TO_JSVAL(session), NULL, NULL, JSPROP_ENUMERATE) == JS_FALSE) {
+static JSFunctionSpec SmtpServer_functions[] = {
+	JS_FS("smtpInit", smtpInit, 0, 0),
+	JS_FS("smtpAuth", smtpAuth, 0, 0),
+	JS_FS("smtpEhlo", smtpEhlo, 0, 0),
+	JS_FS("smtpHelo", smtpHelo, 0, 0),
+	JS_FS("smtpData", smtpData, 0, 0),
+	JS_FS("smtpMail", smtpMail, 0, 0),
+	JS_FS("smtpRcpt", smtpRcpt, 0, 0),
+	JS_FS("smtpRset", smtpRset, 0, 0),
+	JS_FS("smtpBody", smtpBody, 0, 0),
+	JS_FS("smtpClnp", smtpClnp, 0, 0),
+	JS_FS_END
+};
+
+int js_smtp_init(JSContext *cx, JSObject *global)
+{
+
+	if (!JS_InitClass(cx, global, NULL, &SmtpServer_class, SmtpServer_construct, 1, NULL, SmtpServer_functions, NULL, NULL))
 		return -1;
-	}
 
 	if (init_smtp_path_class(cx, global)) {
 		return -1;

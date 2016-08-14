@@ -39,6 +39,8 @@
 
 #include "smtp_server.h"
 
+#if 0
+
 static uint64_t key;
 static const char *module = "spamassassin";
 
@@ -96,3 +98,5 @@ int mod_spamassassin_hdlr_body(struct smtp_server_context *ctx, const char *cmd,
 void mod_spamassassin_init(void)
 {
 }
+
+#endif

@@ -15,12 +15,13 @@ Engine.loadModule("mod_smtp_client.so");
 
 // Configure address/port pairs for listening to incoming SMTP
 // connections.
-smtpServer.listenAddress = [["127.0.0.1", "8025"]];
+SmtpServer.listenAddress = [["127.0.0.1", "8025"]];
 
 // Enable logging of everything that is received and sent on the SMTP
 // connection.
-smtpServer.debugProtocol = true;
+SmtpServer.debugProtocol = true;
 
+/*
 // Provide the initial SMTP greeting that the server will send to the
 // client, as an SmtpStatus object.
 smtpServer.initialGreeting = function () {
@@ -46,7 +47,6 @@ smtpServer.initialGreeting = function () {
 };
 
 // FIXME smtpServer.getEnvelopeSender() intoarce un obiect SmtpPath care modeleaza struct smtp_path din C
-/*
 smtpServer.smtpMail = function () {
 	var envelopeSender = this.getEnvelopeSender();
 
@@ -102,12 +102,16 @@ function relayCmd(cmd, args) {
 	return smtpClient.readResponse();
 }
 
-smtpServer.smtpInit = function() {
+SmtpServer.prototype.smtpInit = function() {
+	/*
 	smtpClient = new SmtpClient("127.0.0.1", "25");
 	smtpClient.connect();
 	return smtpClient.readResponse();
+	*/
+	return new SmtpResponse(201, "test custom INIT", false);
 }
 
+/*
 smtpServer.smtpAuth = function() {
 	return {
 		"code" : 250,
@@ -174,4 +178,4 @@ smtpServer.smtpQuit = function () {
 
 smtpServer.smtpClnp = function () {
 };
-
+*/

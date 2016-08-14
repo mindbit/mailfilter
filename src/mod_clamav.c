@@ -34,6 +34,8 @@
 #include "smtp_server.h"
 #include "string_tools.h"
 
+#if 0
+
 static uint64_t key;
 static const char *module = "clamav";
 
@@ -93,3 +95,5 @@ int mod_clamav_hdlr_body(struct smtp_server_context *ctx, const char *cmd, const
 void mod_clamav_init(void)
 {
 }
+
+#endif

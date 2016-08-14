@@ -41,10 +41,56 @@
 #include <jsmisc.h>
 
 #include "js_main.h"
-
+#include "internet_message.h"
 #include "smtp_server.h"
 #include "smtp.h"
 #include "base64.h"
+
+/**
+ * SMTP server context.
+ */
+struct smtp_server_context {
+	/* Client stream (buffered file descriptor) */
+	bfd_t *stream;
+
+	/* JavaScript instance of SmtpServer */
+	JSObject *js_srv;
+
+	/* Client identity specified in EHLO command */
+	char *identity;
+
+	/* Authentication details. NULL if no user authenticated */
+	char *auth_user, *auth_pw, *auth_type;
+
+	/* Envelope sender (aka reverse-path as per RFC821). .mailbox.local
+	 * is NULL if "MAIL" was not issued. */
+	struct smtp_path rpath;
+
+	/* List of recipients (aka forward-path as per RFC821). Mailbox list
+	 * is empty if "RCPT" was not issued. Elements are chained by the
+	 * .mailbox.domain.lh component. */
+	struct list_head fpath;
+
+	struct list_head hdrs;
+
+	/* Message body */
+	struct {
+		/* Path to tmp file or empty string if "DATA" was not issued */
+		char path[PATH_MAX];
+
+		/* Stream of tmp file or NULL if "DATA" was not issued */
+		bfd_t *stream;
+
+		/* Size of message body (without headers) */
+		off_t size;
+	} body;
+
+	/* SMTP status code to send back to client */
+	int code;
+
+	/* SMTP message to send back to client */
+	char *message;
+};
 
 // FIXME
 #define assert_log(...)
@@ -55,7 +101,7 @@
 /**
  * @brief SMTP command handler prototype
  */
-typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream);
+typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg);
 
 /**
  * @brief SMTP command handler table element
@@ -65,7 +111,7 @@ struct smtp_cmd_hdlr {
 	smtp_cmd_hdlr_t hdlr;
 };
 
-#define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
+extern JSContext *js_context; // FIXME pass through arguments
 
 /**
  * @brief SMTP command handler table
@@ -95,7 +141,7 @@ int smtp_server_response(bfd_t *f, int code, const char *message)
 	return -1;
 }
 
-static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	int idx;
 	int status;
@@ -105,17 +151,17 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 			break;
 
 	if (!smtp_cmd_table[idx].hdlr) {
-		smtp_server_response(stream, 500, "Command not implemented");
+		smtp_server_response(ctx->stream, 500, "Command not implemented");
 		return 0;
 	}
 
-	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, stream);
+	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg);
 
 	if (ctx->code) {
-		smtp_server_response(stream, ctx->code, ctx->message);
+		smtp_server_response(ctx->stream, ctx->code, ctx->message);
 		free(ctx->message);
 	} else
-		smtp_server_response(stream, 451, "Internal server error");
+		smtp_server_response(ctx->stream, 451, "Internal server error");
 
 	return status;
 }
@@ -176,14 +222,14 @@ static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
  * @return	0 on normal command completion;
  *		Negative error code on error.
  */
-static int smtp_server_read_and_handle(struct smtp_server_context *ctx, bfd_t *stream)
+static int smtp_server_read_and_handle(struct smtp_server_context *ctx)
 {
 	char buf[SMTP_COMMAND_MAX];
 	size_t n = sizeof(buf);
 	char *c = &buf[0];
 	int status;
 
-	status = smtp_server_read_line(stream, buf, &n);
+	status = smtp_server_read_line(ctx->stream, buf, &n);
 
 	if (status < 0) {
 		JS_Log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
@@ -200,12 +246,12 @@ static int smtp_server_read_and_handle(struct smtp_server_context *ctx, bfd_t *s
 
 	/* reject oversized commands */
 	if (status > 1) {
-		smtp_server_response(stream, 500, "Command too long");
+		smtp_server_response(ctx->stream, 500, "Command too long");
 		return 0;
 	}
 
 	if (!n) {
-		smtp_server_response(stream, 500, "Bad syntax");
+		smtp_server_response(ctx->stream, 500, "Bad syntax");
 		return 0;
 	}
 
@@ -219,7 +265,7 @@ static int smtp_server_read_and_handle(struct smtp_server_context *ctx, bfd_t *s
 		n++;
 	}
 
-	return smtp_server_handle_cmd(ctx, c, c + n, stream);
+	return smtp_server_handle_cmd(ctx, c, c + n);
 }
 
 void smtp_path_init(struct smtp_path *path)
@@ -290,47 +336,89 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
 	ctx->body.path[0] = '\0';
 }
 
-void smtp_server_main(struct smtp_server_context *ctx, int client_sock_fd)
+static jsval call_js_handler(JSObject *obj, const char *cmd, const char *arg)
 {
-	bfd_t *stream;
-	int code;
-	char *remote_addr, *message;
-	jsval init;
+	int i;
+	char handler_name[9];
+	jsval js_arg = JSVAL_NULL, *js_argv = NULL, rval;
+	int js_argc = 0;
 
-	remote_addr = inet_ntoa(ctx->addr.sin_addr);
-	stream = bfd_alloc(client_sock_fd);
-	assert_log(client_sock_stream != NULL, &config);
+	strcpy(handler_name, "smtp");
+
+	handler_name[4] = toupper((unsigned char) cmd[0]);
+
+	for (i = 5; i < 8; i++) {
+		handler_name[i] = tolower((unsigned char) cmd[i - 4]);
+	}
+
+	handler_name[8] = '\0';
+
+	if (arg) {
+		js_arg = STRING_TO_JSVAL(JS_InternString(js_context, arg));
+		js_argc = 1;
+		js_argv = &js_arg;
+	}
+
+	/* Call the given function */
+	if (!JS_CallFunctionName(js_context, obj, handler_name,
+				js_argc, js_argv, &rval)) {
+		JS_Log(JS_LOG_ERR, "failed calling '%s'", handler_name);
+		return JSVAL_NULL;
+	}
+
+	return rval;
+}
+
+void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
+{
+	int code;
+	char *remote_addr = NULL, *message;
+	jsval v;
+	struct smtp_server_context ctx;
+
+	smtp_server_context_init(&ctx);
+	remote_addr = inet_ntoa(peer->sin_addr);
+	ctx.stream = bfd_alloc(client_sock_fd); // FIXME check if successful
 	JS_Log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
 
-	/* Handle initial greeting */
-	init = call_js_handler("INIT");
+	/* Create SmtpServer instance */
+	if (!JS_GetProperty(js_context, JS_GetGlobalForScopeChain(js_context), "SmtpServer", &v))
+		goto out_clean;
+	ctx.js_srv = JS_New(js_context, JSVAL_TO_OBJECT(v), 0, NULL);
+	if (!ctx.js_srv)
+		goto out_clean;
+	JS_AddObjectRoot(js_context, &ctx.js_srv);
 
-	if (js_get_disconnect(init))
+	/* Handle initial greeting */
+	v = call_js_handler(ctx.js_srv, "INIT", NULL);
+
+	if (js_get_disconnect(v))
 		goto out_clean;
 
-	code = js_get_code(init);
+	code = js_get_code(v);
 	if (!code) {
-		smtp_server_response(stream, 451, "Internal server error");
+		smtp_server_response(ctx.stream, 451, "Internal server error");
 		goto out_clean;
 	}
 
-	message = js_get_message(init);
-	smtp_server_response(stream, code, message);
+	message = js_get_message(v);
+	smtp_server_response(ctx.stream, code, message);
 	free(message);
 
 	if (code < 200 || code >= 300)
 		goto out_clean;
 
-	while (!smtp_server_read_and_handle(ctx, stream));
+	while (!smtp_server_read_and_handle(&ctx));
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
-	call_js_handler("CLNP");
+	call_js_handler(ctx.js_srv, "CLNP", NULL);
 
-	smtp_server_context_cleanup(ctx);
+	smtp_server_context_cleanup(&ctx);
 
 out_clean:
-	bfd_close(stream);
+	JS_RemoveObjectRoot(js_context, &ctx.js_srv);
+	bfd_close(ctx.stream);
 	JS_Log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
@@ -421,7 +509,7 @@ int smtp_auth_unknown_parse(struct smtp_server_context *ctx, const char *arg)
 	return 0;
 }
 
-int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	struct {
 		const char *name;
@@ -461,14 +549,14 @@ int smtp_hdlr_auth(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_unknown_parse(ctx, c);
 }
 
-int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 	ssize_t sz;
 
 	assert_mod_log(!ctx->auth_user);
 
-	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
+	if ((sz = bfd_read_line(ctx->stream, buf, SMTP_COMMAND_MAX)) < 0)
 		return 0;
 	buf[sz] = '\0';
 
@@ -481,14 +569,14 @@ int smtp_hdlr_alou(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_login_parse_user(ctx, buf);
 }
 
-int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 	ssize_t sz;
 
 	assert_mod_log(!ctx->auth_pw);
 
-	if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
+	if ((sz = bfd_read_line(ctx->stream, buf, SMTP_COMMAND_MAX)) < 0)
 		return 1;
 	buf[sz] = '\0';
 
@@ -501,13 +589,13 @@ int smtp_hdlr_alop(struct smtp_server_context *ctx, const char *cmd, const char 
 	return smtp_auth_login_parse_pw(ctx, buf);
 }
 
-int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	char buf[SMTP_COMMAND_MAX + 1];
 	ssize_t sz;
 
 	if (!ctx->auth_user) {
-		if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) < 0)
+		if ((sz = bfd_read_line(ctx->stream, buf, SMTP_COMMAND_MAX)) < 0)
 			return 0;
 		buf[sz] = '\0';
 
@@ -516,10 +604,10 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
 	return 0;
 }
 
-int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler_with_arg(cmd, arg);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, arg);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -528,10 +616,10 @@ int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char 
 	return js_get_disconnect(ret);
 }
 
-int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler_with_arg(cmd, arg);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, arg);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -540,7 +628,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 	return js_get_disconnect(ret);
 }
 
-int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	if (ctx->rpath.mailbox.local != NULL) {
 		ctx->code = 503;
@@ -559,7 +647,7 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	set_envelope_sender(&smtpPath);
 
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler(cmd);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, NULL);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -568,7 +656,7 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	return js_get_disconnect(ret);
 }
 
-int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	struct smtp_path *path;
 
@@ -590,7 +678,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
 
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler(cmd);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, NULL);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -599,7 +687,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	return js_get_disconnect(ret);
 }
 
-int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	int fd;
 
@@ -625,7 +713,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	}
 
 	/* prepare response */
-	smtp_server_response(stream, 354, "Go ahead");
+	smtp_server_response(ctx->stream, 354, "Go ahead");
 
 	// Parse the BODY content of DATA
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
@@ -636,7 +724,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	im_hdr_ctx.max_size = 65536; // FIXME use proper value
 	im_hdr_ctx.hdrs = &ctx->hdrs;
 	//sleep(10);
-	switch (smtp_copy_to_file(ctx->body.stream, stream, &im_hdr_ctx)) {
+	switch (smtp_copy_to_file(ctx->body.stream, ctx->stream, &im_hdr_ctx)) {
 		case 0:
 			break;
 		case IM_PARSE_ERROR:
@@ -669,7 +757,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	//im_header_write(&ctx->hdrs, stdout);
 
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler(cmd);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, NULL);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -730,7 +818,7 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ct
 
 static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
 {
-	char *remote_addr = inet_ntoa(ctx->addr.sin_addr);
+	char *remote_addr = "10.0.0.1"; // FIXME inet_ntoa(ctx->addr.sin_addr);
 	time_t t = time(NULL);
 	struct tm *tm = localtime(&t);
 	char ts[32];
@@ -743,8 +831,10 @@ static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
 	if (hdr == NULL)
 		return NULL;
 
+#if 0
 	if (!getnameinfo((struct sockaddr *)&ctx->addr, sizeof(ctx->addr), remote_host, sizeof(remote_host), NULL, 0, 0))
 		rev = strcmp(remote_host, remote_addr);
+#endif
 	gethostname(my_hostname, sizeof(my_hostname));
 	strftime(ts, sizeof(ts), "%a, %d %b %Y %H:%M:%S %z", tm);
 	//rcpt = smtp_path_to_string(list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
@@ -778,7 +868,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 	return 0;
 }
 
-int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	ctx->code = 221;
 	ctx->message = strdup("closing connection");
@@ -786,12 +876,12 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 	return 1;
 }
 
-int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, bfd_t *stream)
+int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	smtp_server_context_cleanup(ctx);
 
 	// If no error until now, call the JS handler
-	jsval ret = call_js_handler(cmd);
+	jsval ret = call_js_handler(ctx->js_srv, cmd, NULL);
 
 	// Get code and message returned by JS handler
 	ctx->code = js_get_code(ret);
@@ -799,6 +889,8 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	return js_get_disconnect(ret);
 }
+
+#define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
 
 static struct smtp_cmd_hdlr smtp_cmd_table[] = {
 #if 0
