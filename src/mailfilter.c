@@ -45,7 +45,7 @@
 #include "config.h"
 #include "js_main.h"
 #include "js_engine.h"
-#include "js_smtpserver.h"
+#include "js_smtp.h"
 #include "smtp_server.h"
 
 // FIXME

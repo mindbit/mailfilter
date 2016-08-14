@@ -1,4 +1,4 @@
-#include "js_smtpserver.h"
+#include "js_smtp.h"
 #include "smtp.h"
 #include "bfd.h"
 #include "js_main.h"
