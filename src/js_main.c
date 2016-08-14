@@ -30,7 +30,7 @@ int js_get_code(jsval v) {
 		return JSVAL_TO_INT(code);
 	}
 
-	return -1;
+	return 0;
 }
 
 char *js_get_message(jsval v) {
