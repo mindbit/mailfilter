@@ -317,53 +317,6 @@ int add_new_header(jsval *header) {
 	return 0;
 }
 
-int add_header_properties(jsval *header, jsval *name, jsval *parts_recv) {
-	int i;
-	uint32_t arr_len;
-	JSObject *parts_obj;
-	jsval parts;
-
-	// Set name property
-	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "hname", name)) {
-		return -1;
-	}
-
-	// Add parts property
-	switch(JS_TypeOfValue(js_context, *parts_recv)) {
-		case JSTYPE_STRING:
-			// Create the messages array property
-			parts_obj = JS_NewArrayObject(js_context, 0, NULL);
-
-			if (!parts_obj) {
-				return -1;
-			}
-
-			// Add message to messages array
-			if (!JS_SetElement(js_context, parts_obj, 0, parts_recv)) {
-				return -1;
-			}
-
-			// Copy the messages to the property
-			parts = OBJECT_TO_JSVAL(parts_obj);
-
-			if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", &parts)) {
-				return -1;
-			}
-
-			break;
-		case JSTYPE_OBJECT:
-			// Copy the messages to the property
-			if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(*header), "parts", parts_recv)) {
-				return -1;
-			}
-			break;
-		default:
-			return -1;
-	}
-
-	return 0;
-}
-
 jsval new_header_instance(char *name) {
 	jsval header, js_name;
 	JSObject *global, *parts_obj;
