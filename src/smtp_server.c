@@ -872,7 +872,8 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 {
 	ctx->code = 221;
 	ctx->message = strdup("closing connection");
-	js_set_quitAsserted();
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "quitAsserted", BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE))
+		JS_Log(JS_LOG_WARNING, "failed to set quitAsserted\n");
 	return 1;
 }
 
