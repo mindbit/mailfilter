@@ -68,7 +68,7 @@ static int js_init(const char *filename)
 		"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub,
 		JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
 		JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
-		JS_PropertyStub, JSCLASS_NO_OPTIONAL_MEMBERS
+		NULL, JSCLASS_NO_OPTIONAL_MEMBERS
 	};
 
 	/*
@@ -401,7 +401,7 @@ static int create_sockets(void)
 
 int main(int argc, char **argv)
 {
-	int status, opt, debug = 0;
+	int opt, debug = 0;
 	char *config_path = "config.js";
 
 	struct sigaction sigchld_act = {
