@@ -878,7 +878,7 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 		return JS_FALSE;
 
 	// Define and set session properties
-	if (!JS_DefineProperty(cx, obj, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(cx, obj, "hostname", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
 	if (!JS_DefineProperty(cx, obj, "envelopeSender", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
@@ -896,6 +896,9 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 		return JS_FALSE;
 
 	if (!JS_DefineProperty(cx, obj, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+		return JS_FALSE;
+
+	if (!JS_DefineProperty(cx, obj, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));

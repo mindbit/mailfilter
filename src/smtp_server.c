@@ -145,6 +145,7 @@ DEF_SMTP_RSP(cmd_too_long,	500, "Command too long");
 DEF_SMTP_RSP(bad_syntax,	500, "Bad syntax");
 DEF_SMTP_RSP(invalid_hdrs,	500, "Could not parse message headers");
 DEF_SMTP_RSP(syntax_error,	501, "Syntax error");
+DEF_SMTP_RSP(hostname_req,	501, "Hostname required");
 DEF_SMTP_RSP(sndr_specified,	503, "Sender already specified");
 DEF_SMTP_RSP(no_recipients,	503, "Must specify recipient(s) first");
 DEF_SMTP_RSP(hdrs_too_big,	552, "Message header too long");
@@ -307,12 +308,15 @@ static smtp_status_t smtp_server_read_and_handle(struct smtp_server_context *ctx
 
 	/* Parse SMTP command */
 	c += strspn(c, white);
+	if (*c == '\0')
+		return smtp_server_response(ctx->stream, &smtp_rsp_bad_syntax);
+
 	n = strcspn(c, white);
 
 	/* Prepare argument */
 	if (c[n] != '\0') {
-		c[n] = '\0';
-		n++;
+		c[n++] = '\0';
+		n += strspn(c + n, white);
 	}
 
 	return smtp_server_handle_cmd(ctx, c, c + n);
@@ -788,7 +792,20 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	// FIXME extract hostname and set SmtpServer property
+	JSString *str;
+
+	if (*arg == '\0')
+		return smtp_response_copy(rsp, &smtp_rsp_hostname_req);
+
+	str = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
+	if (!str)
+		return SMTP_INT_ERR;
+
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "hostname", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
+		return SMTP_INT_ERR;
+
+	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
+
 	return call_js_handler(ctx, cmd, arg, rsp);
 }
 
@@ -798,9 +815,12 @@ smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, c
  */
 smtp_status_t smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	// FIXME extract hostname and set SmtpServer property
-	return call_js_handler(ctx, cmd, arg, rsp);
+	smtp_status_t status = smtp_hdlr_helo(ctx, cmd, arg, rsp);
+	if (status != SMTP_SUCCESS)
+		return status;
+
 	// FIXME validate/filter ESMTP capabilities before returning
+	return status;
 }
 
 /**
