@@ -78,6 +78,10 @@ int bfd_flush(bfd_t *bfd)
 	return 0;
 }
 
+/**
+ * @return	0 or positive value: the number of bytes written;
+ * 		-1 socket write error (errno is set)
+ */
 ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 {
 	ssize_t sz;
@@ -100,6 +104,10 @@ ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 	return sz;
 }
 
+/**
+ * @return	0 on success;
+ * 		-1 socket write error (errno is set)
+ */
 int bfd_write_full(bfd_t *bfd, const char *p, size_t len)
 {
 	ssize_t sz;
@@ -115,6 +123,11 @@ int bfd_write_full(bfd_t *bfd, const char *p, size_t len)
 	return 0;
 }
 
+/**
+ * @return	positive value: number of bytes read;
+ * 		0: no data could be read from the socket
+ * 		-1: socket read error (errno is set)
+ */
 ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 {
 	ssize_t sz;
@@ -137,6 +150,10 @@ ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 	return sz;
 }
 
+/**
+ * @return	0 on success;
+ * 		-1 socket write error (errno is set)
+ */
 int bfd_printf(bfd_t *bfd, const char *format, ...)
 {
 	char buf[4096];
@@ -155,6 +172,11 @@ int bfd_printf(bfd_t *bfd, const char *format, ...)
 	return bfd_write_full(bfd, buf, len) < 0 ? -1 : len;
 }
 
+/**
+ * @return	positive value: number of bytes read;
+ * 		0: no data could be read from the socket
+ * 		-1: socket read error (errno is set)
+ */
 ssize_t bfd_read_line(bfd_t *bfd, char *buf, size_t len)
 {
 	char c = '\0';

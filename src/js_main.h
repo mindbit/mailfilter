@@ -13,9 +13,6 @@ some macros (like JSVAL_NULL).
 #endif
 
 // Get response properties
-int js_get_code(jsval v);
-char *js_get_message(jsval v);
-int js_get_disconnect(jsval v);
 jsval js_create_response(jsval *argv);
 
 // SmtpPath class methods
