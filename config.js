@@ -92,23 +92,22 @@ smtpServer.messageBody = function () {
 };
 */
 
-function relayCmd(cmd, args) {
-	if (args != null) {
-		smtpClient.sendCommand(cmd, args);
-	} else {
-		smtpClient.sendCommand(cmd);
-	}
-
-	return smtpClient.readResponse();
+SmtpServer.prototype.relayCmd = function(cmd, args)
+{
+	this.smtpClient.sendCommand(cmd, args);
+	return this.smtpClient.readResponse();
 }
 
-SmtpServer.prototype.smtpInit = function() {
-	/*
-	smtpClient = new SmtpClient("127.0.0.1", "25");
-	smtpClient.connect();
-	return smtpClient.readResponse();
-	*/
-	return new SmtpResponse(201, "test custom INIT", false);
+SmtpServer.prototype.smtpInit = function()
+{
+	this.smtpClient = new SmtpClient("127.0.0.1", "25");
+	this.smtpClient.connect();
+	return this.smtpClient.readResponse();
+}
+
+SmtpServer.prototype.smtpEhlo = function(hostname)
+{
+	return this.relayCmd("EHLO", hostname);
 }
 
 /*
@@ -134,10 +133,6 @@ smtpServer.smtpAlop = function() {
 		"message" : "alop from JS",
 		"disconnect" : false
 	};
-}
-
-smtpServer.smtpEhlo = function(hostname) {
-	return relayCmd("EHLO", hostname);
 }
 
 smtpServer.smtpHelo = function(hostname) {
