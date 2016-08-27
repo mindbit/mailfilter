@@ -105,9 +105,14 @@ SmtpServer.prototype.smtpInit = function()
 	return this.smtpClient.readResponse();
 }
 
-SmtpServer.prototype.smtpEhlo = function(hostname)
+SmtpServer.prototype.smtpHelo = function(arg)
 {
-	return this.relayCmd("EHLO", hostname);
+	return this.relayCmd("HELO", this.hostname);
+}
+
+SmtpServer.prototype.smtpEhlo = function(arg)
+{
+	return this.relayCmd("EHLO", this.hostname);
 }
 
 /*
@@ -133,10 +138,6 @@ smtpServer.smtpAlop = function() {
 		"message" : "alop from JS",
 		"disconnect" : false
 	};
-}
-
-smtpServer.smtpHelo = function(hostname) {
-	return relayCmd("HELO", hostname);
 }
 
 smtpServer.smtpData = function() {
