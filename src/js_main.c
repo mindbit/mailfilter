@@ -45,84 +45,6 @@ int add_body_stream(bfd_t *body_stream) {
 	return 0;
 }
 
-int add_path_local(jsval *smtpPath, char *local) {
-	jsval mailbox;
-
-	// Get smtpPath.mailbox property
-	if (JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "mailbox", &mailbox) == JS_FALSE) {
-		return -1;
-	}
-
-	// Set smtpPath.local
-	if (!JS_DefineProperty(js_context, JSVAL_TO_OBJECT(mailbox), "local", STRING_TO_JSVAL(JS_InternString(js_context, local)), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
-		return -1;
-	}
-
-	return 0;
-}
-
-int add_path_domain(jsval *smtpPath, char *domain) {
-	jsval mailbox;
-
-	// Get smtpPath.mailbox property
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "mailbox", &mailbox)) {
-		return -1;
-	}
-
-	// Set smtpPath.local
-	if (!JS_DefineProperty(js_context, JSVAL_TO_OBJECT(mailbox), "domain", STRING_TO_JSVAL(JS_InternString(js_context, domain)), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT)) {
-		return -1;
-	}
-
-	return 0;
-}
-
-int add_domain(jsval *smtpPath, char *domain) {
-	jsval domains;
-	uint32_t arr_len;
-
-	// Get smtpPath.domains property
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(*smtpPath), "domains", &domains)) {
-		return -1;
-	}
-
-	// Get number of recipients
-	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(domains), &arr_len)) {
-		return -1;
-	}
-
-	// Add recipient
-	if (!JS_DefineElement(js_context, JSVAL_TO_OBJECT(domains), arr_len, STRING_TO_JSVAL(JS_InternString(js_context, domain)), NULL, NULL, 0)) {
-		return -1;
-	}
-
-	return 0;
-}
-
-int set_envelope_sender(jsval *smtpPath) {
-	jsval session, smtpServer;
-	JSObject *global;
-
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	// Get smtpServer
-	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
-		return -1;
-	}
-
-	// Get session
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
-		return -1;
-	}
-
-	// Set session.envelopeSender
-	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(session), "envelopeSender", smtpPath)) {
-		return -1;
-	}
-
-	return 0;
-}
-
 int add_recipient(jsval *smtpPath) {
 	jsval session, smtpServer, recipients;
 	JSObject *global;
@@ -156,36 +78,6 @@ int add_recipient(jsval *smtpPath) {
 	}
 
 	return 0;
-}
-
-jsval new_smtp_path_instance(char *arg) {
-	jsval path, session, smtpPathClass, smtpServer;
-	JSObject *global;
-
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	// Get smtpServer
-	if (!JS_GetProperty(js_context, global, "smtpServer", &smtpServer)) {
-		return JSVAL_NULL;
-	}
-
-	// Get session
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(smtpServer), "session", &session)) {
-		return JSVAL_NULL;
-	}
-
-	// Get smtpPathClass
-	if (!JS_GetProperty(js_context, global, "SmtpPath", &smtpPathClass)) {
-		return JSVAL_NULL;
-	}
-
-
-	jsval argv = STRING_TO_JSVAL(JS_InternString(js_context, arg));
-
-	JS_CallFunctionName(js_context, global, "SmtpPath",
-				1, &argv, &path);
-
-	return path;
 }
 
 int add_new_header(jsval *header) {

@@ -601,27 +601,53 @@ out_clean:
 	JS_Log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
-jsval smtp_path_parse_cmd(const char *arg, const char *word)
+static JSObject *smtp_path_parse_cmd(const char *arg, const char *word, char **trail)
 {
-	jsval smtpPath;
+	jsval v, rval;
+	JSObject *path;
+	JSString *str;
 
 	/* Look for passed-in word */
 	arg += strspn(arg, white);
 	if (strncasecmp(arg, word, strlen(word)))
-		return JSVAL_NULL;
+		return NULL;
 	arg += strlen(word);
 
 	/* Look for colon */
 	arg += strspn(arg, white);
 	if (*(arg++) != ':')
-		return JSVAL_NULL;
+		return NULL;
 
 	/* Parse actual path */
 	arg += strspn(arg, white);
 
-	smtpPath = new_smtp_path_instance(arg);
+	if (!JS_GetProperty(js_context, JS_GetGlobalForScopeChain(js_context), "SmtpPath", &v))
+		return NULL;
+	path = JS_New(js_context, JSVAL_TO_OBJECT(v), 0, NULL);
 
-	return smtpPath;
+	str = JS_NewStringCopyZ(js_context, arg);
+	if (!str)
+		return NULL;
+
+	v = STRING_TO_JSVAL(str);
+	if (!JS_CallFunctionName(js_context, path, "parse", 1, &v, &rval))
+		return NULL;
+
+	if (JSVAL_IS_NULL(rval))
+		return NULL;
+
+	if (!trail)
+		return path;
+
+	*trail = NULL;
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "trail", &v))
+		return path;
+
+	str = JSVAL_TO_STRING(v);
+	if (str)
+		*trail = JS_EncodeStringLoose(js_context, str);
+
+	return path;
 }
 
 // TODO fix auth handling
@@ -836,17 +862,29 @@ smtp_status_t smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, c
  */
 smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	if (ctx->rpath.mailbox.local != NULL)
+	jsval v;
+	JSBool jstat;
+	JSObject *path;
+	smtp_status_t status;
+
+	jstat = JS_GetProperty(js_context, ctx->js_srv, "envelopeSender", &v);
+	if (jstat && !JSVAL_IS_NULL(v))
 		return smtp_response_copy(rsp, &smtp_rsp_sndr_specified);
 
-	jsval smtpPath = smtp_path_parse_cmd(arg, "FROM");
-
-	if (JSVAL_IS_NULL(smtpPath))
+	path = smtp_path_parse_cmd(arg, "FROM", NULL);
+	// FIXME check for trailing characters
+	if (!path)
 		return smtp_response_copy(rsp, &smtp_rsp_syntax_error);
 
-	set_envelope_sender(&smtpPath);
+	v = OBJECT_TO_JSVAL(path);
+	status = call_js_handler(ctx, cmd, 1, &v, rsp);
+	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+		return status;
 
-	return call_js_handler(ctx, cmd, 0, NULL, rsp);
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "envelopeSender", v, NULL, NULL, JSPROP_ENUMERATE))
+		return SMTP_INT_ERR;
+
+	return SMTP_SUCCESS;
 }
 
 /**
@@ -855,6 +893,7 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
  */
 smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
+#if 0
 	struct smtp_path *path;
 
 	path = malloc(sizeof(struct smtp_path));
@@ -871,7 +910,7 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
 
 	add_recipient(&smtpPath);
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
-
+#endif
 	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 

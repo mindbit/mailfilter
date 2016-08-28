@@ -115,6 +115,11 @@ SmtpServer.prototype.smtpEhlo = function(hostname)
 	return this.relayCmd("EHLO", hostname);
 }
 
+SmtpServer.prototype.smtpMail = function(path)
+{
+	return this.relayCmd("MAIL", "FROM: " + path.toString());
+}
+
 /*
 smtpServer.smtpAuth = function() {
 	return {
@@ -149,11 +154,6 @@ smtpServer.smtpData = function() {
 	}
 
 	smtpClient.sendMessageBody(smtpServer.session.headers, null);
-	return smtpClient.readResponse();
-}
-
-smtpServer.smtpMail = function() {
-	smtpClient.sendCommand("MAIL", "FROM: " + smtpServer.session.envelopeSender.toString());
 	return smtpClient.readResponse();
 }
 
