@@ -39,6 +39,7 @@
 
 #include <jsmisc.h>
 
+#include "mailfilter.h"
 #include "js_main.h"
 #include "internet_message.h"
 #include "smtp_server.h"

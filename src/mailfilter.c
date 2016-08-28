@@ -52,6 +52,8 @@
 #define assert_log(...)
 #define assert_mod_log(...)
 
+const char *white = "\r\n\t ";
+
 JSContext *js_context; // FIXME make static
 static JSRuntime *js_runtime;
 
