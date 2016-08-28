@@ -16,20 +16,11 @@ some macros (like JSVAL_NULL).
 jsval js_create_response(jsval *argv);
 
 // SmtpPath class methods
-int add_path_local(jsval *smtpPath, char *local);
-int add_path_domain(jsval *smtpPath, char *domain);
-int add_domain(jsval *smtpPath, char *domain);
-int set_envelope_sender(jsval *smtpPath);
 int add_recipient(jsval *smtpPath);
-jsval new_smtp_path_instance();
 
 // Header class methods
 int add_body_stream(bfd_t *body_stream);
 int add_part_to_header(jsval *header, char *c_str);
 jsval new_header_instance(char *name);
-
-/* Will be deleted */
-void js_dump_value(JSContext *cx, jsval v);
-void js_dump_response(JSContext *cx, jsval v);
 
 #endif
