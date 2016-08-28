@@ -105,14 +105,14 @@ SmtpServer.prototype.smtpInit = function()
 	return this.smtpClient.readResponse();
 }
 
-SmtpServer.prototype.smtpHelo = function(arg)
+SmtpServer.prototype.smtpHelo = function(hostname)
 {
-	return this.relayCmd("HELO", this.hostname);
+	return this.relayCmd("HELO", hostname);
 }
 
-SmtpServer.prototype.smtpEhlo = function(arg)
+SmtpServer.prototype.smtpEhlo = function(hostname)
 {
-	return this.relayCmd("EHLO", this.hostname);
+	return this.relayCmd("EHLO", hostname);
 }
 
 /*

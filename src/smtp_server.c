@@ -150,6 +150,11 @@ DEF_SMTP_RSP(sndr_specified,	503, "Sender already specified");
 DEF_SMTP_RSP(no_recipients,	503, "Must specify recipient(s) first");
 DEF_SMTP_RSP(hdrs_too_big,	552, "Message header too long");
 
+static inline int smtp_successful(const struct smtp_response *rsp)
+{
+	return rsp->code >= 200 && rsp->code < 400;
+}
+
 /**
  * @return	SMTP_SUCCESS on success;
  *		SMTP_INT_ERR on error
@@ -445,11 +450,11 @@ void smtp_server_context_cleanup(struct smtp_server_context *ctx)
  * @return	SMTP_SUCCESS on success;
  *		SMTP_INT_ERR on error
  */
-static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char *cmd, unsigned argc, jsval *argv, struct smtp_response *rsp)
 {
 	char handler_name[10] = "smtp";
-	int js_argc = 0, i;
-	jsval v = JSVAL_NULL, *js_argv = NULL, rval;
+	int i;
+	jsval v = JSVAL_NULL, rval;
 	uint32_t len;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 
@@ -458,15 +463,9 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 	handler_name[4] = toupper(handler_name[4]);
 	handler_name[i] = '\0';
 
-	if (arg) {
-		v = STRING_TO_JSVAL(JS_InternString(js_context, arg));
-		js_argc = 1;
-		js_argv = &v;
-	}
-
 	/* Call the given function */
 	if (!JS_CallFunctionName(js_context, ctx->js_srv, handler_name,
-				js_argc, js_argv, &rval)) {
+				argc, argv, &rval)) {
 		JS_Log(JS_LOG_ERR, "failed calling '%s'", handler_name);
 		return SMTP_INT_ERR;
 	}
@@ -574,7 +573,7 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 	JS_AddObjectRoot(js_context, &ctx.js_srv);
 
 	/* Handle initial greeting */
-	if (call_js_handler(&ctx, "INIT", NULL, &rsp)) {
+	if (call_js_handler(&ctx, "INIT", 0, NULL, &rsp)) {
 		smtp_server_response(ctx.stream, &smtp_rsp_int_err);
 		goto out_clean;
 	}
@@ -591,7 +590,7 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
-	call_js_handler(&ctx, "CLNP", NULL, NULL);
+	call_js_handler(&ctx, "CLNP", 0, NULL, NULL);
 
 	smtp_server_context_cleanup(&ctx);
 
@@ -792,21 +791,28 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	JSString *str;
+	JSString *hostname;
+	smtp_status_t status;
+	jsval js_arg;
 
 	if (*arg == '\0')
 		return smtp_response_copy(rsp, &smtp_rsp_hostname_req);
 
-	str = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
-	if (!str)
+	hostname = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
+	if (!hostname)
 		return SMTP_INT_ERR;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "hostname", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
+	js_arg = STRING_TO_JSVAL(hostname);
+	status = call_js_handler(ctx, cmd, 1, &js_arg, rsp);
+	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+		return status;
+
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "hostname", js_arg, NULL, NULL, JSPROP_ENUMERATE))
 		return SMTP_INT_ERR;
 
 	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
 
-	return call_js_handler(ctx, cmd, arg, rsp);
+	return SMTP_SUCCESS;
 }
 
 /**
@@ -839,7 +845,7 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
 
 	set_envelope_sender(&smtpPath);
 
-	return call_js_handler(ctx, cmd, NULL, rsp);
+	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
 /**
@@ -865,7 +871,7 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
 	add_recipient(&smtpPath);
 	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
 
-	return call_js_handler(ctx, cmd, NULL, rsp);
+	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
 /**
@@ -930,7 +936,7 @@ smtp_status_t smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, c
 	//printf("path: %s\n", ctx->body.path); sleep(10);
 	//im_header_write(&ctx->hdrs, stdout);
 
-	return call_js_handler(ctx, cmd, NULL, rsp);
+	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
 static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
@@ -1007,7 +1013,7 @@ smtp_status_t smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, c
 {
 	// FIXME cleanup envelope sender, recipients, etc
 	smtp_server_context_cleanup(ctx);
-	return call_js_handler(ctx, cmd, NULL, rsp);
+	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
 #define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
