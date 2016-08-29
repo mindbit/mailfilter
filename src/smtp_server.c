@@ -148,6 +148,7 @@ DEF_SMTP_RSP(invalid_hdrs,	500, "Could not parse message headers");
 DEF_SMTP_RSP(syntax_error,	501, "Syntax error");
 DEF_SMTP_RSP(hostname_req,	501, "Hostname required");
 DEF_SMTP_RSP(sndr_specified,	503, "Sender already specified");
+DEF_SMTP_RSP(no_sndr,		503, "Must specify sender first");
 DEF_SMTP_RSP(no_recipients,	503, "Must specify recipient(s) first");
 DEF_SMTP_RSP(hdrs_too_big,	552, "Message header too long");
 
@@ -893,25 +894,32 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
  */
 smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-#if 0
-	struct smtp_path *path;
+	jsval v, rcps;
+	JSBool jstat;
+	JSObject *path;
+	smtp_status_t status;
 
-	path = malloc(sizeof(struct smtp_path));
-	if (path == NULL)
-		return SMTP_INT_ERR;
-	smtp_path_init(path);
+	jstat = JS_GetProperty(js_context, ctx->js_srv, "envelopeSender", &v);
+	if (!jstat || JSVAL_IS_NULL(v))
+		return smtp_response_copy(rsp, &smtp_rsp_no_sndr);
 
-	jsval smtpPath = smtp_path_parse_cmd(arg, "TO");
-
-	if (JSVAL_IS_NULL(smtpPath)) {
-		free(path);
+	path = smtp_path_parse_cmd(arg, "TO", NULL);
+	// FIXME check for trailing characters
+	if (!path)
 		return smtp_response_copy(rsp, &smtp_rsp_syntax_error);
-	}
 
-	add_recipient(&smtpPath);
-	list_add_tail(&path->mailbox.domain.lh, &ctx->fpath);
-#endif
-	return call_js_handler(ctx, cmd, 0, NULL, rsp);
+	v = OBJECT_TO_JSVAL(path);
+	status = call_js_handler(ctx, cmd, 1, &v, rsp);
+	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+		return status;
+
+	if (!JS_GetProperty(js_context, ctx->js_srv, "recipients", &rcps))
+		return SMTP_INT_ERR;
+
+	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0))
+		return SMTP_INT_ERR;
+
+	return SMTP_SUCCESS;
 }
 
 /**

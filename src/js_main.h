@@ -15,9 +15,6 @@ some macros (like JSVAL_NULL).
 // Get response properties
 jsval js_create_response(jsval *argv);
 
-// SmtpPath class methods
-int add_recipient(jsval *smtpPath);
-
 // Header class methods
 int add_body_stream(bfd_t *body_stream);
 int add_part_to_header(jsval *header, char *c_str);

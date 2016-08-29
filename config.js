@@ -120,6 +120,11 @@ SmtpServer.prototype.smtpMail = function(path)
 	return this.relayCmd("MAIL", "FROM: " + path.toString());
 }
 
+SmtpServer.prototype.smtpRcpt = function(path)
+{
+	return this.relayCmd("RCPT", "TO: " + path.toString());
+}
+
 /*
 smtpServer.smtpAuth = function() {
 	return {
@@ -154,13 +159,6 @@ smtpServer.smtpData = function() {
 	}
 
 	smtpClient.sendMessageBody(smtpServer.session.headers, null);
-	return smtpClient.readResponse();
-}
-
-smtpServer.smtpRcpt = function() {
-	var lastID = smtpServer.session.recipients.length - 1;
-	var lastRecipient = smtpServer.session.recipients[lastID];
-	smtpClient.sendCommand("RCPT", "TO: " + lastRecipient.toString());
 	return smtpClient.readResponse();
 }
 
