@@ -30,6 +30,8 @@
 #include "smtp_server.h"
 #include "js_main.h"
 
+int add_new_header(jsval *header); // FIXME defined in js_main.c
+
 static const char *tab_space = "\t ";
 
 struct im_header *im_header_alloc(const char *name)
@@ -54,9 +56,9 @@ struct im_header *im_header_alloc(const char *name)
 
 struct im_header *im_header_find(struct smtp_server_context *ctx, const char *name)
 {
+#if 0
 	struct im_header *hdr;
 
-#if 0
 	list_for_each_entry(hdr, &ctx->hdrs, lh) {
 		if (!strcasecmp(hdr->name, name))
 			return hdr;
