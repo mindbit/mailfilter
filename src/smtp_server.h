@@ -21,6 +21,9 @@
 #ifndef _SMTP_SERVER_H
 #define _SMTP_SERVER_H
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+
 extern void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer);
 
 #endif

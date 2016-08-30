@@ -24,6 +24,8 @@
 #include "smtp_server.h"
 #include "bfd.h"
 
+struct smtp_server_context;
+
 typedef int (*pexec_send_headers_t)(struct smtp_server_context *ctx, bfd_t *fw);
 typedef int (*pexec_result_t)(struct smtp_server_context *ctx, bfd_t *fr, int status);
 
