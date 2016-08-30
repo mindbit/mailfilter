@@ -44,7 +44,7 @@
 
 #include "config.h"
 #include "js_main.h"
-#include "js_engine.h"
+#include "js_sys.h"
 #include "js_smtp.h"
 #include "smtp_server.h"
 
@@ -60,6 +60,7 @@ static JSRuntime *js_runtime;
 static int js_init(const char *filename)
 {
 	JSObject *global;
+	jsval sys;
 
 	int fd;
 	void *buf;
@@ -104,9 +105,6 @@ static int js_init(const char *filename)
 	if (!JS_InitStandardClasses(js_context, global))
 		return -1;
 
-	if (!JS_MiscInit(js_context, global))
-		return -1;
-
 	/* Read the file into memory */
 	fd = open(filename, O_RDONLY, 0);
 	if (fd < 0) {
@@ -129,7 +127,11 @@ static int js_init(const char *filename)
 	}
 
 	/* Initialize global objects */
-	if (js_engine_init(js_context, global))
+	if (js_sys_init(js_context, global))
+		return -1;
+	if (!JS_GetProperty(js_context, global, "Sys", &sys))
+		return -1;
+	if (!JS_MiscInit(js_context, JSVAL_TO_OBJECT(sys)))
 		return -1;
 	if (js_smtp_init(js_context, global))
 		return -1;

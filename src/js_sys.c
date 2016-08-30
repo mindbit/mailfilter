@@ -3,7 +3,7 @@
 
 #include "mailfilter.h"
 
-static JSBool Engine_openlog(JSContext *cx, unsigned argc, jsval *vp)
+static JSBool Sys_openlog(JSContext *cx, unsigned argc, jsval *vp)
 {
 	static char ident[40] = "mailfilter";
 	size_t len = sizeof(ident) - 1;
@@ -46,7 +46,7 @@ static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 }
 #endif
 
-static JSBool Engine_loadModule(JSContext *cx, unsigned argc, jsval *vp)
+static JSBool Sys_loadModule(JSContext *cx, unsigned argc, jsval *vp)
 {
 	jsval module;
 	JSString *module_str;
@@ -89,8 +89,8 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 }
 #endif
 
-static JSClass Engine_class = {
-	"Engine", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+static JSClass Sys_class = {
+	"Sys", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
 	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
 	JS_ConvertStub, NULL, JSCLASS_NO_OPTIONAL_MEMBERS
 };
@@ -98,7 +98,7 @@ static JSClass Engine_class = {
 static const struct {
 	const char *name;
 	int value;
-} Engine_props[] = {
+} Sys_props[] = {
 	// syslog facilities
 	{"LOG_DAEMON",	LOG_DAEMON },
 	{"LOG_USER",	LOG_USER },
@@ -122,28 +122,28 @@ static const struct {
 	{"LOG_DEBUG",	LOG_DEBUG},
 };
 
-static JSFunctionSpec Engine_functions[] = {
-	JS_FS("openlog", Engine_openlog, 2, 0),
-	JS_FS("loadModule", Engine_loadModule, 1, 0),
+static JSFunctionSpec Sys_functions[] = {
+	JS_FS("openlog", Sys_openlog, 2, 0),
+	JS_FS("loadModule", Sys_loadModule, 1, 0),
 	JS_FS_END
 };
 
-int js_engine_init(JSContext *cx, JSObject *global)
+int js_sys_init(JSContext *cx, JSObject *global)
 {
-	JSObject *engine;
+	JSObject *sys;
 	unsigned i;
 
-	engine = JS_DefineObject(cx, global, Engine_class.name, &Engine_class, NULL, 0);
-	if (!engine)
+	sys = JS_DefineObject(cx, global, Sys_class.name, &Sys_class, NULL, 0);
+	if (!sys)
 		return -1;
 
-	if (!JS_DefineFunctions(cx, engine, Engine_functions))
+	if (!JS_DefineFunctions(cx, sys, Sys_functions))
 		return -1;
 
-	for (i = 0; i < ARRAY_SIZE(Engine_props); i++) {
-		JSBool status = JS_DefineProperty(cx, engine,
-				Engine_props[i].name,
-				INT_TO_JSVAL(Engine_props[i].value),
+	for (i = 0; i < ARRAY_SIZE(Sys_props); i++) {
+		JSBool status = JS_DefineProperty(cx, sys,
+				Sys_props[i].name,
+				INT_TO_JSVAL(Sys_props[i].value),
 				NULL, NULL,
 				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
 		if (!status)

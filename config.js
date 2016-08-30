@@ -1,17 +1,17 @@
 // Switch logging to syslog
-Engine.openlog();
+Sys.openlog();
 
 // Load the "sql" module. Registers the global "sql" object, which has
 // the getConnection(url) method.
-Engine.loadModule("mod_sql.so");
+Sys.loadModule("mod_sql.so");
 
 // Load the mysql driver module. This enables using URLs that start
 // with "mysql://" with the sql.getConnection() method.
-Engine.loadModule("mod_mysql.so");
+Sys.loadModule("mod_mysql.so");
 
 // Load the SMTP client module. This module allows connecting to other
 // SMTP servers as a client.
-Engine.loadModule("mod_smtp_client.so");
+Sys.loadModule("mod_smtp_client.so");
 
 // Configure address/port pairs for listening to incoming SMTP
 // connections.
