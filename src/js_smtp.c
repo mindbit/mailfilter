@@ -928,6 +928,49 @@ out_err:
 	return JS_FALSE;
 }
 
+#if 0
+int smtp_copy_from_file(bfd_t *out, bfd_t *in)
+{
+	const uint32_t DOTLINE_MAGIC	= 0x0d0a2e;	/* <CR><LF>"." */
+	const uint32_t DOTLINE_MASK		= 0xffffff;
+	const uint32_t CRLF_MAGIC		= 0x0d0a;	/* <CR><LF> */
+	const uint32_t CRLF_MASK		= 0xffff;
+	uint32_t buf = 0;
+	int fill = 0, needcrlf = 1;
+	int c;
+
+	while ((c = bfd_getc(in)) >= 0) {
+		if (++fill > 4) {
+			if (bfd_putc(out, buf >> 24) < 0)
+				return 1;
+			fill = 4;
+		}
+		buf = (buf << 8) | c;
+		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
+			continue;
+		if (bfd_putc(out, (buf >> ((fill - 1) * 8)) & 0xff) < 0)
+			return 1;
+		buf = (buf << 8) | '.';
+	}
+
+	/* flush remaining buffer */
+	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8) {
+		if (fill == 8 && (buf & CRLF_MASK) == CRLF_MAGIC)
+			needcrlf = 0;
+		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
+			return 1;
+	}
+
+	/* send termination marker */
+	if (needcrlf && bfd_puts(out, "\r\n") < 0)
+		return 1;
+	if (bfd_puts(out, ".\r\n") < 0)
+		return 1;
+
+	return 0;
+}
+#endif
+
 static JSBool SmtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval headers, path, smtpClient, rval, clientStream;
 	char *c_path, *c_header;
