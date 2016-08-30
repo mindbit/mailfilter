@@ -56,9 +56,6 @@ struct smtp_server_context {
 	/* JavaScript instance of SmtpServer */
 	JSObject *js_srv;
 
-	/* Flag indicating whether the connection should be closed */
-	int disconnect;
-
 	/* Client identity specified in EHLO command */
 	char *identity;
 
@@ -468,23 +465,25 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 	/* Call the given function */
 	if (!JS_CallFunctionName(js_context, ctx->js_srv, handler_name,
 				argc, argv, &rval)) {
-		JS_Log(JS_LOG_ERR, "failed calling '%s'", handler_name);
+		JS_Log(JS_LOG_ERR, "failed calling '%s'\n", handler_name);
 		return SMTP_INT_ERR;
 	}
 
+	if (!rsp)
+		return SMTP_SUCCESS;
+
 	/* Sanity check on return type */
 	if (JS_TypeOfValue(js_context, rval) != JSTYPE_OBJECT) {
-		JS_Log(JS_LOG_ERR, "handler '%s' invalid rval", handler_name);
+		JS_Log(JS_LOG_ERR, "handler '%s' invalid rval\n", handler_name);
 		return SMTP_INT_ERR;
 	}
 
 	/* Extract "disconnect" field */
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "disconnect", &v))
 		return SMTP_INT_ERR;
-	ctx->disconnect = JSVAL_TO_BOOLEAN(v);
-
-	if (!rsp)
-		return SMTP_SUCCESS;
+	v = BOOLEAN_TO_JSVAL(JSVAL_TO_BOOLEAN(v));
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "disconnect", v, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+		return SMTP_INT_ERR;
 
 	/* Extract "code" field */
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "code", &v))
@@ -553,6 +552,18 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 	return SMTP_INT_ERR;
 }
 
+static JSBool smtp_server_get_disconnect(struct smtp_server_context *ctx)
+{
+	jsval v;
+
+	if (!JS_GetProperty(js_context, ctx->js_srv, "disconnect", &v)) {
+		JS_Log(JS_LOG_WARNING, "Cannot get disconnect flag\n");
+		return JS_FALSE;
+	}
+
+	return JSVAL_TO_BOOLEAN(v);
+}
+
 void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 {
 	int status;
@@ -583,12 +594,12 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 	smtp_server_response(ctx.stream, &rsp);
 	free(rsp.message);
 
-	if (ctx.disconnect)
+	if (smtp_server_get_disconnect(&ctx))
 		goto out_clean;
 
 	do {
 		status = smtp_server_read_and_handle(&ctx);
-	} while (!status && !ctx.disconnect);
+	} while (!status && !smtp_server_get_disconnect(&ctx));
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
@@ -1045,10 +1056,8 @@ int insert_received_hdr(struct smtp_server_context *ctx)
  */
 smtp_status_t smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	ctx->disconnect = 1;
-
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "quitAsserted", BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE))
-		JS_Log(JS_LOG_WARNING, "failed to set quitAsserted\n");
+	if (!JS_DefineProperty(js_context, ctx->js_srv, "disconnect", BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
 
 	return smtp_response_copy(rsp, &smtp_rsp_bye);
 }

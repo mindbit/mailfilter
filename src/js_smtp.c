@@ -1084,7 +1084,7 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, obj, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, "quitAsserted", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(cx, obj, "disconnect", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
