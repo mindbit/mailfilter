@@ -3,6 +3,12 @@
 
 #include <jsapi.h>
 
+#define PR_HOSTNAME	"hostname"
+#define PR_SENDER	"sender"
+#define PR_RECIPIENTS	"recipients"
+#define PR_HEADERS	"headers"
+#define PR_DISCONNECT	"disconnect"
+
 int js_smtp_init(JSContext *cx, JSObject *global);
 
 // Creates Javascript Object with response
