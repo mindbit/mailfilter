@@ -8,6 +8,7 @@
 #include <jsmisc.h>
 
 #include "js_main.h"
+#include "js_smtp.h"
 #include "string_tools.h"
 
 extern JSContext *js_context; // FIXME pass through arguments
@@ -63,7 +64,7 @@ int add_new_header(jsval *header) {
 	}
 
 	// Get session
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(session), "headers", &headers)) {
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(session), PR_HEADERS, &headers)) {
 		return -1;
 	}
 

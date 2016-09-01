@@ -41,6 +41,7 @@
 
 #include "mailfilter.h"
 #include "js_main.h"
+#include "js_smtp.h"
 #include "internet_message.h"
 #include "smtp_server.h"
 #include "smtp.h"
@@ -479,10 +480,10 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 	}
 
 	/* Extract "disconnect" field */
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "disconnect", &v))
+	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), PR_DISCONNECT, &v))
 		return SMTP_INT_ERR;
 	v = BOOLEAN_TO_JSVAL(JSVAL_TO_BOOLEAN(v));
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "disconnect", v, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, v, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return SMTP_INT_ERR;
 
 	/* Extract "code" field */
@@ -556,7 +557,7 @@ static JSBool smtp_server_get_disconnect(struct smtp_server_context *ctx)
 {
 	jsval v;
 
-	if (!JS_GetProperty(js_context, ctx->js_srv, "disconnect", &v)) {
+	if (!JS_GetProperty(js_context, ctx->js_srv, PR_DISCONNECT, &v)) {
 		JS_Log(JS_LOG_WARNING, "Cannot get disconnect flag\n");
 		return JS_FALSE;
 	}
@@ -846,7 +847,7 @@ smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, c
 	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "hostname", js_arg, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, js_arg, NULL, NULL, JSPROP_ENUMERATE))
 		return SMTP_INT_ERR;
 
 	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
@@ -879,7 +880,7 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
 	JSObject *path;
 	smtp_status_t status;
 
-	jstat = JS_GetProperty(js_context, ctx->js_srv, "envelopeSender", &v);
+	jstat = JS_GetProperty(js_context, ctx->js_srv, PR_SENDER, &v);
 	if (jstat && !JSVAL_IS_NULL(v))
 		return smtp_response_copy(rsp, &smtp_rsp_sndr_specified);
 
@@ -893,7 +894,7 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
 	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "envelopeSender", v, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_SENDER, v, NULL, NULL, JSPROP_ENUMERATE))
 		return SMTP_INT_ERR;
 
 	return SMTP_SUCCESS;
@@ -910,7 +911,7 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
 	JSObject *path;
 	smtp_status_t status;
 
-	jstat = JS_GetProperty(js_context, ctx->js_srv, "envelopeSender", &v);
+	jstat = JS_GetProperty(js_context, ctx->js_srv, PR_SENDER, &v);
 	if (!jstat || JSVAL_IS_NULL(v))
 		return smtp_response_copy(rsp, &smtp_rsp_no_sndr);
 
@@ -924,7 +925,7 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
 	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_GetProperty(js_context, ctx->js_srv, "recipients", &rcps))
+	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &rcps))
 		return SMTP_INT_ERR;
 
 	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0))
@@ -1056,7 +1057,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
  */
 smtp_status_t smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	if (!JS_DefineProperty(js_context, ctx->js_srv, "disconnect", BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
 
 	return smtp_response_copy(rsp, &smtp_rsp_bye);

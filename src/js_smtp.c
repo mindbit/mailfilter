@@ -1107,27 +1107,27 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 		return JS_FALSE;
 
 	// Define and set session properties
-	if (!JS_DefineProperty(cx, obj, "hostname", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(cx, obj, PR_HOSTNAME, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, "envelopeSender", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(cx, obj, PR_SENDER, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
 	recipients = JS_NewArrayObject(cx, 0, NULL);
 	if (!recipients)
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, "recipients", OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, obj, PR_RECIPIENTS, OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	headers = JS_NewArrayObject(cx, 0, NULL);
 	if (!headers)
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, "headers", OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, obj, PR_HEADERS, OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, "disconnect", BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, obj, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
