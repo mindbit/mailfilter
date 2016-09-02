@@ -19,7 +19,7 @@
  */
 
 #define _XOPEN_SOURCE 500
-#define _POSIX_C_SOURCE 201112L
+#define _POSIX_C_SOURCE 201112L /* mkstemp */
 #define _GNU_SOURCE
 
 #include <errno.h>
@@ -52,39 +52,10 @@
  */
 struct smtp_server_context {
 	/* Client stream (buffered file descriptor) */
-	bfd_t *stream;
+	bfd_t stream;
 
 	/* JavaScript instance of SmtpServer */
 	JSObject *js_srv;
-
-	/* Client identity specified in EHLO command */
-	char *identity;
-
-	/* Authentication details. NULL if no user authenticated */
-	char *auth_user, *auth_pw, *auth_type;
-
-	/* Envelope sender (aka reverse-path as per RFC821). .mailbox.local
-	 * is NULL if "MAIL" was not issued. */
-	struct smtp_path rpath;
-
-	/* List of recipients (aka forward-path as per RFC821). Mailbox list
-	 * is empty if "RCPT" was not issued. Elements are chained by the
-	 * .mailbox.domain.lh component. */
-	struct list_head fpath;
-
-	struct list_head hdrs;
-
-	/* Message body */
-	struct {
-		/* Path to tmp file or empty string if "DATA" was not issued */
-		char path[PATH_MAX];
-
-		/* Stream of tmp file or NULL if "DATA" was not issued */
-		bfd_t *stream;
-
-		/* Size of message body (without headers) */
-		off_t size;
-	} body;
 };
 
 struct smtp_response {
@@ -214,15 +185,15 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 			break;
 
 	if (!smtp_cmd_table[idx].hdlr)
-		return smtp_server_response(ctx->stream, &smtp_rsp_not_impl);
+		return smtp_server_response(&ctx->stream, &smtp_rsp_not_impl);
 
 	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, &rsp);
 	if (status == SMTP_COM_ERR)
 		return status;
 	if (status == SMTP_INT_ERR)
-		return smtp_server_response(ctx->stream, &smtp_rsp_int_err);
+		return smtp_server_response(&ctx->stream, &smtp_rsp_int_err);
 
-	status = smtp_server_response(ctx->stream, &rsp);
+	status = smtp_server_response(&ctx->stream, &rsp);
 	free(rsp.message);
 
 	return status;
@@ -288,7 +259,7 @@ static smtp_status_t smtp_server_read_and_handle(struct smtp_server_context *ctx
 	char *c = &buf[0];
 	int status;
 
-	status = smtp_server_read_line(ctx->stream, buf, &n);
+	status = smtp_server_read_line(&ctx->stream, buf, &n);
 
 	if (status < 0) {
 		JS_Log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
@@ -306,15 +277,15 @@ static smtp_status_t smtp_server_read_and_handle(struct smtp_server_context *ctx
 
 	/* reject oversized commands */
 	if (status > 1)
-		return smtp_server_response(ctx->stream, &smtp_rsp_cmd_too_long);
+		return smtp_server_response(&ctx->stream, &smtp_rsp_cmd_too_long);
 
 	if (!n)
-		return smtp_server_response(ctx->stream, &smtp_rsp_bad_syntax);
+		return smtp_server_response(&ctx->stream, &smtp_rsp_bad_syntax);
 
 	/* Parse SMTP command */
 	c += strspn(c, white);
 	if (*c == '\0')
-		return smtp_server_response(ctx->stream, &smtp_rsp_bad_syntax);
+		return smtp_server_response(&ctx->stream, &smtp_rsp_bad_syntax);
 
 	n = strcspn(c, white);
 
@@ -382,68 +353,6 @@ void smtp_path_init(struct smtp_path *path)
 	memset(path, 0, sizeof(struct smtp_path));
 	INIT_LIST_HEAD(&path->domains);
 	INIT_LIST_HEAD(&path->mailbox.domain.lh);
-}
-
-void smtp_path_cleanup(struct smtp_path *path)
-{
-	// TODO remove when everything is ported to JS
-#if 0
-	struct smtp_domain *pos, *n;
-
-	if (path->mailbox.local != NULL && path->mailbox.local != EMPTY_STRING)
-		free(path->mailbox.local);
-	if (path->mailbox.domain.domain != NULL)
-		free(path->mailbox.domain.domain);
-	list_for_each_entry_safe(pos, n, &path->domains, lh) {
-		free(pos->domain);
-		free(pos);
-	}
-#endif
-}
-
-void smtp_server_context_init(struct smtp_server_context *ctx)
-{
-	memset(ctx, 0, sizeof(struct smtp_server_context));
-	smtp_path_init(&ctx->rpath);
-	INIT_LIST_HEAD(&ctx->fpath);
-	INIT_LIST_HEAD(&ctx->hdrs);
-}
-
-/**
- * Free resources and prepare for another SMTP transaction.
- *
- * This function is not only used at the end of the SMTP session, but
- * also by the default RSET handler.
- *
- * Besides closing all resources, this also leaves the context ready for
- * another SMTP session.
- */
-void smtp_server_context_cleanup(struct smtp_server_context *ctx)
-{
-	struct smtp_path *path, *path_aux;
-	struct im_header *hdr, *hdr_aux;
-
-	smtp_path_cleanup(&ctx->rpath);
-	smtp_path_init(&ctx->rpath);
-
-	list_for_each_entry_safe(path, path_aux, &ctx->fpath, mailbox.domain.lh) {
-		smtp_path_cleanup(path);
-		free(path);
-	}
-	INIT_LIST_HEAD(&ctx->fpath);
-
-	list_for_each_entry_safe(hdr, hdr_aux, &ctx->hdrs, lh) {
-		im_header_free(hdr);
-	}
-	INIT_LIST_HEAD(&ctx->hdrs);
-
-	if (ctx->body.stream != NULL)
-		bfd_close(ctx->body.stream);
-	ctx->body.stream = NULL;
-
-	if (ctx->body.path[0] != '\0')
-		unlink(ctx->body.path);
-	ctx->body.path[0] = '\0';
 }
 
 /**
@@ -570,12 +479,11 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 	int status;
 	char *remote_addr = NULL;
 	jsval v;
-	struct smtp_server_context ctx;
+	struct smtp_server_context ctx = {};
 	struct smtp_response rsp;
 
-	smtp_server_context_init(&ctx);
 	remote_addr = inet_ntoa(peer->sin_addr);
-	ctx.stream = bfd_alloc(client_sock_fd); // FIXME check if successful
+	bfd_init(&ctx.stream, client_sock_fd);
 	JS_Log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
 
 	/* Create SmtpServer instance */
@@ -588,11 +496,11 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 
 	/* Handle initial greeting */
 	if (call_js_handler(&ctx, "INIT", 0, NULL, &rsp)) {
-		smtp_server_response(ctx.stream, &smtp_rsp_int_err);
+		smtp_server_response(&ctx.stream, &smtp_rsp_int_err);
 		goto out_clean;
 	}
 
-	smtp_server_response(ctx.stream, &rsp);
+	smtp_server_response(&ctx.stream, &rsp);
 	free(rsp.message);
 
 	if (smtp_server_get_disconnect(&ctx))
@@ -606,11 +514,10 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 	 * connection */
 	call_js_handler(&ctx, "CLNP", 0, NULL, NULL);
 
-	smtp_server_context_cleanup(&ctx);
-
 out_clean:
-	JS_RemoveObjectRoot(js_context, &ctx.js_srv);
-	bfd_close(ctx.stream);
+	if (ctx.js_srv)
+		JS_RemoveObjectRoot(js_context, &ctx.js_srv);
+	bfd_close(&ctx.stream);
 	JS_Log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
@@ -941,40 +848,45 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
  */
 smtp_status_t smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
+	jsval v;
+	JSObject *rcps;
+	uint32_t len;
+	char path[] = "/tmp/mailfilter.XXXXXX";
 	int fd;
+	bfd_t bstream;
 
-	// TODO verificare existenta envelope sender si recipienti; salvare mail in temporar; copiere path temp in smtp_server_context
-	if (list_empty(&ctx->fpath))
+	// TODO verificare stare tranzactie smtp (ex. am avut deja DATA)
+
+	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &v))
+		return SMTP_INT_ERR;
+
+	rcps = JSVAL_TO_OBJECT(v);
+	if (!rcps || !JS_IsArrayObject(js_context, rcps))
+		return SMTP_INT_ERR;
+
+	if (!JS_GetArrayLength(js_context, rcps, &len))
+		return SMTP_INT_ERR;
+
+	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
 	/* prepare temporary file to store message body */
-	sprintf(ctx->body.path, "/tmp/mailfilter.XXXXXX"); // FIXME sNprintf; cale in loc de /tmp;
-	if ((fd = mkstemp(ctx->body.path)) == -1) {
-		ctx->body.path[0] = '\0';
+	if ((fd = mkstemp(path)) == -1)
 		return SMTP_INT_ERR;
-	}
 
-	if ((ctx->body.stream = bfd_alloc(fd)) == NULL) {
-		close(fd);
-		unlink(ctx->body.path);
-		ctx->body.path[0] = '\0';
-		return SMTP_INT_ERR;
-	}
+	bfd_init(&bstream, fd);
 
 	/* prepare response */
-	if (smtp_server_response(ctx->stream, &smtp_rsp_go_ahead))
+	if (smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
 		return SMTP_COM_ERR;
 
 	// Parse the BODY content of DATA
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
-	struct stat stat;
 
-	assert_mod_log(ctx->body.stream != NULL);
-
-	im_hdr_ctx.max_size = 65536; // FIXME use proper value
-	im_hdr_ctx.hdrs = &ctx->hdrs;
+	//im_hdr_ctx.max_size = 65536; // FIXME use proper value
+	//im_hdr_ctx.hdrs = &ctx->hdrs;
 	//sleep(10);
-	switch (smtp_copy_to_file(ctx->body.stream, ctx->stream, &im_hdr_ctx)) {
+	switch (smtp_copy_to_file(&bstream, &ctx->stream, &im_hdr_ctx)) {
 		case 0:
 			break;
 		case IM_PARSE_ERROR:
@@ -985,20 +897,13 @@ smtp_status_t smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, c
 			return smtp_response_copy(rsp, &smtp_rsp_no_space);
 	}
 
-	// Add the file bfd stream to smtpClient.bodyStream
-	if (add_body_stream(ctx->body.stream))
-		return SMTP_INT_ERR;
-
-	if (bfd_flush(ctx->body.stream) || fstat(ctx->body.stream->fd, &stat) == -1)
+	if (bfd_close(&bstream))
 		return smtp_response_copy(rsp, &smtp_rsp_no_space);
-	ctx->body.size = stat.st_size;
-
-	//printf("path: %s\n", ctx->body.path); sleep(10);
-	//im_header_write(&ctx->hdrs, stdout);
 
 	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
+#if 0
 static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
 {
 	char *remote_addr = "10.0.0.1"; // FIXME inet_ntoa(ctx->addr.sin_addr);
@@ -1050,6 +955,7 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 	list_add_tail(&hdr->lh, lh);
 	return 0;
 }
+#endif
 
 /**
  * @return	SMTP_SUCCESS on success;
@@ -1070,7 +976,6 @@ smtp_status_t smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, c
 smtp_status_t smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	// FIXME cleanup envelope sender, recipients, etc
-	smtp_server_context_cleanup(ctx);
 	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 

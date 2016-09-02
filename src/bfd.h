@@ -36,8 +36,9 @@ struct bfd {
 
 typedef struct bfd bfd_t;
 
+void bfd_init(bfd_t *bfd, int fd);
 extern bfd_t *bfd_alloc(int fd);
-extern int bfd_close(bfd_t *bfd);
+int bfd_close(bfd_t *bfd);
 extern int bfd_flush(bfd_t *bfd);
 extern ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len);
 extern int bfd_write_full(bfd_t *bfd, const char *p, size_t len);

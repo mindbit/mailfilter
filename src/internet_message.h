@@ -63,15 +63,15 @@ struct im_header_context {
 		IM_H_FOLD,
 		IM_H_FIN
 	} state;
-	jsval header;
-	struct list_head *hdrs;
+	jsval curhdr;
+	JSObject *hdrs;
 	size_t max_size, curr_size;
 	struct string_buffer sb;
 };
 
 #define IM_HEADER_CONTEXT_INITIALIZER {\
 	.state = IM_H_NAME1,\
-	.header = JSVAL_NULL,\
+	.curhdr = JSVAL_NULL,\
 	.hdrs = NULL,\
 	.max_size = 0,\
 	.curr_size = 0,\
@@ -87,13 +87,6 @@ enum {
 	IM_WTF
 };
 
-struct im_header *im_header_alloc(const char *name);
-struct im_header *im_header_find(struct smtp_server_context *ctx, const char *name);
 int im_header_feed(struct im_header_context *ctx, char c);
-void im_header_dump(struct list_head *lh);
-void im_header_unfold(struct im_header *hdr);
-int im_header_refold(struct im_header *hdr, int width);
-int im_header_write(struct list_head *lh, bfd_t *f);
-void im_header_free(struct im_header *hdr);
 
 #endif
