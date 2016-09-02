@@ -29,33 +29,40 @@
 
 #include "bfd.h"
 
+void bfd_init(bfd_t *bfd, int fd)
+{
+	bfd->fd = fd;
+	bfd->rh = 0;
+	bfd->rt = 0;
+	bfd->wi = 0;
+}
+
 bfd_t *bfd_alloc(int fd)
 {
 	bfd_t *ret = malloc(sizeof(bfd_t));
 
-	if (ret == NULL)
-		return ret;
-
-	ret->fd = fd;
-	ret->rh = 0;
-	ret->rt = 0;
-	ret->wi = 0;
+	if (ret)
+		bfd_init(ret, fd);
 
 	return ret;
 }
 
+/**
+ * @return	0 on success;
+ *		-1 on error (errno is set);
+ */
 int bfd_close(bfd_t *bfd)
 {
 	if (bfd_flush(bfd) < 0)
 		return -1;
-	
-	if (close(bfd->fd) < 0)
-		return -1;
 
-	free(bfd);
-	return 0;
+	return close(bfd->fd);
 }
 
+/**
+ * @return	0 on success;
+ *		-1 on error (errno is set);
+ */
 int bfd_flush(bfd_t *bfd)
 {
 	ssize_t sz;

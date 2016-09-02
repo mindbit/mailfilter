@@ -25,27 +25,6 @@ jsval js_create_response(jsval *argv) {
 	return response;
 }
 
-int add_body_stream(bfd_t *body_stream) {
-	jsval smtpClient, bodyStream;
-	JSObject *global;
-
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	// Get smtpClient
-	if (!JS_GetProperty(js_context, global, "smtpClient", &smtpClient)) {
-		return -1;
-	}
-
-	bodyStream = PRIVATE_TO_JSVAL(body_stream);
-
-	// Add path property
-	if (!JS_SetProperty(js_context, JSVAL_TO_OBJECT(smtpClient), "bodyStream", &bodyStream)) {
-		return -1;
-	}
-
-	return 0;
-}
-
 int add_new_header(jsval *header) {
 	jsval session, smtpServer, headers;
 	JSObject *global;

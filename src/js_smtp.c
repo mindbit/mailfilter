@@ -925,6 +925,7 @@ out_err_free:
 out_err:
 	string_buffer_cleanup(&sb);
 	bfd_close(client_stream);
+	free(client_stream);
 	return JS_FALSE;
 }
 
@@ -1039,40 +1040,38 @@ static JSBool SmtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp
 
 		if (bfd_puts(client_stream, c_header) < 0) {
 			free(c_header);
-			bfd_close(client_stream);
-			return JS_FALSE;
+			goto out_err;
 		}
 
 
 		if (bfd_puts(client_stream, "\r\n") < 0) {
 			free(c_header);
-			bfd_close(client_stream);
-			return JS_FALSE;
+			goto out_err;
 		}
 
 		free(c_header);
 	}
 
-	if (bfd_puts(client_stream, "\r\n") < 0) {
-		bfd_close(client_stream);
-		return JS_FALSE;
-	}
+	if (bfd_puts(client_stream, "\r\n") < 0)
+		goto out_err;
 
 	// Put message body in the buffer
 	if (bfd_puts(client_stream, body_stream->wb) < 0) {
 		return JS_FALSE;
 	}
 
-	if (bfd_puts(client_stream, "\r\n.\r\n") < 0) {
-		bfd_close(client_stream);
-		return JS_FALSE;
-	}
-
+	if (bfd_puts(client_stream, "\r\n.\r\n") < 0)
+		goto out_err;
 
 	// Flush message body
 	bfd_flush(client_stream);
 
 	return JS_TRUE;
+
+out_err:
+	bfd_close(client_stream);
+	free(client_stream);
+	return JS_FALSE;
 }
 
 static JSFunctionSpec SmtpClient_functions[] = {
