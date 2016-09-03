@@ -66,12 +66,6 @@ struct smtp_response {
 	char *message;
 };
 
-typedef enum {
-	SMTP_SUCCESS,	/* Handler completed successfully */
-	SMTP_COM_ERR,	/* I/O error on client socket; close session */
-	SMTP_INT_ERR,	/* Internal error; reply 451 to client */
-} smtp_status_t;
-
 // FIXME
 #define assert_log(...)
 #define assert_mod_log(...)
@@ -81,7 +75,7 @@ typedef enum {
 /**
  * @brief SMTP command handler prototype
  */
-typedef smtp_status_t (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp);
+typedef int (*smtp_cmd_hdlr_t)(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp);
 
 /**
  * @brief SMTP command handler table element
@@ -127,21 +121,21 @@ static inline int smtp_successful(const struct smtp_response *rsp)
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on error
+ * @return	0 on success;
+ *		ENOMEM on error
  */
-static smtp_status_t smtp_response_copy(struct smtp_response *dst, const struct smtp_response *src)
+static int smtp_response_copy(struct smtp_response *dst, const struct smtp_response *src)
 {
 	dst->code = src->code;
 	dst->message = strdup(src->message);
-	return dst->message ? SMTP_SUCCESS : SMTP_INT_ERR;
+	return dst->message ? 0 : ENOMEM;
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_COM_ERR on socket error
+ * @return	0 on success;
+ *		EIO on socket error
  */
-static smtp_status_t smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
+static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 {
 	static const int sz = 200;
 	char buf[sz + 4];
@@ -164,20 +158,19 @@ static smtp_status_t smtp_server_response(bfd_t *f, const struct smtp_response *
 	JS_Log(JS_LOG_DEBUG, "<<< %d %s\n", rsp->code, h);
 	if (bfd_printf(f, "%d %s\r\n", rsp->code, h) >= 0) {
 		bfd_flush(f);
-		return SMTP_SUCCESS;
+		return 0;
 	}
 
-	return SMTP_COM_ERR;
+	return EIO;
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_COM_ERR on socket error
+ * @return	0 on success;
+ *		EIO on socket error
  */
 static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
-	int idx;
-	smtp_status_t status;
+	int idx, status;
 	struct smtp_response rsp;
 
 	for (idx = 0; smtp_cmd_table[idx].name; idx++)
@@ -188,9 +181,9 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 		return smtp_server_response(&ctx->stream, &smtp_rsp_not_impl);
 
 	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, &rsp);
-	if (status == SMTP_COM_ERR)
+	if (status == EIO)
 		return status;
-	if (status == SMTP_INT_ERR)
+	if (status)
 		return smtp_server_response(&ctx->stream, &smtp_rsp_int_err);
 
 	status = smtp_server_response(&ctx->stream, &rsp);
@@ -218,15 +211,17 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
  *		lines were written to the buffer.
  *		0: no data could be read from the stream (e.g. socket
  *		closed).
- *		-1: socket read error.
+ *		-1: socket read error (errno is set).
  */
 static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
 {
 	ssize_t len;
 	int writes = 0;
 
-	if (!stream || !buf || !size || *size < 2)
-		return -EINVAL;
+	if (!stream || !buf || !size || *size < 2) {
+		errno = EINVAL;
+		return -1;
+	}
 
 	do {
 		buf[*size - 2] = '\n';
@@ -249,10 +244,10 @@ static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
 
 /**
  * @brief 	Read and handle a single SMTP command from the client
- * @return	SMTP_SUCCESS on success;
- *		SMTP_COM_ERR on socket error
+ * @return	0 on success;
+ *		EIO on socket error
  */
-static smtp_status_t smtp_server_read_and_handle(struct smtp_server_context *ctx)
+static int smtp_server_read_and_handle(struct smtp_server_context *ctx)
 {
 	char buf[SMTP_COMMAND_MAX];
 	size_t n = sizeof(buf);
@@ -263,13 +258,12 @@ static smtp_status_t smtp_server_read_and_handle(struct smtp_server_context *ctx
 
 	if (status < 0) {
 		JS_Log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
-		return SMTP_COM_ERR;
+		return EIO;
 	}
 
 	if (!status) {
 		JS_Log(JS_LOG_ERR, "Lost connection to client\n");
-		errno = ECONNABORTED;
-		return SMTP_COM_ERR;
+		return EIO;
 	}
 
 	/* Log received command */
@@ -356,10 +350,10 @@ void smtp_path_init(struct smtp_path *path)
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on error
+ * @return	0 on success;
+ *		EINVAL on error
  */
-static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char *cmd, unsigned argc, jsval *argv, struct smtp_response *rsp)
+static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, unsigned argc, jsval *argv, struct smtp_response *rsp)
 {
 	char handler_name[10] = "smtp";
 	int i;
@@ -376,51 +370,51 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 	if (!JS_CallFunctionName(js_context, ctx->js_srv, handler_name,
 				argc, argv, &rval)) {
 		JS_Log(JS_LOG_ERR, "failed calling '%s'\n", handler_name);
-		return SMTP_INT_ERR;
+		return EINVAL;
 	}
 
 	if (!rsp)
-		return SMTP_SUCCESS;
+		return 0;
 
 	/* Sanity check on return type */
 	if (JS_TypeOfValue(js_context, rval) != JSTYPE_OBJECT) {
 		JS_Log(JS_LOG_ERR, "handler '%s' invalid rval\n", handler_name);
-		return SMTP_INT_ERR;
+		return EINVAL;
 	}
 
 	/* Extract "disconnect" field */
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), PR_DISCONNECT, &v))
-		return SMTP_INT_ERR;
+		return EINVAL;
 	v = BOOLEAN_TO_JSVAL(JSVAL_TO_BOOLEAN(v));
 	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, v, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	/* Extract "code" field */
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "code", &v))
-		return SMTP_INT_ERR;
+		return EINVAL;
 	rsp->code = JSVAL_TO_INT(v);
 
 	/* Extract "messages" field */
 
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "messages", &v))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (JS_TypeOfValue(js_context, v) == JSTYPE_STRING) {
 		JSString *js_str = JSVAL_TO_STRING(v);
 		rsp->message = JS_EncodeStringLoose(js_context, js_str);
-		return rsp->message ? SMTP_SUCCESS : SMTP_INT_ERR;
+		return rsp->message ? 0 : EINVAL;
 	}
 
 	/* Sanity checks for array object */
 
 	if (JS_TypeOfValue(js_context, v) != JSTYPE_OBJECT)
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (!JS_IsArrayObject(js_context, JSVAL_TO_OBJECT(v)))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (!JS_GetArrayLength(js_context, JSVAL_TO_OBJECT(v), &len))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	/* Extract array elements and append to string buffer */
 
@@ -455,11 +449,11 @@ static smtp_status_t call_js_handler(struct smtp_server_context *ctx, const char
 
 	if (sb.cur) {
 		rsp->message = sb.s;
-		return SMTP_SUCCESS;
+		return 0;
 	}
 
 	string_buffer_cleanup(&sb);
-	return SMTP_INT_ERR;
+	return EINVAL;
 }
 
 static JSBool smtp_server_get_disconnect(struct smtp_server_context *ctx)
@@ -733,13 +727,14 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
 #endif
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EINVAL on JS error;
+ *		ENOMEM
  */
-smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	JSString *hostname;
-	smtp_status_t status;
+	int status;
 	jsval js_arg;
 
 	if (*arg == '\0')
@@ -747,29 +742,29 @@ smtp_status_t smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, c
 
 	hostname = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
 	if (!hostname)
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	js_arg = STRING_TO_JSVAL(hostname);
 	status = call_js_handler(ctx, cmd, 1, &js_arg, rsp);
-	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+	if (status || !smtp_successful(rsp))
 		return status;
 
 	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, js_arg, NULL, NULL, JSPROP_ENUMERATE))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
 
-	return SMTP_SUCCESS;
+	return 0;
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EINVAL on JS error
  */
-smtp_status_t smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	smtp_status_t status = smtp_hdlr_helo(ctx, cmd, arg, rsp);
-	if (status != SMTP_SUCCESS)
+	int status = smtp_hdlr_helo(ctx, cmd, arg, rsp);
+	if (status)
 		return status;
 
 	// FIXME validate/filter ESMTP capabilities before returning
@@ -777,15 +772,16 @@ smtp_status_t smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, c
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EINVAL on JS error;
+ *		ENOMEM
  */
-smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	jsval v;
 	JSBool jstat;
 	JSObject *path;
-	smtp_status_t status;
+	int status;
 
 	jstat = JS_GetProperty(js_context, ctx->js_srv, PR_SENDER, &v);
 	if (jstat && !JSVAL_IS_NULL(v))
@@ -798,25 +794,26 @@ smtp_status_t smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, c
 
 	v = OBJECT_TO_JSVAL(path);
 	status = call_js_handler(ctx, cmd, 1, &v, rsp);
-	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+	if (status || !smtp_successful(rsp))
 		return status;
 
 	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_SENDER, v, NULL, NULL, JSPROP_ENUMERATE))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
-	return SMTP_SUCCESS;
+	return 0;
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EINVAL on JS error;
+ *		ENOMEM
  */
-smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	jsval v, rcps;
 	JSBool jstat;
 	JSObject *path;
-	smtp_status_t status;
+	int status;
 
 	jstat = JS_GetProperty(js_context, ctx->js_srv, PR_SENDER, &v);
 	if (!jstat || JSVAL_IS_NULL(v))
@@ -829,24 +826,25 @@ smtp_status_t smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, c
 
 	v = OBJECT_TO_JSVAL(path);
 	status = call_js_handler(ctx, cmd, 1, &v, rsp);
-	if (status != SMTP_SUCCESS || !smtp_successful(rsp))
+	if (status || !smtp_successful(rsp))
 		return status;
 
 	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &rcps))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
-	return SMTP_SUCCESS;
+	return 0;
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_COM_ERR on socket error;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EIO on socket error;
+ *		EINVAL on JS error;
+ *		ENOMEM
  */
-smtp_status_t smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	jsval v;
 	JSObject *rcps;
@@ -858,27 +856,27 @@ smtp_status_t smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, c
 	// TODO verificare stare tranzactie smtp (ex. am avut deja DATA)
 
 	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &v))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	rcps = JSVAL_TO_OBJECT(v);
 	if (!rcps || !JS_IsArrayObject(js_context, rcps))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (!JS_GetArrayLength(js_context, rcps, &len))
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
 	/* prepare temporary file to store message body */
 	if ((fd = mkstemp(path)) == -1)
-		return SMTP_INT_ERR;
+		return EINVAL;
 
 	bfd_init(&bstream, fd);
 
 	/* prepare response */
 	if (smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
-		return SMTP_COM_ERR;
+		return EIO;
 
 	// Parse the BODY content of DATA
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
@@ -958,10 +956,10 @@ int insert_received_hdr(struct smtp_server_context *ctx)
 #endif
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		ENOMEM
  */
-smtp_status_t smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
@@ -970,10 +968,10 @@ smtp_status_t smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, c
 }
 
 /**
- * @return	SMTP_SUCCESS on success;
- *		SMTP_INT_ERR on JS error
+ * @return	0 on success;
+ *		EINVAL on JS error
  */
-smtp_status_t smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	// FIXME cleanup envelope sender, recipients, etc
 	return call_js_handler(ctx, cmd, 0, NULL, rsp);
