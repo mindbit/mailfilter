@@ -53,10 +53,8 @@ bfd_t *bfd_alloc(int fd)
  */
 int bfd_close(bfd_t *bfd)
 {
-	if (bfd_flush(bfd) < 0)
-		return -1;
-
-	return close(bfd->fd);
+	int ret = bfd_flush(bfd);
+	return close(bfd->fd) ? -1 : ret;
 }
 
 /**
