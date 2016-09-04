@@ -43,7 +43,6 @@
 #include <jsmisc.h>
 
 #include "config.h"
-#include "js_main.h"
 #include "js_sys.h"
 #include "js_smtp.h"
 #include "smtp_server.h"
@@ -53,6 +52,7 @@
 #define assert_mod_log(...)
 
 const char *white = "\r\n\t ";
+const char *tab_space = "\t ";
 
 JSContext *js_context; // FIXME make static
 static JSRuntime *js_runtime;

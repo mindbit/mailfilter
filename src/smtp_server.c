@@ -40,11 +40,9 @@
 #include <jsmisc.h>
 
 #include "mailfilter.h"
-#include "js_main.h"
 #include "js_smtp.h"
-#include "internet_message.h"
 #include "smtp_server.h"
-#include "smtp.h"
+#include "string_tools.h"
 #include "base64.h"
 
 /**
@@ -290,63 +288,6 @@ static int smtp_server_read_and_handle(struct smtp_server_context *ctx)
 	}
 
 	return smtp_server_handle_cmd(ctx, c, c + n);
-}
-
-static int smtp_copy_to_file(bfd_t *out, bfd_t *in, struct im_header_context *im_hdr_ctx)
-{
-	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
-	const uint64_t DOTLINE_MASK	= 0xffffff0000;
-	const uint64_t CRLF_MAGIC	= 0x0000000d0a; /* <CR><LF> */
-	const uint64_t CRLF_MASK	= 0x000000ffff;
-	uint64_t buf = 0;
-	int fill = 0;
-	int im_state = IM_OK;
-	int c;
-
-	while ((c = bfd_getc(in)) >= 0) {
-		if (im_state == IM_OK) {
-			im_state = im_header_feed(im_hdr_ctx, c);
-			continue;
-		}
-		if (++fill > 8) {
-			if (bfd_putc(out, buf >> 56) < 0)
-				return -EIO;
-			fill = 8;
-		}
-		buf = (buf << 8) | c;
-		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
-			continue;
-		if ((buf & CRLF_MASK) == CRLF_MAGIC) {
-			/* we found the EOF sequence (<CR><LF>"."<CR><LF>) */
-			assert_log(fill >= 5, &config);
-			/* discard the (terminating) "."<CR><LF> */
-			buf >>= 24;
-			fill -= 3;
-			break;
-		}
-		/* flush buffer up to the dot; otherwise we get false-positives for
-		 * a line consisting of (only) two dots */
-		assert_log(fill >= 5, &config);
-		while (fill > 3)
-			if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
-				return -EIO;
-		buf &= CRLF_MASK;
-		fill = 2;
-	}
-
-	/* flush remaining buffer */
-	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
-		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
-			return -EIO;
-
-	return im_state == IM_OK || im_state == IM_COMPLETE ? 0 : im_state;
-}
-
-void smtp_path_init(struct smtp_path *path)
-{
-	memset(path, 0, sizeof(struct smtp_path));
-	INIT_LIST_HEAD(&path->domains);
-	INIT_LIST_HEAD(&path->mailbox.domain.lh);
 }
 
 /**
@@ -847,10 +788,11 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	jsval v;
-	JSObject *rcps;
+	JSObject *rcps, *hdrs;
+	JSString *str;
 	uint32_t len;
 	char path[] = "/tmp/mailfilter.XXXXXX";
-	int fd;
+	int fd, status = EIO;
 	bfd_t bstream;
 
 	// TODO verificare stare tranzactie smtp (ex. am avut deja DATA)
@@ -868,6 +810,13 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
+	if (!JS_GetProperty(js_context, ctx->js_srv, PR_HEADERS, &v))
+		return EINVAL;
+
+	hdrs = JSVAL_TO_OBJECT(v);
+	if (!hdrs || !JS_IsArrayObject(js_context, hdrs))
+		return EINVAL;
+
 	/* prepare temporary file to store message body */
 	if ((fd = mkstemp(path)) == -1)
 		return EINVAL;
@@ -876,29 +825,48 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	/* prepare response */
 	if (smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
-		return EIO;
+		goto out_clean;
 
 	// Parse the BODY content of DATA
-	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
 
-	//im_hdr_ctx.max_size = 65536; // FIXME use proper value
-	//im_hdr_ctx.hdrs = &ctx->hdrs;
-	//sleep(10);
-	switch (smtp_copy_to_file(&bstream, &ctx->stream, &im_hdr_ctx)) {
+	switch (smtp_copy_to_file(&bstream, &ctx->stream, hdrs)) {
 		case 0:
 			break;
-		case IM_PARSE_ERROR:
-			return smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
-		case IM_OVERRUN:
-			return smtp_response_copy(rsp, &smtp_rsp_hdrs_too_big);
+		case EPROTO:
+			status = smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
+			goto out_clean;
+		case EOVERFLOW:
+			status = smtp_response_copy(rsp, &smtp_rsp_hdrs_too_big);
+			goto out_clean;
 		default:
-			return smtp_response_copy(rsp, &smtp_rsp_no_space);
+			status = smtp_response_copy(rsp, &smtp_rsp_no_space);
+			goto out_clean;
 	}
 
-	if (bfd_close(&bstream))
-		return smtp_response_copy(rsp, &smtp_rsp_no_space);
+	if (bfd_close(&bstream)) {
+		status = smtp_response_copy(rsp, &smtp_rsp_no_space);
+		goto out_clean;
+	}
 
-	return call_js_handler(ctx, cmd, 0, NULL, rsp);
+	status = call_js_handler(ctx, cmd, 0, NULL, rsp);
+	if (status || !smtp_successful(rsp))
+		goto out_clean;
+
+	status = EINVAL;
+
+	str = JS_NewStringCopyZ(js_context, path);
+	if (!str)
+		goto out_clean;
+
+
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_BODY, STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
+		goto out_clean;
+
+	return 0;
+
+out_clean:
+	unlink(path);
+	return status;
 }
 
 #if 0
