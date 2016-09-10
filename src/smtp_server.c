@@ -787,7 +787,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	jsval v;
+	jsval v, js_arg[2];
 	JSObject *rcps, *hdrs;
 	JSString *str;
 	uint32_t len;
@@ -810,11 +810,8 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
-	if (!JS_GetProperty(js_context, ctx->js_srv, PR_HEADERS, &v))
-		return EINVAL;
-
-	hdrs = JSVAL_TO_OBJECT(v);
-	if (!hdrs || !JS_IsArrayObject(js_context, hdrs))
+	hdrs = JS_NewArrayObject(js_context, 0, NULL);
+	if (!hdrs)
 		return EINVAL;
 
 	/* prepare temporary file to store message body */
@@ -848,16 +845,22 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		goto out_clean;
 	}
 
-	status = call_js_handler(ctx, cmd, 0, NULL, rsp);
-	if (status || !smtp_successful(rsp))
-		goto out_clean;
-
 	status = EINVAL;
 
 	str = JS_NewStringCopyZ(js_context, path);
 	if (!str)
 		goto out_clean;
 
+	js_arg[0] = OBJECT_TO_JSVAL(hdrs);
+	js_arg[1] = STRING_TO_JSVAL(str);
+	status = call_js_handler(ctx, cmd, 2, js_arg, rsp);
+	if (status || !smtp_successful(rsp))
+		goto out_clean;
+
+	status = EINVAL;
+
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HEADERS, OBJECT_TO_JSVAL(hdrs), NULL, NULL, JSPROP_ENUMERATE))
+		goto out_clean;
 
 	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_BODY, STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
 		goto out_clean;
@@ -942,6 +945,7 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	// FIXME cleanup envelope sender, recipients, etc
+	// "headers" field must be set to JSVAL_NULL, similarly to SmtpServer constructor
 	return call_js_handler(ctx, cmd, 0, NULL, rsp);
 }
 
