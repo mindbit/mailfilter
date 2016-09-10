@@ -1319,7 +1319,7 @@ static JSClass SmtpServer_class = {
 
 static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
-	JSObject *obj, *recipients, *headers;
+	JSObject *obj, *recipients;
 	//jsval host, port, client;
 
 	//host = JS_ARGV(cx, vp)[0];
@@ -1343,11 +1343,7 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, obj, PR_RECIPIENTS, OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		return JS_FALSE;
 
-	headers = JS_NewArrayObject(cx, 0, NULL);
-	if (!headers)
-		return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, obj, PR_HEADERS, OBJECT_TO_JSVAL(headers), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, obj, PR_HEADERS, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	if (!JS_DefineProperty(cx, obj, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
