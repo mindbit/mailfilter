@@ -125,6 +125,18 @@ SmtpServer.prototype.smtpRcpt = function(path)
 	return this.relayCmd("RCPT", "TO: " + path.toString());
 }
 
+SmtpServer.prototype.smtpData = function(headers, body)
+{
+	// TODO filtering goes here
+
+	rsp = this.relayCmd("DATA");
+	if (rsp.code != 354)
+		return rsp;
+
+	this.smtpClient.sendMessage(headers, body);
+	return this.smtpClient.readResponse();
+}
+
 /*
 smtpServer.smtpAuth = function() {
 	return {
@@ -148,18 +160,6 @@ smtpServer.smtpAlop = function() {
 		"message" : "alop from JS",
 		"disconnect" : false
 	};
-}
-
-smtpServer.smtpData = function() {
-	smtpClient.sendCommand("DATA");
-	var dataResponse = smtpClient.readResponse();
-
-	if (dataResponse.code != 354) {
-		throw dataResponse.code + " " + dataResponse.messages;
-	}
-
-	smtpClient.sendMessageBody(smtpServer.session.headers, null);
-	return smtpClient.readResponse();
 }
 
 smtpServer.smtpRset = function () {

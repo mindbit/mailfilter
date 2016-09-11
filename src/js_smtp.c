@@ -3,6 +3,9 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 
 #include <jsmisc.h>
@@ -273,6 +276,108 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
 out_clean:
 	string_buffer_cleanup(&im_hdr_ctx.sb);
 	return ret;
+}
+
+/**
+ * @param[in] dotconv Dot conversion flag. If set, a line comprising of a
+ *            single dot in the input stream is converted to double dot
+ *            before writing to the output stream. Additionally, a line
+ *            comprising of a single dot is written to the output stream
+ *            at the end. This is useful when sending a message to an
+ *            SMTP server.
+ */
+int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
+{
+	const uint32_t DOTLINE_MAGIC	= 0x0d0a2e;	/* <CR><LF>"." */
+	const uint32_t DOTLINE_MASK	= 0xffffff;
+	const uint32_t CRLF_MAGIC	= 0x0d0a;	/* <CR><LF> */
+	const uint32_t CRLF_MASK	= 0xffff;
+	uint32_t buf = 0, hdrs_len;
+	int fill = 0, needcrlf = 1;
+	int c, i;
+	jsval v;
+
+	// FIXME handle dotline properly
+
+	// Send headers
+	if (!JS_GetArrayLength(js_context, hdrs, &hdrs_len))
+		return JS_FALSE;
+
+	for (i = 0; i < (int)hdrs_len; i++) {
+		char *hdr;
+
+		if (!JS_GetElement(js_context, hdrs, i, &v))
+			return 1;
+
+		JS_CallFunctionName(js_context, JSVAL_TO_OBJECT(v), "toString",
+				0, NULL, &v);
+
+		hdr = JS_EncodeString(js_context, JSVAL_TO_STRING(v));
+
+		if (bfd_puts(out, hdr) < 0) {
+			JS_free(js_context, hdr);
+			return 1;
+		}
+		JS_free(js_context, hdr);
+
+		if (bfd_puts(out, "\r\n") < 0)
+			return 1;
+	}
+
+	// Send body
+	while ((c = bfd_getc(in)) >= 0) {
+		if (++fill > 4) {
+			if (bfd_putc(out, buf >> 24) < 0)
+				return 1;
+			fill = 4;
+		}
+		buf = (buf << 8) | c;
+		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
+			continue;
+		if (bfd_putc(out, (buf >> ((fill - 1) * 8)) & 0xff) < 0)
+			return 1;
+		buf = (buf << 8) | '.';
+	}
+
+	/* flush remaining buffer */
+	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8) {
+		if (fill == 8 && (buf & CRLF_MASK) == CRLF_MAGIC)
+			needcrlf = 0;
+		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
+			return 1;
+	}
+
+	/* send termination marker */
+	if (needcrlf && bfd_puts(out, "\r\n") < 0)
+		return 1;
+	if (bfd_puts(out, ".\r\n") < 0)
+		return 1;
+
+	return 0;
+}
+
+bfd_t *smtp_body_open_read(JSContext *cx, jsval path)
+{
+	char *pstr = JS_EncodeStringValue(cx, path);
+	int fd;
+	bfd_t *stream;
+
+	if (!pstr)
+		return NULL;
+
+	fd = open(pstr, O_RDONLY);
+	if (fd == -1) {
+		JS_ReportError(js_context, "File %s cannot be opened: %d", pstr, errno);
+		JS_free(cx, pstr);
+		return NULL;
+	}
+	JS_free(cx, pstr);
+
+	stream = bfd_alloc(fd);
+	if (!stream)
+		close(fd);
+
+	return stream;
 }
 
 jsval smtp_create_response(JSContext *cx, int code, const char *message, int disconnect)
@@ -1149,156 +1254,42 @@ out_err:
 	return JS_FALSE;
 }
 
-#if 0
-int smtp_copy_from_file(bfd_t *out, bfd_t *in)
-{
-	const uint32_t DOTLINE_MAGIC	= 0x0d0a2e;	/* <CR><LF>"." */
-	const uint32_t DOTLINE_MASK		= 0xffffff;
-	const uint32_t CRLF_MAGIC		= 0x0d0a;	/* <CR><LF> */
-	const uint32_t CRLF_MASK		= 0xffff;
-	uint32_t buf = 0;
-	int fill = 0, needcrlf = 1;
-	int c;
-
-	while ((c = bfd_getc(in)) >= 0) {
-		if (++fill > 4) {
-			if (bfd_putc(out, buf >> 24) < 0)
-				return 1;
-			fill = 4;
-		}
-		buf = (buf << 8) | c;
-		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
-			continue;
-		if (bfd_putc(out, (buf >> ((fill - 1) * 8)) & 0xff) < 0)
-			return 1;
-		buf = (buf << 8) | '.';
-	}
-
-	/* flush remaining buffer */
-	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8) {
-		if (fill == 8 && (buf & CRLF_MASK) == CRLF_MAGIC)
-			needcrlf = 0;
-		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
-			return 1;
-	}
-
-	/* send termination marker */
-	if (needcrlf && bfd_puts(out, "\r\n") < 0)
-		return 1;
-	if (bfd_puts(out, ".\r\n") < 0)
-		return 1;
-
-	return 0;
-}
-#endif
-
-static JSBool SmtpClient_sendMessageBody(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval headers, path, smtpClient, rval, clientStream;
-	char *c_path, *c_header;
-	int i, bodyfd;
-	uint32_t headers_len;
-	FILE *fp;
+static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
+	JSBool ret;
+	jsval hdrs, path, self, v;
 	bfd_t *client_stream, *body_stream;
 
-	headers = JS_ARGV(cx, vp)[0];
+	if (argc < 2)
+		return JS_FALSE;
+
+	hdrs = JS_ARGV(cx, vp)[0];
 	path = JS_ARGV(cx, vp)[1];
-	smtpClient = JS_THIS(cx, vp);
+	self = JS_THIS(cx, vp);
 
-	// If no path, then use the default path where the body was saved
-	if (argc == 1 || JSVAL_IS_NULL(path)) {
-		jsval bodyStream;
-
-		if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "bodyStream", &bodyStream)) {
-			return JS_FALSE;
-		}
-
-		body_stream = JSVAL_TO_PRIVATE(bodyStream);
-	} else {
-		c_path = JS_EncodeString(cx, JSVAL_TO_STRING(path));
-		fp = fopen(c_path, "r");
-
-		if (!fp) {
-			JS_ReportError(js_context, "The file %s cannot be opened!", c_path);
-			free(c_path);
-			return JS_FALSE;
-		}
-
-		bodyfd = fileno(fp);
-
-		if (bodyfd < 0) {
-			JS_ReportError(js_context, "The file %s cannot be opened!", c_path);
-			free(c_path);
-			return JS_FALSE;
-		}
-
-		free(c_path);
-		body_stream = bfd_alloc(bodyfd);
-	}
-
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), "clientStream", &v))
 		return JS_FALSE;
-	}
+	client_stream = JSVAL_TO_PRIVATE(v);
 
-	client_stream = JSVAL_TO_PRIVATE(clientStream);
-
-	// Get number of headers
-	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(headers), &headers_len)) {
+	body_stream = smtp_body_open_read(cx, path);
+	if (!body_stream)
 		return JS_FALSE;
-	}
 
-	// Send headers
-	for (i = 0; i < (int) headers_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(headers), i, &rval)) {
-			return -1;
-		}
+	ret = !smtp_copy_from_file(client_stream, body_stream, JSVAL_TO_OBJECT(hdrs), 1);
 
-		jsval header;
-		JS_CallFunctionName(cx, JSVAL_TO_OBJECT(rval), "toString",
-				0, NULL, &header);
+	close(body_stream->fd);
+	free(body_stream);
 
-		c_header = JS_EncodeString(cx, JSVAL_TO_STRING(header));
+	if (ret)
+		bfd_flush(client_stream);
 
-		if (bfd_puts(client_stream, c_header) < 0) {
-			free(c_header);
-			goto out_err;
-		}
-
-
-		if (bfd_puts(client_stream, "\r\n") < 0) {
-			free(c_header);
-			goto out_err;
-		}
-
-		free(c_header);
-	}
-
-	if (bfd_puts(client_stream, "\r\n") < 0)
-		goto out_err;
-
-	// Put message body in the buffer
-	if (bfd_puts(client_stream, body_stream->wb) < 0) {
-		return JS_FALSE;
-	}
-
-	if (bfd_puts(client_stream, "\r\n.\r\n") < 0)
-		goto out_err;
-
-	// Flush message body
-	bfd_flush(client_stream);
-
-	return JS_TRUE;
-
-out_err:
-	bfd_close(client_stream);
-	free(client_stream);
-	return JS_FALSE;
+	return ret;
 }
 
 static JSFunctionSpec SmtpClient_functions[] = {
 	JS_FS("connect", SmtpClient_connect, 2, 0),
 	JS_FS("readResponse", SmtpClient_readResponse, 0, 0),
 	JS_FS("sendCommand", SmtpClient_sendCommand, 2, 0),
-	JS_FS("sendMessageBody", SmtpClient_sendMessageBody, 2, 0),
+	JS_FS("sendMessage", SmtpClient_sendMessage, 2, 0),
 	JS_FS_END
 };
 
