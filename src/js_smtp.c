@@ -1092,8 +1092,8 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval command, args, smtpClient, clientStream;
-	char *c_str;
+	jsval command, arg = JSVAL_NULL, smtpClient, clientStream;
+	char *str;
 	bfd_t *client_stream;
 	// FIXME don't use "sb"; write directly to stream because it's
 	// buffered anyway
@@ -1101,35 +1101,31 @@ static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 
 	command = JS_ARGV(cx, vp)[0];
 
-	if (argc > 1) {
-		args = JS_ARGV(cx, vp)[1];
-	} else {
-		args = JSVAL_NULL;
-	}
+	if (argc > 1)
+		arg = JS_ARGV(cx, vp)[1];
 
 	smtpClient = JS_THIS(cx, vp);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream))
 		return JS_FALSE;
-	}
-
 	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
 	// Add command name
-	c_str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
-	if (string_buffer_append_string(&sb, c_str))
+	if (!JSVAL_IS_STRING(command))
+		return JS_FALSE;
+	str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
+	if (string_buffer_append_string(&sb, str))
 		goto out_err_free;
-
-	free(c_str);
+	JS_free(cx, str);
 
 	if (string_buffer_append_char(&sb, ' '))
 		goto out_err;
 
-	if (!JSVAL_IS_NULL(args)) {
-		c_str = JS_EncodeString(cx, JSVAL_TO_STRING(args));
-		if (string_buffer_append_string(&sb, c_str))
+	if (JSVAL_IS_STRING(arg)) {
+		str = JS_EncodeString(cx, JSVAL_TO_STRING(arg));
+		if (str && string_buffer_append_string(&sb, str))
 			goto out_err_free;
-		free(c_str);
+		JS_free(cx, str);
 	}
 
 	if (string_buffer_append_string(&sb, "\r\n"))
@@ -1145,7 +1141,7 @@ static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 
 out_err_free:
-	free(c_str);
+	JS_free(cx, str);
 out_err:
 	string_buffer_cleanup(&sb);
 	bfd_close(client_stream);
