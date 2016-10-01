@@ -795,8 +795,6 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	int fd, status = EIO;
 	bfd_t bstream;
 
-	// TODO verificare stare tranzactie smtp (ex. am avut deja DATA)
-
 	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &v))
 		return EINVAL;
 
@@ -820,33 +818,29 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	bfd_init(&bstream, fd);
 
-	/* prepare response */
-	if (smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
+	if (!smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
+		status = smtp_copy_to_file(&bstream, &ctx->stream, hdrs);
+
+	if (bfd_close(&bstream) && !status)
+		status = EINVAL;
+
+	switch (status) {
+	case 0:
+		break;
+	case EIO:
 		goto out_clean;
-
-	// Parse the BODY content of DATA
-
-	switch (smtp_copy_to_file(&bstream, &ctx->stream, hdrs)) {
-		case 0:
-			break;
-		case EPROTO:
-			status = smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
-			goto out_clean;
-		case EOVERFLOW:
-			status = smtp_response_copy(rsp, &smtp_rsp_hdrs_too_big);
-			goto out_clean;
-		default:
-			status = smtp_response_copy(rsp, &smtp_rsp_no_space);
-			goto out_clean;
-	}
-
-	if (bfd_close(&bstream)) {
+	case EPROTO:
+		status = smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
+		goto out_clean;
+	case EOVERFLOW:
+		status = smtp_response_copy(rsp, &smtp_rsp_hdrs_too_big);
+		goto out_clean;
+	default:
 		status = smtp_response_copy(rsp, &smtp_rsp_no_space);
 		goto out_clean;
 	}
 
 	status = EINVAL;
-
 	str = JS_NewStringCopyZ(js_context, path);
 	if (!str)
 		goto out_clean;
@@ -854,18 +848,12 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	js_arg[0] = OBJECT_TO_JSVAL(hdrs);
 	js_arg[1] = STRING_TO_JSVAL(str);
 	status = call_js_handler(ctx, cmd, 2, js_arg, rsp);
-	if (status || !smtp_successful(rsp))
-		goto out_clean;
 
-	status = EINVAL;
-
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HEADERS, OBJECT_TO_JSVAL(hdrs), NULL, NULL, JSPROP_ENUMERATE))
-		goto out_clean;
-
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_BODY, STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
-		goto out_clean;
-
-	return 0;
+	if (!js_init_envelope(js_context, ctx->js_srv)) {
+		if (!status)
+			free(rsp->message);
+		status = EINVAL;
+	}
 
 out_clean:
 	unlink(path);
