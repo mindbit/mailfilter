@@ -402,6 +402,23 @@ jsval smtp_create_response(JSContext *cx, int code, const char *message, int dis
 	return OBJECT_TO_JSVAL(ret);
 }
 
+JSBool js_init_envelope(JSContext *cx, JSObject *obj)
+{
+	JSObject *recipients;
+
+	if (!JS_DefineProperty(cx, obj, PR_SENDER, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
+		return JS_FALSE;
+
+	recipients = JS_NewArrayObject(cx, 0, NULL);
+	if (!recipients)
+		return JS_FALSE;
+
+	if (!JS_DefineProperty(cx, obj, PR_RECIPIENTS, OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+		return JS_FALSE;
+
+	return JS_TRUE;
+}
+
 /* {{{ SmtpPath */
 
 static JSClass SmtpPath_class = {
@@ -1306,7 +1323,7 @@ static JSClass SmtpServer_class = {
 
 static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
-	JSObject *obj, *recipients;
+	JSObject *obj;
 	//jsval host, port, client;
 
 	//host = JS_ARGV(cx, vp)[0];
@@ -1320,17 +1337,7 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, obj, PR_HOSTNAME, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, PR_SENDER, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
-		return JS_FALSE;
-
-	recipients = JS_NewArrayObject(cx, 0, NULL);
-	if (!recipients)
-		return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, obj, PR_RECIPIENTS, OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, obj, PR_HEADERS, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!js_init_envelope(cx, obj))
 		return JS_FALSE;
 
 	if (!JS_DefineProperty(cx, obj, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
