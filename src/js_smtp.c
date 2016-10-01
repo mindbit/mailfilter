@@ -1374,24 +1374,24 @@ static JSFunctionSpec SmtpServer_functions[] = {
 
 /* }}} SmtpServer */
 
-int js_smtp_init(JSContext *cx, JSObject *global)
+JSBool js_smtp_init(JSContext *cx, JSObject *global)
 {
 	if (!JS_InitClass(cx, global, NULL, &SmtpPath_class, SmtpPath_construct, 1, NULL, SmtpPath_functions, NULL, NULL))
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpHeader_class, SmtpHeader_construct, 1, NULL, SmtpHeader_functions, NULL, NULL))
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpResponse_class, SmtpResponse_construct, 1, NULL, NULL, NULL, NULL))
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpClient_class, SmtpClient_construct, 1, NULL, SmtpClient_functions, NULL, NULL))
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpServer_class, SmtpServer_construct, 1, NULL, SmtpServer_functions, NULL, NULL))
-		return -1;
+		return JS_FALSE;
 
-	return 0;
+	return JS_TRUE;
 }
 
 // vim: foldmethod=marker

@@ -133,7 +133,7 @@ static int js_init(const char *filename)
 		return -1;
 	if (!JS_MiscInit(js_context, JSVAL_TO_OBJECT(sys)))
 		return -1;
-	if (js_smtp_init(js_context, global))
+	if (!js_smtp_init(js_context, global))
 		return -1;
 
 	/* Run script */
