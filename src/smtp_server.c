@@ -297,10 +297,11 @@ static int smtp_server_read_and_handle(struct smtp_server_context *ctx)
 static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, unsigned argc, jsval *argv, struct smtp_response *rsp)
 {
 	char handler_name[10] = "smtp";
-	int i;
+	int code, i;
 	jsval v = JSVAL_NULL, rval;
 	uint32_t len;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	char *message;
 
 	for (i = 4; i < sizeof(handler_name) - 1 && *cmd; i++)
 		handler_name[i] = tolower(*(cmd++));
@@ -333,7 +334,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, uns
 	/* Extract "code" field */
 	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "code", &v))
 		return EINVAL;
-	rsp->code = JSVAL_TO_INT(v);
+	code = JSVAL_TO_INT(v);
 
 	/* Extract "messages" field */
 
@@ -342,8 +343,10 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, uns
 
 	if (JS_TypeOfValue(js_context, v) == JSTYPE_STRING) {
 		JSString *js_str = JSVAL_TO_STRING(v);
-		rsp->message = JS_EncodeStringLoose(js_context, js_str);
-		return rsp->message ? 0 : EINVAL;
+		message = JS_EncodeStringLoose(js_context, js_str);
+		if (!message)
+			return EINVAL;
+		goto out_ret;
 	}
 
 	/* Sanity checks for array object */
@@ -388,13 +391,16 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, uns
 		JS_free(js_context, c_str);
 	}
 
-	if (sb.cur) {
-		rsp->message = sb.s;
-		return 0;
+	if (!sb.cur) {
+		string_buffer_cleanup(&sb);
+		return EINVAL;
 	}
 
-	string_buffer_cleanup(&sb);
-	return EINVAL;
+	message = sb.s;
+out_ret:
+	rsp->code = code;
+	rsp->message = message;
+	return 0;
 }
 
 static JSBool smtp_server_get_disconnect(struct smtp_server_context *ctx)
@@ -690,8 +696,10 @@ int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, js_arg, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, js_arg, NULL, NULL, JSPROP_ENUMERATE)) {
+		free(rsp->message);
 		return EINVAL;
+	}
 
 	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
 
@@ -705,7 +713,7 @@ int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char 
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
 	int status = smtp_hdlr_helo(ctx, cmd, arg, rsp);
-	if (status)
+	if (status || !smtp_successful(rsp))
 		return status;
 
 	// FIXME validate/filter ESMTP capabilities before returning
@@ -738,8 +746,10 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_SENDER, v, NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_SENDER, v, NULL, NULL, JSPROP_ENUMERATE)) {
+		free(rsp->message);
 		return EINVAL;
+	}
 
 	return 0;
 }
@@ -770,11 +780,15 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &rcps))
+	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &rcps)) {
+		free(rsp->message);
 		return EINVAL;
+	}
 
-	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0))
+	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0)) {
+		free(rsp->message);
 		return EINVAL;
+	}
 
 	return 0;
 }
