@@ -217,65 +217,70 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 
 int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
 {
-	const uint64_t DOTLINE_MAGIC	= 0x0d0a2e0000;	/* <CR><LF>"."<*> */
-	const uint64_t DOTLINE_MASK	= 0xffffff0000;
-	const uint64_t CRLF_MAGIC	= 0x0000000d0a; /* <CR><LF> */
-	const uint64_t CRLF_MASK	= 0x000000ffff;
-	uint64_t buf = 0;
+	/* "<CR><LF>.<CR><LF>" pattern and mask */
+	const unsigned long long TERMSEQ_PTRN = 0x0d0a2e0d0aULL;
+	const unsigned long long TERMSEQ_MASK = 0xffffffffffULL;
+	/* "<CR><LF>.<any><any>" pattern and mask */
+	const unsigned long long CRLFDOT_PTRN = 0x0d0a2e0000ULL;
+	const unsigned long long CRLFDOT_MASK = 0xffffff0000ULL;
+	/* length (in bytes) of the above patterns */
+	const int PTRN_LEN = 5;
+	/*
+	 * <CR><LF> after DATA is considered when matching against the
+	 * terminating sequence <CR><LF>.<CR><LF> - RFC5321 - 4.1.1.4.
+	 */
+	unsigned long long buf = 0x0d0aULL; /* <CR><LF> */
+	/*
+	 * Set fill to 0 because we want to discard the initial
+	 * <CR><LF> that we initialize buf with.
+	 */
 	int fill = 0;
-	int im_state = EAGAIN, ret = EIO;
-	int c;
+
+	int im_state = EAGAIN, ret = EINVAL;
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
+	int c;
 
 	im_hdr_ctx.max_size = 65536; // FIXME use proper value
 	im_hdr_ctx.hdrs = hdrs;
 	while ((c = bfd_getc(in)) >= 0) {
-		if (im_state == EAGAIN) {
-			im_state = im_header_feed(&im_hdr_ctx, c);
-			continue;
-		}
-		if (++fill > 8) {
-			if (bfd_putc(out, buf >> 56) < 0)
-				goto out_clean;
-			fill = 8;
-		}
 		buf = (buf << 8) | c;
-		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
-			continue;
-		if ((buf & CRLF_MASK) == CRLF_MAGIC) {
-			/* we found the EOF sequence (<CR><LF>"."<CR><LF>) */
-			if (fill < 5) {
-				ret = EINVAL;
-				goto out_clean;
-			}
-			/* discard the (terminating) "."<CR><LF> */
-			buf >>= 24;
-			fill -= 3;
+
+		if (++fill > PTRN_LEN) {
+			if (bfd_putc(out, (buf >> (PTRN_LEN * 8)) & 0xff) < 0)
+				break;
+			fill = PTRN_LEN;
+		}
+
+		/* double-dot conversion: test for "<CR><LF>." and discard dot */
+		if ((buf & CRLFDOT_MASK) == CRLFDOT_PTRN && fill == PTRN_LEN) {
+			if (bfd_putc(out, 0x0d) < 0 || bfd_putc(out, 0x0a) < 0)
+				break;
+			fill = 2;
+		}
+
+		if ((buf & TERMSEQ_MASK) == TERMSEQ_PTRN) {
+			ret = 0;
 			break;
 		}
-		/* flush buffer up to the dot; otherwise we get false-positives for
-		 * a line consisting of (only) two dots */
-		if (fill < 5) {
-			ret = EINVAL;
-			goto out_clean;
+
+		if (im_state == EAGAIN) {
+			im_state = im_header_feed(&im_hdr_ctx, c);
+			fill = 0;
 		}
-		while (fill > 3)
-			if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
-				goto out_clean;
-		buf &= CRLF_MASK;
-		fill = 2;
 	}
 
-	/* flush remaining buffer */
-	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8)
-		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
-			goto out_clean;
-
-	ret = im_state == EAGAIN ? 0 : im_state;
-
-out_clean:
 	string_buffer_cleanup(&im_hdr_ctx.sb);
-	return ret;
+
+	if (c < 0)
+		return EIO;
+
+	if (ret)
+		return ret;
+
+	if (im_state)
+		return im_state;
+
+	return 0;
 }
 
 /**
