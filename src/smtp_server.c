@@ -843,6 +843,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		break;
 	case EIO:
 		goto out_clean;
+	case EAGAIN:
 	case EPROTO:
 		status = smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
 		goto out_clean;
