@@ -293,26 +293,26 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
  */
 int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
 {
-	const uint32_t DOTLINE_MAGIC	= 0x0d0a2e;	/* <CR><LF>"." */
-	const uint32_t DOTLINE_MASK	= 0xffffff;
-	const uint32_t CRLF_MAGIC	= 0x0d0a;	/* <CR><LF> */
-	const uint32_t CRLF_MASK	= 0xffff;
-	uint32_t buf = 0, hdrs_len;
-	int fill = 0, needcrlf = 1;
+	const unsigned long CRLFDOT_PTRN = 0x0d0a2e;
+	const unsigned long CRLFDOT_MASK = 0xffffff;
+	const unsigned int PTRN_LEN = 3;
+	const unsigned long CRLF_PTRN = 0x0d0a;
+	const unsigned long CRLF_MASK = 0xffff;
+	unsigned long buf = 0;
+	uint32_t hdrs_len;
+	int fill = 0, add_crlf = 1;
 	int c, i;
 	jsval v;
 
-	// FIXME handle dotline properly
-
-	// Send headers
+	/* send headers */
 	if (!JS_GetArrayLength(js_context, hdrs, &hdrs_len))
-		return JS_FALSE;
+		return EINVAL;
 
 	for (i = 0; i < (int)hdrs_len; i++) {
 		char *hdr;
 
 		if (!JS_GetElement(js_context, hdrs, i, &v))
-			return 1;
+			return EINVAL;
 
 		JS_CallFunctionName(js_context, JSVAL_TO_OBJECT(v), "toString",
 				0, NULL, &v);
@@ -321,42 +321,44 @@ int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
 
 		if (bfd_puts(out, hdr) < 0) {
 			JS_free(js_context, hdr);
-			return 1;
+			return EIO;
 		}
 		JS_free(js_context, hdr);
 
 		if (bfd_puts(out, "\r\n") < 0)
-			return 1;
+			return EIO;
 	}
 
-	// Send body
+	/* send header delimiter */
+	if (bfd_puts(out, "\r\n") < 0)
+		return EIO;
+
+	/* send body */
 	while ((c = bfd_getc(in)) >= 0) {
-		if (++fill > 4) {
-			if (bfd_putc(out, buf >> 24) < 0)
-				return 1;
-			fill = 4;
-		}
-		buf = (buf << 8) | c;
-		if ((buf & DOTLINE_MASK) != DOTLINE_MAGIC)
-			continue;
-		if (bfd_putc(out, (buf >> ((fill - 1) * 8)) & 0xff) < 0)
-			return 1;
-		buf = (buf << 8) | '.';
+		do {
+			buf = (buf << 8) | c;
+			if (++fill > PTRN_LEN) {
+				if (bfd_putc(out, buf >> (PTRN_LEN * 8)) < 0)
+					return EIO;
+				fill = PTRN_LEN;
+			}
+			c = '.';
+		} while (dotconv && (buf & CRLFDOT_MASK) == CRLFDOT_PTRN);
 	}
 
 	/* flush remaining buffer */
-	for (fill = (fill - 1) * 8; fill >= 0; fill -= 8) {
-		if (fill == 8 && (buf & CRLF_MASK) == CRLF_MAGIC)
-			needcrlf = 0;
-		if (bfd_putc(out, (buf >> fill) & 0xff) < 0)
-			return 1;
+	while (fill) {
+		if (fill == 2 && (buf & CRLF_MASK) == CRLF_PTRN)
+			add_crlf = 0;
+		if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
+			return EIO;
 	}
 
 	/* send termination marker */
-	if (needcrlf && bfd_puts(out, "\r\n") < 0)
-		return 1;
-	if (bfd_puts(out, ".\r\n") < 0)
-		return 1;
+	if (add_crlf && bfd_puts(out, "\r\n") < 0)
+		return EIO;
+	if (dotconv && bfd_puts(out, ".\r\n") < 0)
+		return EIO;
 
 	return 0;
 }
@@ -1277,7 +1279,7 @@ out_err:
 }
 
 static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
-	JSBool ret;
+	int status;
 	jsval hdrs, path, self, v;
 	bfd_t *client_stream, *body_stream;
 
@@ -1296,15 +1298,15 @@ static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
 	if (!body_stream)
 		return JS_FALSE;
 
-	ret = !smtp_copy_from_file(client_stream, body_stream, JSVAL_TO_OBJECT(hdrs), 1);
+	status = smtp_copy_from_file(client_stream, body_stream, JSVAL_TO_OBJECT(hdrs), 1);
 
 	close(body_stream->fd);
 	free(body_stream);
 
-	if (ret)
+	if (status != EIO)
 		bfd_flush(client_stream);
 
-	return ret;
+	return !status;
 }
 
 static JSFunctionSpec SmtpClient_functions[] = {
