@@ -137,6 +137,10 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	return this.smtpClient.readResponse();
 }
 
+SmtpServer.prototype.smtpRset = function () {
+	return this.relayCmd("RSET");
+};
+
 /*
 smtpServer.smtpAuth = function() {
 	return {
@@ -161,10 +165,6 @@ smtpServer.smtpAlop = function() {
 		"disconnect" : false
 	};
 }
-
-smtpServer.smtpRset = function () {
-	return relayCmd("RSET");
-};
 
 smtpServer.smtpQuit = function () {
 	return relayCmd("QUIT");

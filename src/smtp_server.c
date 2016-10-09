@@ -932,9 +932,17 @@ int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	// FIXME cleanup envelope sender, recipients, etc
-	// "headers" field must be set to JSVAL_NULL, similarly to SmtpServer constructor
-	return call_js_handler(ctx, cmd, 0, NULL, rsp);
+	int status = call_js_handler(ctx, cmd, 0, NULL, rsp);
+
+	if (status || !smtp_successful(rsp))
+		return status;
+
+	if (!js_init_envelope(js_context, ctx->js_srv)) {
+		free(rsp->message);
+		status = EINVAL;
+	}
+
+	return status;
 }
 
 #define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
