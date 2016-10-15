@@ -842,35 +842,48 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	case 0:
 		break;
 	case EIO:
-		goto out_clean;
+		goto out_error;
 	case EAGAIN:
 	case EPROTO:
 		status = smtp_response_copy(rsp, &smtp_rsp_invalid_hdrs);
-		goto out_clean;
+		goto out_error;
 	case EOVERFLOW:
 		status = smtp_response_copy(rsp, &smtp_rsp_hdrs_too_big);
-		goto out_clean;
+		goto out_error;
 	default:
 		status = smtp_response_copy(rsp, &smtp_rsp_no_space);
-		goto out_clean;
+		goto out_error;
 	}
 
 	status = EINVAL;
 	str = JS_NewStringCopyZ(js_context, path);
 	if (!str)
-		goto out_clean;
+		goto out_error;
 
 	js_arg[0] = OBJECT_TO_JSVAL(hdrs);
 	js_arg[1] = STRING_TO_JSVAL(str);
 	status = call_js_handler(ctx, cmd, 2, js_arg, rsp);
+	goto out_clean;
 
+out_error:
+	/*
+	 * At this point we have consumed the envelope (sender and
+	 * recipients), but we have an error. Call the JS handler with
+	 * NULL arguments to give the JS side a chance to clean up the
+	 * transaction state (e.g. RSET the client connection).
+	 */
+	js_arg[0] = JSVAL_NULL;
+	js_arg[1] = JSVAL_NULL;
+	call_js_handler(ctx, cmd, 2, js_arg, NULL);
+
+out_clean:
 	if (!js_init_envelope(js_context, ctx->js_srv)) {
 		if (!status)
 			free(rsp->message);
-		status = EINVAL;
+		if (status != EIO)
+			status = EINVAL;
 	}
 
-out_clean:
 	unlink(path);
 	return status;
 }
