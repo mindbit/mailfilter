@@ -453,7 +453,7 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection */
-	call_js_handler(&ctx, "CLNP", 0, NULL, NULL);
+	JS_CallFunctionName(js_context, ctx.js_srv, "cleanup", 0, NULL, &v);
 
 out_clean:
 	if (ctx.js_srv)

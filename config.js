@@ -147,6 +147,11 @@ SmtpServer.prototype.smtpRset = function () {
 	return this.relayCmd("RSET");
 };
 
+SmtpServer.prototype.cleanup = function () {
+	this.relayCmd("QUIT");
+	this.smtpClient.disconnect();
+};
+
 /*
 smtpServer.smtpAuth = function() {
 	return {
@@ -171,11 +176,4 @@ smtpServer.smtpAlop = function() {
 		"disconnect" : false
 	};
 }
-
-smtpServer.smtpQuit = function () {
-	return relayCmd("QUIT");
-};
-
-smtpServer.smtpClnp = function () {
-};
 */
