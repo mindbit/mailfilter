@@ -127,6 +127,12 @@ SmtpServer.prototype.smtpRcpt = function(path)
 
 SmtpServer.prototype.smtpData = function(headers, body)
 {
+	if (!headers || !body) {
+		// SMTP engine rejected DATA command. Clean up.
+		this.relayCmd("RSET");
+		return null;
+	}
+
 	// TODO filtering goes here
 
 	rsp = this.relayCmd("DATA");
