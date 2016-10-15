@@ -1087,10 +1087,11 @@ static int connect_to_address(char *ip, char *port)
 
 /* {{{ SmtpClient */
 
+static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj);
 static JSClass SmtpClient_class = {
 	"SmtpClient", 0, JS_PropertyStub, JS_PropertyStub,
 	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
+	JS_ResolveStub, JS_ConvertStub, SmtpClient_finalize,
 	JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
@@ -1118,11 +1119,21 @@ static JSBool SmtpClient_construct(JSContext *cx, unsigned argc, jsval *vp)
 	return JS_TRUE;
 }
 
+static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj)
+{
+	bfd_t *stream = (bfd_t *)JS_GetPrivate(obj);
+
+	if (stream) {
+		bfd_close(stream);
+		free(stream);
+	}
+}
+
 static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval host, port, client, clientStream;
+	jsval host, port, client;
 	char *c_host, *c_port;
 	int sockfd;
-	bfd_t *client_stream;
+	bfd_t *stream;
 
 	client = JS_THIS(cx, vp);
 
@@ -1140,46 +1151,63 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	c_port = JS_EncodeString(cx, JSVAL_TO_STRING(port));
 
 	sockfd = connect_to_address(c_host, c_port);
+	// FIXME connect_to_address may fail; check return value and bail out
 
-	client_stream = bfd_alloc(sockfd);
-	clientStream = PRIVATE_TO_JSVAL(client_stream);
+	stream = bfd_alloc(sockfd);
+	// FIXME bfd_alloc can fail
 
-	if (!JS_SetProperty(cx, JSVAL_TO_OBJECT(client), "clientStream", &clientStream)) {
+	// FIXME client may already be connected; don't leak previous connection
+	JS_SetPrivate(JSVAL_TO_OBJECT(client), stream);
+
+	free(c_host); // FIXME JS_Free?
+	free(c_port); // FIXME JS_Free?
+
+	return JS_TRUE;
+}
+
+static JSBool SmtpClient_disconnect(JSContext *cx, unsigned argc, jsval *vp)
+{
+	jsval self;
+	bfd_t *stream;
+
+	self = JS_THIS(cx, vp);
+	stream = JS_GetPrivate(JSVAL_TO_OBJECT(self));
+
+	if (!stream)
 		return JS_FALSE;
-	}
 
-	free(c_host);
-	free(c_port);
+	bfd_close(stream);
+	free(stream);
+	JS_SetPrivate(JSVAL_TO_OBJECT(self), NULL);
 
 	return JS_TRUE;
 }
 
 static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval smtpClient, content, response, clientStream;
+	jsval self, content, response;
 	jsval js_code, js_messages, js_disconnect;
 	JSObject *messages_obj, *global;
 
 	int code, lines_count;
 	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
 	ssize_t sz;
-	bfd_t *client_stream;
+	bfd_t *stream;
+
+	self = JS_THIS(cx, vp);
+
+	stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	if (!stream)
+		return JS_FALSE;
 
 	global = JS_GetGlobalForScopeChain(cx);
-	smtpClient = JS_THIS(cx, vp);
 	messages_obj = JS_NewArrayObject(cx, 0, 0);
-
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream)) {
-		return JS_FALSE;
-	}
-
-	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
 	lines_count = 0;
 	do {
 		sz = 0;
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
-			if ((sz = bfd_read_line(client_stream, buf, SMTP_COMMAND_MAX)) <= 0)
+			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) <= 0)
 				return JS_FALSE;
 		} while (buf[SMTP_COMMAND_MAX] != '\n');
 		buf[sz] = '\0';
@@ -1221,9 +1249,9 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval command, arg = JSVAL_NULL, smtpClient, clientStream;
+	jsval command, arg = JSVAL_NULL, self;
 	char *str;
-	bfd_t *client_stream;
+	bfd_t *stream;
 	// FIXME don't use "sb"; write directly to stream because it's
 	// buffered anyway
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
@@ -1233,11 +1261,11 @@ static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 	if (argc > 1)
 		arg = JS_ARGV(cx, vp)[1];
 
-	smtpClient = JS_THIS(cx, vp);
+	self = JS_THIS(cx, vp);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpClient), "clientStream", &clientStream))
+	stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	if (!stream)
 		return JS_FALSE;
-	client_stream = JSVAL_TO_PRIVATE(clientStream);
 
 	// Add command name
 	if (!JSVAL_IS_STRING(command))
@@ -1260,11 +1288,11 @@ static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
 	if (string_buffer_append_string(&sb, "\r\n"))
 		goto out_err;
 
-	if (bfd_puts(client_stream, sb.s) < 0) {
+	if (bfd_puts(stream, sb.s) < 0) {
 		goto out_err;
 	}
 
-	bfd_flush(client_stream);
+	bfd_flush(stream);
 	string_buffer_cleanup(&sb);
 
 	return JS_TRUE;
@@ -1273,14 +1301,15 @@ out_err_free:
 	JS_free(cx, str);
 out_err:
 	string_buffer_cleanup(&sb);
-	bfd_close(client_stream);
-	free(client_stream);
+	bfd_close(stream);
+	free(stream);
+	JS_SetPrivate(JSVAL_TO_OBJECT(self), NULL);
 	return JS_FALSE;
 }
 
 static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
 	int status;
-	jsval hdrs, path, self, v;
+	jsval hdrs, path, self;
 	bfd_t *client_stream, *body_stream;
 
 	if (argc < 2)
@@ -1290,9 +1319,9 @@ static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
 	path = JS_ARGV(cx, vp)[1];
 	self = JS_THIS(cx, vp);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), "clientStream", &v))
+	client_stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	if (!client_stream)
 		return JS_FALSE;
-	client_stream = JSVAL_TO_PRIVATE(v);
 
 	body_stream = smtp_body_open_read(cx, path);
 	if (!body_stream)
@@ -1310,7 +1339,8 @@ static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
 }
 
 static JSFunctionSpec SmtpClient_functions[] = {
-	JS_FS("connect", SmtpClient_connect, 2, 0),
+	JS_FS("connect", SmtpClient_connect, 0, 0),
+	JS_FS("disconnect", SmtpClient_disconnect, 0, 0),
 	JS_FS("readResponse", SmtpClient_readResponse, 0, 0),
 	JS_FS("sendCommand", SmtpClient_sendCommand, 2, 0),
 	JS_FS("sendMessage", SmtpClient_sendMessage, 2, 0),
@@ -1354,6 +1384,11 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 	return JS_TRUE;
 }
 
+static JSBool SmtpServer_cleanup(JSContext *cx, unsigned argc, jsval *vp)
+{
+	return JS_TRUE;
+}
+
 #define DEFINE_HANDLER_STUB(name) \
 	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \
 		jsval rval = smtp_create_response(cx, 250, "def" #name, 0); \
@@ -1370,7 +1405,6 @@ DEFINE_HANDLER_STUB(Mail);
 DEFINE_HANDLER_STUB(Rcpt);
 DEFINE_HANDLER_STUB(Rset);
 DEFINE_HANDLER_STUB(Body);
-DEFINE_HANDLER_STUB(Clnp);
 
 static JSFunctionSpec SmtpServer_functions[] = {
 	JS_FS("smtpInit", smtpInit, 0, 0),
@@ -1382,7 +1416,7 @@ static JSFunctionSpec SmtpServer_functions[] = {
 	JS_FS("smtpRcpt", smtpRcpt, 0, 0),
 	JS_FS("smtpRset", smtpRset, 0, 0),
 	JS_FS("smtpBody", smtpBody, 0, 0),
-	JS_FS("smtpClnp", smtpClnp, 0, 0),
+	JS_FS("cleanup", SmtpServer_cleanup, 0, 0),
 	JS_FS_END
 };
 
