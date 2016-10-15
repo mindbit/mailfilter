@@ -106,12 +106,6 @@ static inline int string_buffer_append_string(struct string_buffer *sb, const ch
 	return 0;
 }
 
-/* ------------------ Generic expression expansion ---------------- */
-
-typedef int (*expr_expand_callback_t)(struct string_buffer *sb, char key, const char *token, size_t tklen, void *priv);
-
-int expr_expand(const char *expr, struct string_buffer *sb, const char *keys, expr_expand_callback_t cbk, void *priv, size_t *offset);
-
 /* ------------------ Generic string functionality ---------------- */
 
 struct kv_pair {
