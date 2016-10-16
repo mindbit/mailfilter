@@ -419,9 +419,10 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 {
 	int status;
 	char *remote_addr = NULL;
-	jsval v;
+	jsval v, argv[2];
 	struct smtp_server_context ctx = {};
 	struct smtp_response rsp;
+	JSString *str;
 
 	remote_addr = inet_ntoa(peer->sin_addr);
 	bfd_init(&ctx.stream, client_sock_fd);
@@ -430,7 +431,14 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 	/* Create SmtpServer instance */
 	if (!JS_GetProperty(js_context, JS_GetGlobalForScopeChain(js_context), "SmtpServer", &v))
 		goto out_clean;
-	ctx.js_srv = JS_New(js_context, JSVAL_TO_OBJECT(v), 0, NULL);
+
+	str = JS_NewStringCopyZ(js_context, remote_addr);
+	if (!str)
+		goto out_clean;
+
+	argv[0] = STRING_TO_JSVAL(str);
+	argv[1] = INT_TO_JSVAL(ntohs(peer->sin_port));
+	ctx.js_srv = JS_New(js_context, JSVAL_TO_OBJECT(v), 2, argv);
 	if (!ctx.js_srv)
 		goto out_clean;
 	JS_AddObjectRoot(js_context, &ctx.js_srv);
@@ -680,30 +688,45 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	JSString *hostname;
+	JSString *str;
 	int status;
-	jsval js_arg;
+	jsval v;
+	const char *proto = "ESMTP";
 
 	if (*arg == '\0')
 		return smtp_response_copy(rsp, &smtp_rsp_hostname_req);
 
-	hostname = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
-	if (!hostname)
+	str = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
+	if (!str)
 		return EINVAL;
 
-	js_arg = STRING_TO_JSVAL(hostname);
-	status = call_js_handler(ctx, cmd, 1, &js_arg, rsp);
+	v = STRING_TO_JSVAL(str);
+	status = call_js_handler(ctx, cmd, 1, &v, rsp);
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, js_arg, NULL, NULL, JSPROP_ENUMERATE)) {
-		free(rsp->message);
-		return EINVAL;
-	}
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, v, NULL, NULL, JSPROP_ENUMERATE))
+		goto out_err;
 
-	// FIXME reset SMTP transaction state (clear envelope sender, etc.)
+	if (strcasecmp(cmd, "EHLO"))
+		proto++;
+	str = JS_NewStringCopyZ(js_context, proto);
+	if (!str)
+		goto out_err;
+
+	v = STRING_TO_JSVAL(str);
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_PROTO, v, NULL, NULL, JSPROP_ENUMERATE))
+		goto out_err;
+
+	/* Reset SMTP transaction state: RFC5321 - 4.1.1.1 */
+	if (!js_init_envelope(js_context, ctx->js_srv))
+		goto out_err;
 
 	return 0;
+
+out_err:
+	free(rsp->message);
+	return EINVAL;
 }
 
 /**
@@ -887,60 +910,6 @@ out_clean:
 	unlink(path);
 	return status;
 }
-
-#if 0
-static struct im_header *create_received_hdr(struct smtp_server_context *ctx)
-{
-	char *remote_addr = "10.0.0.1"; // FIXME inet_ntoa(ctx->addr.sin_addr);
-	time_t t = time(NULL);
-	struct tm *tm = localtime(&t);
-	char ts[32];
-	char remote_host[NI_MAXHOST];
-	char my_hostname[HOST_NAME_MAX];
-	int rev = 0;
-	//char *rcpt;
-	struct im_header *hdr = im_header_alloc("Received");
-
-	if (hdr == NULL)
-		return NULL;
-
-#if 0
-	if (!getnameinfo((struct sockaddr *)&ctx->addr, sizeof(ctx->addr), remote_host, sizeof(remote_host), NULL, 0, 0))
-		rev = strcmp(remote_host, remote_addr);
-#endif
-	gethostname(my_hostname, sizeof(my_hostname));
-	strftime(ts, sizeof(ts), "%a, %d %b %Y %H:%M:%S %z", tm);
-	//rcpt = smtp_path_to_string(list_entry(ctx->fpath.prev, struct smtp_path, mailbox.domain.lh));
-	asprintf(&hdr->value,
-			"from %s (%s%s[%s]) by %s (8.14.2/8.14.2) with SMTP id %s; %s",
-			ctx->identity ? ctx->identity: (rev ? remote_host : remote_addr),
-			rev ? remote_host : "", rev ? " " : "",
-			remote_addr, my_hostname, "abcdef123456", ts);
-	//free(rcpt);
-
-	return hdr;
-}
-
-/*
- * Generate an additional "Received" header
- */
-int insert_received_hdr(struct smtp_server_context *ctx)
-{
-	struct im_header *hdr;
-	struct list_head *lh = ctx->hdrs.next;
-
-	hdr = im_header_find(ctx, "received");
-	if (hdr)
-		lh = &hdr->lh;
-
-	if ((hdr = create_received_hdr(ctx)) == NULL)
-		return -ENOMEM;
-
-	im_header_refold(hdr, 78);
-	list_add_tail(&hdr->lh, lh);
-	return 0;
-}
-#endif
 
 /**
  * @return	0 on success;

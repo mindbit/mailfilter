@@ -57,8 +57,7 @@ static inline void __string_buffer_init(struct string_buffer *sb, size_t chunk)
 
 static inline void string_buffer_cleanup(struct string_buffer *sb)
 {
-	if (sb->s != NULL)
-		free(sb->s);
+	free(sb->s);
 	sb->s = NULL;
 }
 
@@ -105,6 +104,8 @@ static inline int string_buffer_append_string(struct string_buffer *sb, const ch
 
 	return 0;
 }
+
+int string_buffer_append_strings(struct string_buffer *sb, ...);
 
 /* ------------------ Generic string functionality ---------------- */
 
