@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #include "string_tools.h"
 
@@ -37,6 +38,20 @@ int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 	sb->size += chunk;
 
 	return 0;
+}
+
+int string_buffer_append_strings(struct string_buffer *sb, ...)
+{
+	va_list ap;
+	const char *s;
+	int ret;
+
+	va_start(ap, sb);
+	for (s = va_arg(ap, const char *); s; s = va_arg(ap, const char *))
+		if ((ret = string_buffer_append_string(sb, s)))
+			break;
+	va_end(ap);
+	return ret;
 }
 
 int string_kv_split(char *str, char delim, struct list_head *lh)

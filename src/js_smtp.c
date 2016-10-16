@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
+#include <time.h>
 
 #include <jsmisc.h>
 
@@ -44,83 +46,76 @@ struct im_header_context {
 	.sb = STRING_BUFFER_INITIALIZER\
 }
 
-static int add_part_to_header(JSObject *hdr, const char *c_str)
+static JSBool header_add_part(JSContext *cx, JSObject *hdr, const char *c_str)
 {
 	jsval parts;
 	JSString *js_str;
 
 	if (!JS_GetProperty(js_context, hdr, "parts", &parts))
-		return -1;
+		return JS_FALSE;
 
 	js_str = JS_NewStringCopyZ(js_context, c_str);
 	if (!js_str)
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(parts), STRING_TO_JSVAL(js_str), NULL, NULL, 0))
-		return -1;
+		return JS_FALSE;
 
-	return 0;
+	return JS_TRUE;
 }
 
 /**
- * Allocate a new header and initialize the name with the contents of the
- * context string buffer.
+ * Allocate a new header and initialize the name with the given string.
  *
- * @return 0 on success, -1 on error
+ * @return Header object on success, NULL on error
  */
-static int im_header_alloc_ctx(struct im_header_context *ctx)
+static JSObject *header_alloc(JSContext *cx, const char *name)
 {
 	jsval ctor, argv;
-	JSObject *global, *curhdr;
-	JSString *name;
+	JSObject *global;
+	JSString *str;
 
-	name = JS_NewStringCopyZ(js_context, ctx->sb.s);
-	if (!name)
-		return -1;
+	str = JS_NewStringCopyZ(js_context, name);
+	if (!str)
+		return NULL;
 
-	global = JS_GetGlobalForScopeChain(js_context);
+	global = JS_GetGlobalForScopeChain(cx);
 	if (!JS_GetProperty(js_context, global, "SmtpHeader", &ctor))
-		return -1;
+		return NULL;
 
-	argv = STRING_TO_JSVAL(name);
-	curhdr = JS_New(js_context, JSVAL_TO_OBJECT(ctor), 1, &argv);
-	if (!curhdr)
-		return -1;
-
-	ctx->curhdr = curhdr;
-	string_buffer_reset(&ctx->sb);
-	return 0;
+	argv = STRING_TO_JSVAL(str);
+	return JS_New(cx, JSVAL_TO_OBJECT(ctor), 1, &argv);
 }
 
 /**
  * Add a folding to the "current" (currently being parsed) header. The
  * folding position is the current position in the context string buffer.
  */
-static int im_header_add_fold_ctx(struct im_header_context *ctx)
+static JSBool im_header_add_fold_ctx(struct im_header_context *ctx)
 {
-	if (add_part_to_header(ctx->curhdr, ctx->sb.s))
-		return -1;
+	if (!header_add_part(js_context, ctx->curhdr, ctx->sb.s))
+		return JS_FALSE;
 
 	string_buffer_reset(&ctx->sb);
-	return 0;
+	return JS_TRUE;
 }
 
 /**
  * Set the value of the "current" (currently being parsed) header to the
  * contents of the context string buffer.
  *
- * @return 0 on success, -1 on error
+ * @return JS_TRUE on success, JS_FALSE on error
  */
-static int im_header_set_value_ctx(struct im_header_context *ctx)
+static JSBool im_header_set_value_ctx(struct im_header_context *ctx)
 {
-	if (im_header_add_fold_ctx(ctx))
-		return -1;
+	if (!im_header_add_fold_ctx(ctx))
+		return JS_FALSE;
 
 	if (!JS_AppendArrayElement(js_context, ctx->hdrs, OBJECT_TO_JSVAL(ctx->curhdr), NULL, NULL, 0))
-		return -1;
+		return JS_FALSE;
 
 	ctx->curhdr = NULL;
-	return 0;
+	return JS_TRUE;
 }
 
 /*
@@ -140,7 +135,7 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 		if (strchr(tab_space, c)) {
 			if (!ctx->curhdr)
 				return EPROTO;
-			if (im_header_add_fold_ctx(ctx))
+			if (!im_header_add_fold_ctx(ctx))
 				return EINVAL;
 			if (ctx->curr_size++ >= ctx->max_size)
 				return EOVERFLOW;
@@ -149,7 +144,7 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FOLD;
 			return EAGAIN;
 		}
-		if (ctx->curhdr && im_header_set_value_ctx(ctx))
+		if (ctx->curhdr && !im_header_set_value_ctx(ctx))
 			return EINVAL;
 
 		if (c == '\n') {
@@ -162,8 +157,11 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 		/* Intentionally fall back to IM_H_NAME2 */
 	case IM_H_NAME2:
 		if (c == ':') {
-			if (im_header_alloc_ctx(ctx))
+			JSObject *hdr = header_alloc(js_context, ctx->sb.s);
+			if (!hdr)
 				return EINVAL;
+			string_buffer_reset(&ctx->sb);
+			ctx->curhdr = hdr;
 			ctx->state = IM_H_VAL1;
 			return EAGAIN;
 		}
@@ -947,7 +945,7 @@ static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 				c_part = malloc(strlen(c_value) + 2);
 				c_part[0] = '\t';
 				strncpy(c_part + 1, c_value, strlen(c_value) + 1);
-				add_part_to_header(JSVAL_TO_OBJECT(header), c_part);
+				header_add_part(js_context, JSVAL_TO_OBJECT(header), c_part);
 				free(c_part);
 				free(p3);
 				return JS_TRUE;
@@ -963,7 +961,7 @@ static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 		c_part[len] = '\0';
 
 		// Add this new part to header.parts
-		add_part_to_header(JSVAL_TO_OBJECT(header), c_part);
+		header_add_part(js_context, JSVAL_TO_OBJECT(header), c_part);
 		c_value += len;
 		free(c_part);
 
@@ -1361,13 +1359,19 @@ static JSClass SmtpServer_class = {
 static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
 	JSObject *obj;
-	//jsval host, port, client;
+	JSString *str;
+	jsval addr, port;
 
-	//host = JS_ARGV(cx, vp)[0];
-	//port = JS_ARGV(cx, vp)[1];
+	addr = JS_ARGV(cx, vp)[0];
+	port = JS_ARGV(cx, vp)[1];
 
 	obj = JS_NewObjectForConstructor(cx, &SmtpServer_class, vp);
 	if (!obj)
+		return JS_FALSE;
+
+	if (!JS_DefineProperty(cx, obj, PR_PEER_ADDR, addr, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+		return JS_FALSE;
+	if (!JS_DefineProperty(cx, obj, PR_PEER_PORT, port, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	// Define and set session properties
@@ -1380,6 +1384,12 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, obj, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
 
+	str = JS_NewStringCopyZ(cx, "SMTP");
+	if (!str)
+		return JS_FALSE;
+	if (!JS_DefineProperty(cx, obj, PR_PROTO, STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+		return JS_FALSE;
+
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
 	return JS_TRUE;
 }
@@ -1387,6 +1397,82 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 static JSBool SmtpServer_cleanup(JSContext *cx, unsigned argc, jsval *vp)
 {
 	return JS_TRUE;
+}
+
+static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
+{
+	jsval self, v;
+	char *fname = NULL, *proto = NULL, *addr = NULL;
+	JSBool ret = JS_FALSE;
+	struct sockaddr_in addr4 = {AF_INET};
+	char phost[NI_MAXHOST], lhost[HOST_NAME_MAX];
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	JSObject *hdr;
+	int err;
+	const char *myid = "mailfilter"; // FIXME take from config; should be similar to EHLO id
+	time_t t = time(NULL);
+	struct tm *tm = localtime(&t);
+	char ts[40];
+
+	self = JS_THIS(cx, vp);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_HOSTNAME, &v))
+		goto out_clean;
+	fname = JS_EncodeStringValue(cx, v);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_PROTO, &v))
+		goto out_clean;
+	proto = JS_EncodeStringValue(cx, v);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_PEER_ADDR, &v))
+		goto out_clean;
+	addr = JS_EncodeStringValue(cx, v);
+
+	// FIXME add IPv6 support
+	inet_pton(AF_INET, addr, &addr4.sin_addr); // FIXME check return value
+	if (getnameinfo((struct sockaddr *)&addr4, sizeof(addr4), phost, sizeof(phost), NULL, 0, NI_NAMEREQD))
+		strcpy(phost, "unknown");
+
+	if (gethostname(lhost, sizeof(lhost)))
+		goto out_clean;
+
+	hdr = header_alloc(cx, "Received");
+	if (!hdr)
+		goto out_clean;
+
+	err = string_buffer_append_strings(&sb, "from ", fname ? fname :
+			"unknown", " (", phost, " [", addr, "])", NULL);
+	if (err)
+		goto out_clean;
+	if (!header_add_part(cx, hdr, sb.s))
+		goto out_clean;
+
+	string_buffer_reset(&sb);
+	err = string_buffer_append_strings(&sb, "\tby ", lhost, " (",
+			myid, ") with ", proto, ";", NULL);
+	// FIXME add transaction id and recipient (passed as function parameters)
+	if (err)
+		goto out_clean;
+	if (!header_add_part(cx, hdr, sb.s))
+		goto out_clean;
+
+	strftime(ts, sizeof(ts), "%a, %e %b %Y %H:%M:%S %z (%Z)", tm);
+	string_buffer_reset(&sb);
+	err = string_buffer_append_strings(&sb, "\t", ts, NULL);
+	if (err)
+		goto out_clean;
+	if (!header_add_part(cx, hdr, sb.s))
+		goto out_clean;
+
+	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(hdr));
+	ret = JS_TRUE;
+
+out_clean:
+	string_buffer_cleanup(&sb);
+	JS_free(cx, fname);
+	JS_free(cx, proto);
+	JS_free(cx, addr);
+	return ret;
 }
 
 #define DEFINE_HANDLER_STUB(name) \
@@ -1417,6 +1503,7 @@ static JSFunctionSpec SmtpServer_functions[] = {
 	JS_FS("smtpRset", smtpRset, 0, 0),
 	JS_FS("smtpBody", smtpBody, 0, 0),
 	JS_FS("cleanup", SmtpServer_cleanup, 0, 0),
+	JS_FS("receivedHeader", SmtpServer_receivedHeader, 0, 0),
 	JS_FS_END
 };
 
