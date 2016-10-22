@@ -1413,6 +1413,7 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 	time_t t = time(NULL);
 	struct tm *tm = localtime(&t);
 	char ts[40];
+	char *s = NULL;
 
 	self = JS_THIS(cx, vp);
 
@@ -1428,7 +1429,7 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 		goto out_clean;
 	addr = JS_EncodeStringValue(cx, v);
 
-	// FIXME add IPv6 support
+	// TODO add IPv6 support
 	inet_pton(AF_INET, addr, &addr4.sin_addr); // FIXME check return value
 	if (getnameinfo((struct sockaddr *)&addr4, sizeof(addr4), phost, sizeof(phost), NULL, 0, NI_NAMEREQD))
 		strcpy(phost, "unknown");
@@ -1449,10 +1450,33 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 
 	string_buffer_reset(&sb);
 	err = string_buffer_append_strings(&sb, "\tby ", lhost, " (",
-			myid, ") with ", proto, ";", NULL);
-	// FIXME add transaction id and recipient (passed as function parameters)
+			myid, ") with ", proto, NULL);
 	if (err)
 		goto out_clean;
+
+	/* Add opt-info "ID" (if supplied as parameter #1) */
+	if (argc >= 1 && (s = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]))) {
+		if (string_buffer_append_strings(&sb, " id ", s, NULL))
+			goto out_clean;
+		JS_free(cx, s);
+		s = NULL;
+	}
+
+	/* Add opt-info "for" (if supplied as parameter #2) */
+	if (argc >= 2 && (s = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]))) {
+		if (!header_add_part(cx, hdr, sb.s))
+			goto out_clean;
+		string_buffer_reset(&sb);
+		if (string_buffer_append_strings(&sb, "\tfor ", s, NULL))
+			goto out_clean;
+		JS_free(cx, s);
+		s = NULL;
+	}
+
+	err = string_buffer_append_char(&sb, ';');
+	if (err)
+		goto out_clean;
+
 	if (!header_add_part(cx, hdr, sb.s))
 		goto out_clean;
 
@@ -1472,6 +1496,7 @@ out_clean:
 	JS_free(cx, fname);
 	JS_free(cx, proto);
 	JS_free(cx, addr);
+	JS_free(cx, s);
 	return ret;
 }
 
