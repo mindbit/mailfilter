@@ -58,7 +58,7 @@ static JSBool header_add_part(JSContext *cx, JSObject *hdr, const char *c_str)
 	if (!js_str)
 		return JS_FALSE;
 
-	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(parts), STRING_TO_JSVAL(js_str), NULL, NULL, 0))
+	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(parts), STRING_TO_JSVAL(js_str), NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
 	return JS_TRUE;
@@ -111,7 +111,7 @@ static JSBool im_header_set_value_ctx(struct im_header_context *ctx)
 	if (!im_header_add_fold_ctx(ctx))
 		return JS_FALSE;
 
-	if (!JS_AppendArrayElement(js_context, ctx->hdrs, OBJECT_TO_JSVAL(ctx->curhdr), NULL, NULL, 0))
+	if (!JS_AppendArrayElement(js_context, ctx->hdrs, OBJECT_TO_JSVAL(ctx->curhdr), NULL, NULL, JSPROP_ENUMERATE))
 		return JS_FALSE;
 
 	ctx->curhdr = NULL;

@@ -808,7 +808,7 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 		return EINVAL;
 	}
 
-	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, 0)) {
+	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(rcps), v, NULL, NULL, JSPROP_ENUMERATE)) {
 		free(rsp->message);
 		return EINVAL;
 	}
