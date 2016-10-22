@@ -127,11 +127,19 @@ SmtpServer.prototype.smtpRcpt = function(path)
 
 SmtpServer.prototype.smtpData = function(headers, body)
 {
+	// Normally both "headers" and "body" should be non-null. If at
+	// least one of them is null, it means the SMTP engine rejected
+	// the DATA command (e.g. the message failed to parse). In this
+	// case we need to clean up the transaction state with the real
+	// SMTP server. We should not return an SmtpStatus, since it's
+	// ignored anyway by the engine.
 	if (!headers || !body) {
-		// SMTP engine rejected DATA command. Clean up.
 		this.relayCmd("RSET");
 		return null;
 	}
+
+	// Generate and insert the "Received" header
+	headers.unshift(this.receivedHeader());
 
 	// TODO filtering goes here
 
