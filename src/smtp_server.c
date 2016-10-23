@@ -64,6 +64,11 @@ struct smtp_response {
 	char *message;
 };
 
+struct esmtp_cap {
+	const char *verb;
+	int (*cb)(const char *verb, char *param);
+};
+
 // FIXME
 #define assert_log(...)
 #define assert_mod_log(...)
@@ -112,6 +117,12 @@ DEF_SMTP_RSP(sndr_specified,	503, "Sender already specified");
 DEF_SMTP_RSP(no_sndr,		503, "Must specify sender first");
 DEF_SMTP_RSP(no_recipients,	503, "Must specify recipient(s) first");
 DEF_SMTP_RSP(hdrs_too_big,	552, "Message header too long");
+
+struct esmtp_cap esmtp_cap_table[] = {
+	{"PIPELINING",		NULL},
+	{"SIZE",		NULL},
+	{NULL,			NULL}
+};
 
 static inline int smtp_successful(const struct smtp_response *rsp)
 {
@@ -735,11 +746,58 @@ out_err:
  */
 int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
+	char *src, *dst = NULL, *next;
+
 	int status = smtp_hdlr_helo(ctx, cmd, arg, rsp);
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	// FIXME validate/filter ESMTP capabilities before returning
+	/* filter SMTP extensions; see RFC 5321 - section 4.1.1.1 */
+	src = rsp->message;
+	do {
+		char *param;
+		struct esmtp_cap *cap;
+
+		next = strchr(src, '\n');
+
+		/* skip ehlo-greet */
+		if (src == rsp->message) {
+			src = dst = next;
+			continue;
+		}
+
+		if (next)
+			*next = '\0';
+
+		param = strchr(src, ' ');
+		if (param)
+			*param++ = '\0';
+
+		for (cap = &esmtp_cap_table[0]; cap->verb; cap++) {
+			if (strcasecmp(src, cap->verb))
+				continue;
+			if (!cap->cb || cap->cb(cap->verb, param))
+				break;
+		}
+
+		if (cap->verb) {
+			*dst++ = '\n';
+			strcpy(dst, cap->verb);
+			dst += strlen(cap->verb);
+
+			if (param) {
+				*dst++ = ' ';
+				strcpy(dst, param);
+				dst += strlen(param);
+			}
+		}
+
+		src = next;
+	} while (src++);
+
+	if (dst)
+		*dst = '\0';
+
 	return status;
 }
 
