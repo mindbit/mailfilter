@@ -15,7 +15,7 @@ Sys.loadModule("mod_smtp_client.so");
 
 // Configure address/port pairs for listening to incoming SMTP
 // connections.
-SmtpServer.listenAddress = [["127.0.0.1", "8025"]];
+SmtpServer.listenAddress = [["127.0.0.1", 8025]];
 
 // Enable logging of everything that is received and sent on the SMTP
 // connection.
@@ -100,7 +100,7 @@ SmtpServer.prototype.relayCmd = function(cmd, args)
 
 SmtpServer.prototype.smtpInit = function()
 {
-	this.smtpClient = new SmtpClient("127.0.0.1", "25");
+	this.smtpClient = new SmtpClient("127.0.0.1", 25);
 	this.smtpClient.connect();
 	return this.smtpClient.readResponse();
 }

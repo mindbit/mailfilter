@@ -1046,37 +1046,31 @@ static JSBool SmtpResponse_construct(JSContext *cx, unsigned argc, jsval *vp)
 
 /* }}} SmtpResponse */
 
-static int connect_to_address(char *ip, char *port)
+static int connect_to_address(char *host, unsigned short port)
 {
-	int sockfd, portno;
-	struct sockaddr_in serv_addr;
+	int sockfd;
+	struct sockaddr_in serv_addr = {AF_INET};
 	struct hostent *server;
 
-	portno = atoi(port);
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-	if (sockfd < 0) {
-		// throw exc
-		printf("sock failed\n");
+	// FIXME use getaddrinfo; handle ipv6
+	server = gethostbyname(host);
+	if (!server) {
+		// TODO throw exc
 		return -1;
 	}
 
-	server = gethostbyname(ip);
-
-	if (!server) {
-		// throw exc
-		printf("server failed\n");
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sockfd < 0) {
+		// TODO throw exc
+		return -1;
 	}
 
-	bzero((char*) &serv_addr, sizeof(serv_addr));
-
-	serv_addr.sin_family = AF_INET;
-
-	bcopy((char *) server->h_addr, (char *) &serv_addr.sin_addr.s_addr, server->h_length);
-	serv_addr.sin_port = htons(portno);
+	memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, sizeof(in_addr_t));
+	serv_addr.sin_port = htons(port);
 
 	if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-		JS_ReportError(js_context, "Cannot connect to %s:%s!", ip, port);
+		JS_ReportError(js_context, "Cannot connect to %s:%hu!", host, port);
+		close(sockfd);
 		return -1;
 	}
 
@@ -1129,8 +1123,9 @@ static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj)
 
 static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval host, port, client;
-	char *c_host, *c_port;
+	char *c_host;
 	int sockfd;
+	double num;
 	bfd_t *stream;
 
 	client = JS_THIS(cx, vp);
@@ -1141,14 +1136,14 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	}
 
 	// Get port
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "port", &port)) {
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "port", &port))
 		return JS_FALSE;
-	}
+	if (!JS_ValueToNumber(cx, port, &num))
+		return JS_FALSE;
 
 	c_host = JS_EncodeString(cx, JSVAL_TO_STRING(host));
-	c_port = JS_EncodeString(cx, JSVAL_TO_STRING(port));
 
-	sockfd = connect_to_address(c_host, c_port);
+	sockfd = connect_to_address(c_host, num);
 	// FIXME connect_to_address may fail; check return value and bail out
 
 	stream = bfd_alloc(sockfd);
@@ -1157,8 +1152,7 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	// FIXME client may already be connected; don't leak previous connection
 	JS_SetPrivate(JSVAL_TO_OBJECT(client), stream);
 
-	free(c_host); // FIXME JS_Free?
-	free(c_port); // FIXME JS_Free?
+	JS_free(cx, c_host);
 
 	return JS_TRUE;
 }
