@@ -159,7 +159,7 @@ void js_stop(void)
 }
 
 /* Array of server sockets */
-int fds[256], fds_len;
+int fds[256], fds_len; // FIXME don't define these globally
 
 /* Forks, closes all file descriptors and redirects stdin/stdout to /dev/null */
 void daemonize(void)
@@ -235,46 +235,49 @@ static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
 	waitpid(info->si_pid, &status, WNOHANG);
 }
 
-static int get_socket_for_address(char *ip, char *port)
+static int get_socket_for_address(char *ip, unsigned short port)
 {
-	int sockfd, status, yes = 1;
-	struct addrinfo hints, *servinfo, *p;
+	int sockfd = -1, status, yes = 1;
+	struct addrinfo *servinfo, *p, hints = {
+		.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV,
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM,
+	};
+	char pstr[20];
 
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	status = getaddrinfo(ip, port, &hints, &servinfo);
+	snprintf(pstr, sizeof(pstr), "%hu", port);
+	status = getaddrinfo(ip, pstr, &hints, &servinfo);
 	if (status) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	for(p = servinfo; p != NULL; p = p->ai_next) {
 		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 		if (sockfd < 0) {
-			perror("socket");
+			perror("socket"); // FIXME log the error
 			continue;
 		}
 
 		status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
 				sizeof(int));
 		if (status < 0) {
-			perror("setsockopt");
-			exit(EXIT_FAILURE);
+			perror("setsockopt"); // FIXME log the error
+			close(sockfd);
+			continue;
 		}
 
 		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
 		if (status < 0) {
+			perror("bind"); // FIXME log the error
 			close(sockfd);
-			perror("bind");
 			continue;
 		}
 
 		status = listen(sockfd, 20);
 		if (status < 0) {
+			perror("listen"); // FIXME log the error
 			close(sockfd);
-			perror("listen");
 			continue;
 		}
 
@@ -282,8 +285,7 @@ static int get_socket_for_address(char *ip, char *port)
 	}
 
 	if (p == NULL) {
-		fprintf(stderr, "failed to bind to %s:%s\n", ip, port);
-		exit(EXIT_FAILURE);
+		fprintf(stderr, "failed to bind to %s:%s\n", ip, pstr); // FIXME log the error
 	}
 
 	freeaddrinfo(servinfo);
@@ -297,7 +299,9 @@ static int create_sockets(void)
 	jsval server_val, prop_val, array_elem;
 
 	JSString *array_elem_obj;
-	char *ip, *port;
+	char *ip;
+	unsigned short port;
+	double num;
 
 	int i;
 	uint32_t array_len;
@@ -344,47 +348,37 @@ static int create_sockets(void)
 		if (!JS_GetArrayLength(js_context, array, &array_len))
 			return JS_FALSE;
 
+		if (array_len < 2)
+			return JS_FALSE;
+
 		/* Get IP address (1st element of array) */
-		if (array_len >= 1) {
-			if (!JS_GetElement(js_context, array, 0, &array_elem))
-				return JS_FALSE;
+		if (!JS_GetElement(js_context, array, 0, &array_elem))
+			return JS_FALSE;
 
-			if (!JSVAL_IS_STRING(array_elem))
-				return JS_FALSE;
+		if (!JSVAL_IS_STRING(array_elem))
+			return JS_FALSE;
 
-			array_elem_obj = JSVAL_TO_STRING(array_elem);
-			if (!array_elem_obj)
-				return JS_FALSE;
+		array_elem_obj = JSVAL_TO_STRING(array_elem);
+		if (!array_elem_obj)
+			return JS_FALSE;
 
-			ip = JS_EncodeString(js_context, array_elem_obj);
-		}
+		ip = JS_EncodeString(js_context, array_elem_obj);
 
 		/* Get Port number (2nd element of array) */
-		if (array_len >= 2) {
-			if (!JS_GetElement(js_context, array, 1, &array_elem))
-				return JS_FALSE;
+		if (!JS_GetElement(js_context, array, 1, &array_elem))
+			return JS_FALSE;
 
-			if (!JSVAL_IS_STRING(array_elem))
-				return JS_FALSE;
+		if (!JS_ValueToNumber(js_context, array_elem, &num))
+			return JS_FALSE;
 
-			array_elem_obj = JSVAL_TO_STRING(array_elem);
-			if (!array_elem_obj)
-				return JS_FALSE;
-
-			port = JS_EncodeString(js_context, array_elem_obj);
-		}
-
-		fds[i] = get_socket_for_address(ip, port);
-		JS_Log(JS_LOG_INFO, "Listening on %s:%s\n", ip, port);
-		fds_len++;
+		port = num;
+		if ((fds[fds_len++] = get_socket_for_address(ip, port)) < 0)
+			return JS_FALSE;
+		JS_Log(JS_LOG_INFO, "Listening on %s:%hu\n", ip, port);
 
 		JS_free(js_context, ip);
-		JS_free(js_context, port);
 
-		/*
-		 * TODO: For now, handle only the first element of the
-		 * "listenAddress" property.
-		 */
+		 // FIXME for now, handle only the first element of "listenAddress"
 		break;
 	}
 
@@ -451,7 +445,7 @@ int main(int argc, char **argv)
 		socklen_t addrlen = sizeof(peer);
 		int client_sock_fd;
 
-		/* TODO: Using only socket fds[0], for now */
+		// FIXME using only socket fds[0] for now
 		client_sock_fd = accept(fds[0], (struct sockaddr *)&peer, &addrlen);
 		if (client_sock_fd < 0) {
 			continue; // FIXME busy loop daca avem o problema recurenta
