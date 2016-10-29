@@ -1189,7 +1189,7 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 
 	stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
 	if (!stream)
-		return JS_FALSE;
+		return JS_RetErrno(cx, ENOTCONN);
 
 	global = JS_GetGlobalForScopeChain(cx);
 	messages_obj = JS_NewArrayObject(cx, 0, 0);
@@ -1200,21 +1200,21 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
 			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) <= 0)
-				return JS_FALSE;
+				return JS_RetErrno(cx, EIO);
 		} while (buf[SMTP_COMMAND_MAX] != '\n');
 		buf[sz] = '\0';
 
 		if (sz < 4)
-			return JS_FALSE;
+			return JS_RetErrno(cx, EPROTO);
 
 		sep = buf[3];
 		buf[3] = '\0';
 		code = strtol(buf, &p, 10);
 
 		if ((sep != ' ' && sep != '-') || *p != '\0')
-			return JS_FALSE;
+			return JS_RetErrno(cx, EPROTO);
 		if (code < 100 || code > 999)
-			return JS_FALSE;
+			return JS_RetErrno(cx, EPROTO);
 
 		if (buf[sz - 1] == '\n')
 			buf[--sz] = '\0';
@@ -1223,9 +1223,8 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 
 		//add response
 		content = STRING_TO_JSVAL(JS_InternString(cx, buf + 4));
-		if (!JS_SetElement(cx, messages_obj, lines_count++, &content)) {
-			return -1;
-		}
+		if (!JS_SetElement(cx, messages_obj, lines_count++, &content))
+			return JS_RetErrno(cx, EFAULT);
 	} while (sep == '-');
 
 	js_code = INT_TO_JSVAL(code);
