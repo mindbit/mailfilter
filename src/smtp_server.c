@@ -104,6 +104,7 @@ static struct smtp_cmd_hdlr smtp_cmd_table[];
 	}
 
 DEF_SMTP_RSP(bye,		221, "Closing connection");
+DEF_SMTP_RSP(ok,		250, "OK");
 DEF_SMTP_RSP(go_ahead,		354, "Go ahead");
 DEF_SMTP_RSP(int_err,		451, "Internal server error");
 DEF_SMTP_RSP(no_space,		452, "Insufficient system storage");
@@ -971,18 +972,6 @@ out_clean:
 
 /**
  * @return	0 on success;
- *		ENOMEM
- */
-int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
-{
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
-
-	return smtp_response_copy(rsp, &smtp_rsp_bye);
-}
-
-/**
- * @return	0 on success;
  *		EINVAL on JS error
  */
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
@@ -1000,6 +989,27 @@ int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char 
 	return status;
 }
 
+/**
+ * @return	0 on success;
+ *		ENOMEM
+ */
+int smtp_hdlr_noop(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+{
+	return smtp_response_copy(rsp, &smtp_rsp_ok);
+}
+
+/**
+ * @return	0 on success;
+ *		ENOMEM
+ */
+int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+{
+	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
+
+	return smtp_response_copy(rsp, &smtp_rsp_bye);
+}
+
 #define SMTP_CMD_HDLR_INIT(name) {#name, smtp_hdlr_##name}
 
 static struct smtp_cmd_hdlr smtp_cmd_table[] = {
@@ -1012,6 +1022,7 @@ static struct smtp_cmd_hdlr smtp_cmd_table[] = {
 	SMTP_CMD_HDLR_INIT(mail),
 	SMTP_CMD_HDLR_INIT(rcpt),
 	SMTP_CMD_HDLR_INIT(rset),
+	SMTP_CMD_HDLR_INIT(noop),
 	SMTP_CMD_HDLR_INIT(quit),
 	{NULL, NULL}
 };
