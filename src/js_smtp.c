@@ -1240,63 +1240,51 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 	return JS_TRUE;
 }
 
-static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval command, arg = JSVAL_NULL, self;
+static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp)
+{
+	jsval self = JS_THIS(cx, vp);
+	bfd_t *stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
 	char *str;
-	bfd_t *stream;
-	// FIXME don't use "sb"; write directly to stream because it's
-	// buffered anyway
-	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	int status;
 
-	command = JS_ARGV(cx, vp)[0];
-
-	if (argc > 1)
-		arg = JS_ARGV(cx, vp)[1];
-
-	self = JS_THIS(cx, vp);
-
-	stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
 	if (!stream)
-		return JS_FALSE;
+		return JS_RetErrno(cx, ENOTCONN);
 
-	// Add command name
-	if (!JSVAL_IS_STRING(command))
-		return JS_FALSE;
-	str = JS_EncodeString(cx, JSVAL_TO_STRING(command));
-	if (string_buffer_append_string(&sb, str))
-		goto out_err_free;
+	if (!argc)
+		return JS_RetErrno(cx, EINVAL);
+
+	str = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]);
+	if (!str)
+		return JS_RetErrno(cx, EINVAL);
+
+	status = bfd_puts(stream, str);
 	JS_free(cx, str);
+	if (status < 0)
+		return JS_RetErrno(cx, EIO);
 
-	if (string_buffer_append_char(&sb, ' '))
-		goto out_err;
+	if (argc <= 1 || JSVAL_IS_VOID(JS_ARGV(cx, vp)[1]))
+		goto out_flush;
 
-	if (JSVAL_IS_STRING(arg)) {
-		str = JS_EncodeString(cx, JSVAL_TO_STRING(arg));
-		if (str && string_buffer_append_string(&sb, str))
-			goto out_err_free;
-		JS_free(cx, str);
-	}
+	if (bfd_putc(stream, ' ') < 0)
+		return JS_RetErrno(cx, EIO);
 
-	if (string_buffer_append_string(&sb, "\r\n"))
-		goto out_err;
+	str = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]);
+	if (!str)
+		return JS_RetErrno(cx, EINVAL);
 
-	if (bfd_puts(stream, sb.s) < 0) {
-		goto out_err;
-	}
+	status = bfd_puts(stream, str);
+	JS_free(cx, str);
+	if (status < 0)
+		return JS_RetErrno(cx, EIO);
 
-	bfd_flush(stream);
-	string_buffer_cleanup(&sb);
+out_flush:
+	if (bfd_puts(stream, "\r\n") < 0)
+		return JS_RetErrno(cx, EIO);
+
+	if (bfd_flush(stream) < 0)
+		return JS_RetErrno(cx, EIO);
 
 	return JS_TRUE;
-
-out_err_free:
-	JS_free(cx, str);
-out_err:
-	string_buffer_cleanup(&sb);
-	bfd_close(stream);
-	free(stream);
-	JS_SetPrivate(JSVAL_TO_OBJECT(self), NULL);
-	return JS_FALSE;
 }
 
 static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
