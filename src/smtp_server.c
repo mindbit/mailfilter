@@ -257,7 +257,7 @@ static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
  * @return	0 on success;
  *		EIO on socket error
  */
-static int smtp_server_read_and_handle(struct smtp_server_context *ctx)
+static int smtp_server_hdle_one(struct smtp_server_context *ctx)
 {
 	char buf[SMTP_COMMAND_MAX];
 	size_t n = sizeof(buf);
@@ -468,7 +468,7 @@ void smtp_server_main(int client_sock_fd, const struct sockaddr_in *peer)
 		goto out_clean;
 
 	do {
-		status = smtp_server_read_and_handle(&ctx);
+		status = smtp_server_hdle_one(&ctx);
 	} while (!status && !smtp_server_get_disconnect(&ctx));
 
 	/* Give all modules the chance to clean up (possibly after a broken
