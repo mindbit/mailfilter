@@ -7,7 +7,7 @@ static JSBool Sys_openlog(JSContext *cx, unsigned argc, jsval *vp)
 {
 	static char ident[40] = "mailfilter";
 	size_t len = sizeof(ident) - 1;
-	int facility = LOG_DAEMON;
+	int facility = LOG_MAIL;
 
 	if (argc >= 1) {
 		JSString *str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
