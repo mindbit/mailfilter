@@ -472,7 +472,22 @@ int main(int argc, char **argv)
 			signal(SIGPIPE, SIG_IGN);
 
 			smtp_server_main(client_sock_fd, &peer);
-			js_stop();
+			// js_stop();
+			/*
+			 * FIXME handle fork() vs. mozjs multithreading properly
+			 *
+			 * Calling js_stop() here blocks the process:
+			 *
+			 * #0  0x00007f996e2c53df in pthread_cond_destroy@@GLIBC_2.3.2 () from /lib64/libpthread.so.0
+			 * #1  0x00007f996dc969f9 in PR_DestroyCondVar () from /lib64/libnspr4.so
+			 * #2  0x00007f996efa1973 in js::SourceCompressorThread::finish (this=0x7f996f804c78) at /usr/src/debug/mozjs17.0.0/js/src/jsscript.cpp:896
+			 * #3  0x00007f996eeb168d in JSRuntime::~JSRuntime (this=0x7f996f804010, __in_chrg=<value optimized out>) at /usr/src/debug/mozjs17.0.0/js/src/jsapi.cpp:954
+			 * #4  0x00007f996eeb1966 in delete_<JSRuntime> (rt=0x7f996f804010) at dist/include/js/Utility.h:616
+			 * #5  JS_Finish (rt=0x7f996f804010) at /usr/src/debug/mozjs17.0.0/js/src/jsapi.cpp:1079
+			 * #6  0x00000000004032a8 in js_stop () at mailfilter.c:157
+			 * #7  0x0000000000403d65 in main (argc=3, argv=0x7fffc9be3fb8) at mailfilter.c:475
+			 *
+			 */
 			exit(EXIT_SUCCESS);
 		default:
 			close(client_sock_fd);
