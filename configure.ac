@@ -19,6 +19,7 @@ AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AM_PROG_CC_C_O
+AC_CHECK_HEADERS_ONCE([arpa/inet.h])
 AC_CHECK_SIZEOF([void *])
 LT_INIT
 
@@ -123,6 +124,30 @@ fi
 AC_CHECK_LIB([jsmisc],[JS_LogImpl],[],[
     AC_MSG_ERROR([jsmisc library not found])
 ])
+
+#
+# test for libspf2
+#
+
+AC_CHECK_HEADER(spf2/spf.h,[],[],[
+    #ifdef HAVE_SYS_TYPES_H
+    #include <sys/types.h>
+    #endif
+    #ifdef HAVE_ARPA_INET_H
+    #include <arpa/inet.h>
+    #endif
+])
+
+if test "x$ac_cv_header_spf2_spf_h" = xyes; then
+    AC_CHECK_LIB([spf2],[SPF_server_new],[
+        AH_CHECK_LIB([spf2])
+        AC_DEFINE([HAVE_LIBSPF2])
+        LIBS="-lspf2 $LIBS"
+        found_spf2=yes
+    ],[])
+fi
+
+AM_CONDITIONAL([HAVE_SPF2], [test x$found_spf2 = xyes])
 
 #
 # Debug mode
