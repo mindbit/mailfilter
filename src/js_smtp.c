@@ -469,6 +469,7 @@ static JSBool SmtpPath_construct(JSContext *cx, unsigned argc, jsval *vp)
 
 static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 {
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	enum {
 		S_INIT,
 		S_SEPARATOR,
@@ -481,13 +482,12 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	char *c_str = NULL, *arg, *token = NULL;
 	JSString *js_str, *local = NULL, *domain = NULL, *trail = NULL;
 	JSObject *domains, *mailbox, *rval;
-	JSObject *this = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	uint32_t idx = 0;
 
 	/* Check arguments; prepare parsed data placeholders */
 	JS_SET_RVAL(cx, vp, JSVAL_NULL);
 
-	if (!argc || !this)
+	if (!argc || !self)
 		goto out_ret;
 
 	js_str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
@@ -599,10 +599,10 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	rval = JS_NewObject(cx, NULL, NULL, NULL);
 	if (!rval)
 		goto out_ret;
-	if (!JS_DefineProperty(cx, this, "trail", JS_StringToJsval(trail), NULL, NULL, JSPROP_ENUMERATE))
+	if (!JS_DefineProperty(cx, self, "trail", JS_StringToJsval(trail), NULL, NULL, JSPROP_ENUMERATE))
 		goto out_ret;
 
-	if (!JS_DefineProperty(cx, this, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, self, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		goto out_ret;
 
 	// Add mailbox property
@@ -616,7 +616,7 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, mailbox, "domain", JS_StringToJsval(domain), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		goto out_ret;
 
-	if (!JS_DefineProperty(cx, this, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, self, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		goto out_ret;
 
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(rval));
@@ -629,19 +629,18 @@ out_ret:
 
 static JSBool SmtpPath_toString(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval domain, local, domains, smtpPath, mailbox, rval;
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	jsval domain, local, domains, mailbox, rval;
 	int str_len, i;
 	uint32_t domains_len;
 
-	smtpPath = JS_THIS(cx, vp);
-
 	// Get domains
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "domains", &domains)) {
+	if (!JS_GetProperty(cx, self, "domains", &domains)) {
 		return JS_FALSE;
 	}
 
 	// Get mailbox
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(smtpPath), "mailbox", &mailbox)) {
+	if (!JS_GetProperty(cx, self, "mailbox", &mailbox)) {
 		return JS_FALSE;
 	}
 
@@ -784,18 +783,15 @@ out_ret:
 
 static JSBool SmtpHeader_getValue(JSContext *cx, unsigned argc, jsval *vp)
 {
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	jsval parts, rval;
-	jsval header;
 
 	uint32_t parts_len, header_len;
 	int i;
 	char *c_str, *header_no_wsp;
 
-	// Get header
-	header = JS_THIS(cx, vp);
-
 	// Get parts
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts)) {
+	if (!JS_GetProperty(cx, self, "parts", &parts)) {
 		return JS_FALSE;
 	}
 
@@ -864,18 +860,18 @@ static JSBool SmtpHeader_getValue(JSContext *cx, unsigned argc, jsval *vp)
 
 static JSBool SmtpHeader_toString(JSContext *cx, unsigned argc, jsval *vp)
 {
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	jsval rval, name, parts, part;
 	uint32_t parts_len;
 	int i;
 
-	jsval header = JS_THIS(cx, vp);
 	// Get name
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "name", &name)) {
+	if (!JS_GetProperty(cx, self, "name", &name)) {
 		return JS_FALSE;
 	}
 
 	// Get parts
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts)) {
+	if (!JS_GetProperty(cx, self, "parts", &parts)) {
 		return JS_FALSE;
 	}
 
@@ -904,15 +900,15 @@ static JSBool SmtpHeader_toString(JSContext *cx, unsigned argc, jsval *vp)
 
 static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval name, value, parts, header;
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	jsval name, value, parts;
 	int width, len;
 	char /* *c_name, */ *c_value, *p1, *p2, *p3, *c_part;
 
 	width = JSVAL_TO_INT(JS_ARGV(cx, vp)[0]);
-	header = JS_THIS(cx, vp);
 
 	// Get name
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "name", &name)) {
+	if (!JS_GetProperty(cx, self, "name", &name)) {
 		return JS_FALSE;
 	}
 
@@ -922,7 +918,7 @@ static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 	}
 
 	// Delete header parts
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(header), "parts", &parts))
+	if (!JS_GetProperty(cx, self, "parts", &parts))
 		return JS_FALSE;
 	if (!JS_SetArrayLength(cx, JSVAL_TO_OBJECT(parts), 0))
 		return JS_FALSE;
@@ -945,7 +941,7 @@ static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 				c_part = malloc(strlen(c_value) + 2);
 				c_part[0] = '\t';
 				strncpy(c_part + 1, c_value, strlen(c_value) + 1);
-				header_add_part(js_context, JSVAL_TO_OBJECT(header), c_part);
+				header_add_part(js_context, self, c_part);
 				free(c_part);
 				free(p3);
 				return JS_TRUE;
@@ -961,7 +957,7 @@ static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
 		c_part[len] = '\0';
 
 		// Add this new part to header.parts
-		header_add_part(js_context, JSVAL_TO_OBJECT(header), c_part);
+		header_add_part(js_context, self, c_part);
 		c_value += len;
 		free(c_part);
 
@@ -1122,21 +1118,20 @@ static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj)
 }
 
 static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval host, port, client;
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	jsval host, port;
 	char *c_host;
 	int sockfd;
 	double num;
 	bfd_t *stream;
 
-	client = JS_THIS(cx, vp);
-
 	// Get host
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "host", &host)) {
+	if (!JS_GetProperty(cx, self, "host", &host)) {
 		return JS_FALSE;
 	}
 
 	// Get port
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(client), "port", &port))
+	if (!JS_GetProperty(cx, self, "port", &port))
 		return JS_FALSE;
 	if (!JS_ValueToNumber(cx, port, &num))
 		return JS_FALSE;
@@ -1150,7 +1145,7 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	// FIXME bfd_alloc can fail
 
 	// FIXME client may already be connected; don't leak previous connection
-	JS_SetPrivate(JSVAL_TO_OBJECT(client), stream);
+	JS_SetPrivate(self, stream);
 
 	JS_free(cx, c_host);
 
@@ -1159,24 +1154,23 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 
 static JSBool SmtpClient_disconnect(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval self;
-	bfd_t *stream;
-
-	self = JS_THIS(cx, vp);
-	stream = JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	bfd_t *stream = JS_GetPrivate(self);
 
 	if (!stream)
 		return JS_FALSE;
 
 	bfd_close(stream);
 	free(stream);
-	JS_SetPrivate(JSVAL_TO_OBJECT(self), NULL);
+	JS_SetPrivate(self, NULL);
 
 	return JS_TRUE;
 }
 
-static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
-	jsval self, content, response;
+static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp)
+{
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	jsval content, response;
 	jsval js_code, js_messages, js_disconnect;
 	JSObject *messages_obj, *global;
 
@@ -1185,9 +1179,7 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 	ssize_t sz;
 	bfd_t *stream;
 
-	self = JS_THIS(cx, vp);
-
-	stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	stream = (bfd_t *)JS_GetPrivate(self);
 	if (!stream)
 		return JS_RetErrno(cx, ENOTCONN);
 
@@ -1241,8 +1233,8 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp) {
 
 static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval self = JS_THIS(cx, vp);
-	bfd_t *stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	bfd_t *stream = (bfd_t *)JS_GetPrivate(self);
 	char *str;
 	int status;
 
@@ -1286,9 +1278,11 @@ out_flush:
 	return JS_TRUE;
 }
 
-static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
+static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp)
+{
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	int status;
-	jsval hdrs, path, self;
+	jsval hdrs, path;
 	bfd_t *client_stream, *body_stream;
 
 	if (argc < 2)
@@ -1296,9 +1290,8 @@ static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp) {
 
 	hdrs = JS_ARGV(cx, vp)[0];
 	path = JS_ARGV(cx, vp)[1];
-	self = JS_THIS(cx, vp);
 
-	client_stream = (bfd_t *)JS_GetPrivate(JSVAL_TO_OBJECT(self));
+	client_stream = (bfd_t *)JS_GetPrivate(self);
 	if (!client_stream)
 		return JS_FALSE;
 
@@ -1382,7 +1375,8 @@ static JSBool SmtpServer_cleanup(JSContext *cx, unsigned argc, jsval *vp)
 
 static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval self, v;
+	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
+	jsval v;
 	char *fname = NULL, *proto = NULL, *addr = NULL;
 	JSBool ret = JS_FALSE;
 	struct sockaddr_in addr4 = {AF_INET};
@@ -1396,17 +1390,15 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 	char ts[40];
 	char *s = NULL;
 
-	self = JS_THIS(cx, vp);
-
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_HOSTNAME, &v))
+	if (!JS_GetProperty(cx, self, PR_HOSTNAME, &v))
 		goto out_clean;
 	fname = JS_EncodeStringValue(cx, v);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_PROTO, &v))
+	if (!JS_GetProperty(cx, self, PR_PROTO, &v))
 		goto out_clean;
 	proto = JS_EncodeStringValue(cx, v);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(self), PR_PEER_ADDR, &v))
+	if (!JS_GetProperty(cx, self, PR_PEER_ADDR, &v))
 		goto out_clean;
 	addr = JS_EncodeStringValue(cx, v);
 
