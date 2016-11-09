@@ -987,13 +987,18 @@ static JSClass SmtpResponse_class = {
 
 static JSBool SmtpResponse_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
-	jsval code, messages, disconnect;
-	jsval aux;
+	jsval code, messages, aux;
+	jsval disconnect = BOOLEAN_TO_JSVAL(JS_FALSE);
 	JSObject *obj, *messages_arr;
+
+	if (argc < 2)
+		return JS_RetErrno(cx, EINVAL);
 
 	code = JS_ARGV(cx, vp)[0];
 	messages = JS_ARGV(cx, vp)[1];
-	disconnect = JS_ARGV(cx, vp)[2];
+
+	if (argc >= 3)
+		disconnect = JS_ARGV(cx, vp)[2];
 
 	obj = JS_NewObjectForConstructor(cx, &SmtpResponse_class, vp);
 	if (!obj)
