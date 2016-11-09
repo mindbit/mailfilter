@@ -300,8 +300,7 @@ static int create_sockets(void)
 
 	JSString *array_elem_obj;
 	char *ip;
-	unsigned short port;
-	double num;
+	int32_t port;
 
 	int i;
 	uint32_t array_len;
@@ -368,13 +367,12 @@ static int create_sockets(void)
 		if (!JS_GetElement(js_context, array, 1, &array_elem))
 			return JS_FALSE;
 
-		if (!JS_ValueToNumber(js_context, array_elem, &num))
+		if (!JS_ValueToInt32(js_context, array_elem, &port))
 			return JS_FALSE;
 
-		port = num;
 		if ((fds[fds_len++] = get_socket_for_address(ip, port)) < 0)
 			return JS_FALSE;
-		JS_Log(JS_LOG_INFO, "Listening on %s:%hu\n", ip, port);
+		JS_Log(JS_LOG_INFO, "Listening on %s:%d\n", ip, (int)port);
 
 		JS_free(js_context, ip);
 
