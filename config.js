@@ -143,7 +143,7 @@ SmtpServer.prototype.smtpData = function(headers, body)
 
 	// TODO filtering goes here
 
-	rsp = this.relayCmd("DATA");
+	var rsp = this.relayCmd("DATA");
 	if (rsp.code != 354)
 		return rsp;
 
@@ -151,11 +151,11 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	return this.smtpClient.readResponse();
 }
 
-SmtpServer.prototype.smtpRset = function () {
+SmtpServer.prototype.smtpRset = function() {
 	return this.relayCmd("RSET");
 };
 
-SmtpServer.prototype.cleanup = function () {
+SmtpServer.prototype.cleanup = function() {
 	this.relayCmd("QUIT");
 	this.smtpClient.disconnect();
 };
