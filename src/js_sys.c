@@ -7,7 +7,7 @@ static JSBool Sys_openlog(JSContext *cx, unsigned argc, jsval *vp)
 {
 	static char ident[40] = "mailfilter";
 	size_t len = sizeof(ident) - 1;
-	int facility = LOG_MAIL;
+	int32_t facility = LOG_MAIL;
 
 	if (argc >= 1) {
 		JSString *str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
@@ -18,7 +18,7 @@ static JSBool Sys_openlog(JSContext *cx, unsigned argc, jsval *vp)
 	}
 
 	if (argc >= 2)
-		JS_ValueToECMAInt32(cx, JS_ARGV(cx, vp)[1], &facility);
+		JS_ValueToInt32(cx, JS_ARGV(cx, vp)[1], &facility);
 
 	openlog(ident, LOG_PID, facility);
 

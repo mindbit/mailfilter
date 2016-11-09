@@ -1122,7 +1122,7 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	jsval host, port;
 	char *c_host;
 	int sockfd;
-	double num;
+	int32_t num;
 	bfd_t *stream;
 
 	// Get host
@@ -1133,7 +1133,7 @@ static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
 	// Get port
 	if (!JS_GetProperty(cx, self, "port", &port))
 		return JS_FALSE;
-	if (!JS_ValueToNumber(cx, port, &num))
+	if (!JS_ValueToInt32(cx, port, &num))
 		return JS_FALSE;
 
 	c_host = JS_EncodeString(cx, JSVAL_TO_STRING(host));
