@@ -1077,10 +1077,10 @@ static int connect_to_address(char *host, unsigned short port)
 
 static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj);
 static JSClass SmtpClient_class = {
-	"SmtpClient", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, SmtpClient_finalize,
-	JSCLASS_NO_OPTIONAL_MEMBERS
+	"SmtpClient", JSCLASS_HAS_PRIVATE, JS_PropertyStub,
+	JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+	JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
+	SmtpClient_finalize, JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
 static JSBool SmtpClient_construct(JSContext *cx, unsigned argc, jsval *vp)
