@@ -1334,18 +1334,15 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 {
 	JSObject *obj;
 	JSString *str;
-	jsval addr, port;
-
-	addr = JS_ARGV(cx, vp)[0];
-	port = JS_ARGV(cx, vp)[1];
 
 	obj = JS_NewObjectForConstructor(cx, &SmtpServer_class, vp);
 	if (!obj)
 		return JS_FALSE;
 
-	if (!JS_DefineProperty(cx, obj, PR_PEER_ADDR, addr, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+	// FIXME verify argument count
+	if (!JS_DefineProperty(cx, obj, PR_REMOTE_ADDR, JS_ARGV(cx, vp)[0], NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
-	if (!JS_DefineProperty(cx, obj, PR_PEER_PORT, port, NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
+	if (!JS_DefineProperty(cx, obj, PR_REMOTE_PORT, JS_ARGV(cx, vp)[1], NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
 		return JS_FALSE;
 
 	// Define and set session properties
@@ -1398,7 +1395,7 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 		goto out_clean;
 	proto = JS_EncodeStringValue(cx, v);
 
-	if (!JS_GetProperty(cx, self, PR_PEER_ADDR, &v))
+	if (!JS_GetProperty(cx, self, PR_REMOTE_ADDR, &v))
 		goto out_clean;
 	addr = JS_EncodeStringValue(cx, v);
 

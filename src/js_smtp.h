@@ -10,8 +10,8 @@
 #define PR_RECIPIENTS	"recipients"
 #define PR_DISCONNECT	"disconnect"
 #define PR_PROTO	"proto"
-#define PR_PEER_ADDR	"peerAddr"
-#define PR_PEER_PORT	"peerPort"
+#define PR_REMOTE_ADDR	"remoteAddr"
+#define PR_REMOTE_PORT	"remotePort"
 
 int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs);
 
