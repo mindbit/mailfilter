@@ -57,6 +57,9 @@ const char *tab_space = "\t ";
 JSContext *js_context; // FIXME make static
 static JSRuntime *js_runtime;
 
+// FIXME will be retrieved by dlsym() when loadable module support is available
+JSBool mod_spf_init(JSContext *cx, JSObject *global);
+
 static int js_init(const char *filename)
 {
 	JSObject *global;
@@ -135,6 +138,9 @@ static int js_init(const char *filename)
 		return -1;
 	if (!js_smtp_init(js_context, global))
 		return -1;
+
+	// FIXME will be called by Sys.loadModule() when supported
+	mod_spf_init(js_context, global);
 
 	/* Run script */
 	JS_EvaluateScript(js_context, global, buf, len, filename, 0, NULL);

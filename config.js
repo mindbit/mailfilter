@@ -92,6 +92,10 @@ smtpServer.messageBody = function () {
 };
 */
 
+SmtpServer.FILTER_ACCEPT = 0;
+SmtpServer.FILTER_REJECT_TEMPORARILY = 1;
+SmtpServer.FILTER_REJECT_PERMANENTLY = 2;
+
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
 	this.smtpClient.sendCommand(cmd, args);
@@ -141,7 +145,18 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	// Generate and insert the "Received" header
 	headers.unshift(this.receivedHeader());
 
-	// TODO filtering goes here
+	switch (this.filter(headers, body)) {
+	case SmtpServer.FILTER_REJECT_TEMPORARILY:
+		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-TEMPORARILY");
+		this.relayCmd("RSET");
+		return new SmtpResponse(450, "Requested action not taken");
+	case SmtpServer.FILTER_REJECT_PERMANENTLY:
+		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-PERMANENTLY");
+		this.relayCmd("RSET");
+		return new SmtpResponse(550, "Requested action not taken");
+	default:
+		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT");
+	}
 
 	var rsp = this.relayCmd("DATA");
 	if (rsp.code != 354)
@@ -159,6 +174,22 @@ SmtpServer.prototype.cleanup = function() {
 	this.relayCmd("QUIT");
 	this.smtpClient.disconnect();
 };
+
+SmtpServer.prototype.filter = function(headers, body) {
+	var srv = new SpfServer(Spf.DNS_CACHE);
+	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
+	Sys.dump(rsp);
+	switch (rsp.result) {
+	case Spf.RESULT_NONE:
+		Sys.log(Sys.LOG_DEBUG, "SPF: X (None)");
+		break;
+	case Spf.RESULT_FAIL:
+		Sys.log(Sys.LOG_DEBUG, "SPF: - (Fail)");
+		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+	}
+
+	return SmtpServer.FILTER_ACCEPT;
+}
 
 /*
 smtpServer.smtpAuth = function() {
