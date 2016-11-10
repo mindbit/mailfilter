@@ -180,11 +180,27 @@ SmtpServer.prototype.filter = function(headers, body) {
 	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
 	Sys.dump(rsp);
 	switch (rsp.result) {
-	case Spf.RESULT_NONE:
-		Sys.log(Sys.LOG_DEBUG, "SPF: X (None)");
+	case Spf.RESULT_NEUTRAL:
+		Sys.log(Sys.LOG_DEBUG, "SPF: ? (Neutral)");
+		break;
+	case Spf.RESULT_PASS:
+		Sys.log(Sys.LOG_DEBUG, "SPF: + (Pass)");
 		break;
 	case Spf.RESULT_FAIL:
 		Sys.log(Sys.LOG_DEBUG, "SPF: - (Fail)");
+		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+	case Spf.RESULT_SOFTFAIL:
+		Sys.log(Sys.LOG_DEBUG, "SPF: ~ (Softfail)");
+		// TODO increase spam score
+		break;
+	case Spf.RESULT_NONE:
+		Sys.log(Sys.LOG_DEBUG, "SPF: X (None)");
+		break;
+	case Spf.RESULT_TEMPERROR:
+		Sys.log(Sys.LOG_DEBUG, "SPF: T (TempError)");
+		return SmtpServer.FILTER_REJECT_TEMPORARILY;
+	case Spf.RESULT_PERMERROR:
+		Sys.log(Sys.LOG_DEBUG, "SPF: P (PermError)");
 		return SmtpServer.FILTER_REJECT_PERMANENTLY;
 	}
 
