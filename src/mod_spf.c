@@ -17,8 +17,9 @@
 static JSObject *build_spf_response(JSContext *cx, SPF_errcode_t status, SPF_response_t *rp)
 {
 	JSObject *global = JS_GetGlobalForScopeChain(cx);
-	JSObject *obj;
+	JSObject *obj, *msar;
 	jsval ctor;
+	int msglen, i;
 
 	if (!JS_GetProperty(cx, global, "SpfResponse", &ctor))
 		return NULL;
@@ -54,7 +55,27 @@ static JSObject *build_spf_response(JSContext *cx, SPF_errcode_t status, SPF_res
 	if (!JS_DefineProperty(cx, obj, "explanation", sr_js_str_prop(cx, explanation, rp)))
 		return NULL;
 
-	// TODO iterate through SPF_response_messages/SPF_response_message and populate array
+	msar = JS_NewArrayObject(cx, 0, 0);
+	if (!JS_DefineProperty(cx, obj, "errors", OBJECT_TO_JSVAL(msar), NULL, NULL, JSPROP_ENUMERATE))
+		return NULL;
+
+	msglen = SPF_response_messages(rp);
+	for (i = 0; i < msglen; i++) {
+		JSObject *msg = JS_NewObject(cx, NULL, NULL, NULL);
+		if (!JS_DefineElement(cx, msar, i, OBJECT_TO_JSVAL(msg), NULL, NULL, JSPROP_ENUMERATE))
+			return NULL;
+
+		SPF_error_t *e = SPF_response_message(rp, i);
+
+		if (!JS_DefineProperty(cx, msg, "code", INT_TO_JSVAL(SPF_error_code(e)), NULL, NULL, JSPROP_ENUMERATE))
+			return NULL;
+
+		if (!JS_DefineProperty(cx, msg, "message", STRING_TO_JSVAL(JS_NewStringCopyZ(cx, SPF_error_message(e))), NULL, NULL, JSPROP_ENUMERATE))
+			return NULL;
+
+		if (!JS_DefineProperty(cx, msg, "isError", BOOLEAN_TO_JSVAL(SPF_error_errorp(e)), NULL, NULL, JSPROP_ENUMERATE))
+			return NULL;
+	}
 
 	return obj;
 }
