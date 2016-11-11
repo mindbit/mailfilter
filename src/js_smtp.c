@@ -481,7 +481,7 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	JSBool ret = JS_TRUE;
 	char *c_str = NULL, *arg, *token = NULL;
 	JSString *js_str, *local = NULL, *domain = NULL, *trail = NULL;
-	JSObject *domains, *mailbox, *rval;
+	JSObject *domains, *mailbox;
 	uint32_t idx = 0;
 
 	/* Check arguments; prepare parsed data placeholders */
@@ -583,8 +583,7 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 			arg++;
 			continue;
 		case S_FINAL:
-			trail = JS_NewStringCopyZ(cx, arg);
-			/* no break */
+			break;
 		}
 		break;
 	}
@@ -595,12 +594,6 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	}
 
 	/* Parsing successful; save parsed data to object and return */
-
-	rval = JS_NewObject(cx, NULL, NULL, NULL);
-	if (!rval)
-		goto out_ret;
-	if (!JS_DefineProperty(cx, self, "trail", JS_StringToJsval(trail), NULL, NULL, JSPROP_ENUMERATE))
-		goto out_ret;
 
 	if (!JS_DefineProperty(cx, self, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		goto out_ret;
@@ -619,7 +612,8 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	if (!JS_DefineProperty(cx, self, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
 		goto out_ret;
 
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(rval));
+	trail = JS_NewStringCopyZ(cx, arg);
+	JS_SET_RVAL(cx, vp, JS_StringToJsval(trail));
 	ret = JS_TRUE;
 
 out_ret:
