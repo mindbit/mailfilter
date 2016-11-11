@@ -517,16 +517,8 @@ static JSObject *smtp_path_parse_cmd(const char *arg, const char *word, char **t
 	if (JSVAL_IS_NULL(rval))
 		return NULL;
 
-	if (!trail)
-		return path;
-
-	*trail = NULL;
-	if (!JS_GetProperty(js_context, JSVAL_TO_OBJECT(rval), "trail", &v))
-		return path;
-
-	str = JSVAL_TO_STRING(v);
-	if (str)
-		*trail = JS_EncodeStringLoose(js_context, str);
+	if (trail)
+		*trail = JS_EncodeStringLoose(js_context, JSVAL_TO_STRING(rval));
 
 	return path;
 }
