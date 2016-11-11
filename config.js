@@ -176,6 +176,11 @@ SmtpServer.prototype.cleanup = function() {
 };
 
 SmtpServer.prototype.filter = function(headers, body) {
+	if (!this.sender.mailbox.domain) {
+		Sys.log(Sys.LOG_DEBUG, "Sender: null");
+		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+	}
+
 	var srv = new SpfServer(Spf.DNS_CACHE);
 	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
 	Sys.dump(rsp);
