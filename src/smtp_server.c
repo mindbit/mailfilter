@@ -849,6 +849,9 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (!path)
 		return smtp_response_copy(rsp, &smtp_rsp_syntax_error);
 
+	// FIXME check for null (or broken) recipient (e.g. "rcpt to:<>")
+	// before calling JS handler
+
 	v = OBJECT_TO_JSVAL(path);
 	status = call_js_handler(ctx, cmd, 1, &v, rsp);
 	if (status || !smtp_successful(rsp))

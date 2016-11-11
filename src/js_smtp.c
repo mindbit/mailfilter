@@ -624,91 +624,77 @@ out_ret:
 static JSBool SmtpPath_toString(JSContext *cx, unsigned argc, jsval *vp)
 {
 	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval domain, local, domains, mailbox, rval;
-	int str_len, i;
-	uint32_t domains_len;
+	jsval domain, local, domains, mailbox, v;
+	uint32_t domains_len, i = 0;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	char c, *str = NULL;
+	JSBool ret = JS_FALSE;
 
-	// Get domains
-	if (!JS_GetProperty(cx, self, "domains", &domains)) {
-		return JS_FALSE;
+	if (!JS_GetProperty(cx, self, "domains", &domains))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (!JS_GetProperty(cx, self, "mailbox", &mailbox) || JSVAL_IS_NULL(mailbox))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "domain", &domain))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(domains), &domains_len))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (string_buffer_append_char(&sb, '<'))
+		goto out_clean;
+
+	while (i < domains_len) {
+		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &v))
+			goto out_clean;
+
+		if (string_buffer_append_char(&sb, '@'))
+			goto out_clean;
+
+		JS_free(cx, str);
+		str = JS_EncodeString(cx, JSVAL_TO_STRING(v));
+		if (string_buffer_append_string(&sb, str))
+			goto out_clean;
+
+		c = ++i < domains_len ? ',' : ':';
+		if (string_buffer_append_char(&sb, c))
+			goto out_clean;
 	}
 
-	// Get mailbox
-	if (!JS_GetProperty(cx, self, "mailbox", &mailbox)) {
-		return JS_FALSE;
+	if (!JSVAL_IS_NULL(local)) {
+		JS_free(cx, str);
+		str = JS_EncodeString(cx, JSVAL_TO_STRING(local));
+		if (string_buffer_append_string(&sb, str))
+			goto out_clean;
 	}
 
-	// Get mailbox.local
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local)) {
-		return JS_FALSE;
-	}
-	// Get mailbox.domain
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "domain", &domain)) {
-		return JS_FALSE;
-	}
+	if (!JSVAL_IS_NULL(domain)) {
+		if (string_buffer_append_char(&sb, '@'))
+			goto out_clean;
 
-	// +1 for "@"
-	str_len = JS_GetStringLength(JSVAL_TO_STRING(local))
-			+ JS_GetStringLength(JSVAL_TO_STRING(domain))
-			+ 1;
-
-	// Get number of domains
-	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(domains), &domains_len)) {
-		return -1;
+		JS_free(cx, str);
+		str = JS_EncodeString(cx, JSVAL_TO_STRING(domain));
+		if (string_buffer_append_string(&sb, str))
+			goto out_clean;
 	}
 
-	for (i = 0; i < (int) domains_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &rval)) {
-			return -1;
-		}
+	if (string_buffer_append_char(&sb, '>'))
+		goto out_clean;
 
-		str_len += JS_GetStringLength(JSVAL_TO_STRING(rval));
-	}
+	// FIXME avoid extra copy with JS_NewUCString; but arg is jschar!
+	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_NewStringCopyZ(cx, sb.s)));
+	ret = JS_TRUE;
 
-	// Add space for "@" * domains_len and "," * (domains_len - 1)
-	str_len += 2 * domains_len - 1;
-
-	// Add space for "<", ">" and ":"
-	str_len += 3;
-
-	char *c_str = malloc(str_len + 1);
-
-	strcpy(c_str, "<");
-
-	for (i = 0; i < domains_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &rval)) {
-			return -1;
-		}
-
-		strcat(c_str, "@");
-		strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(rval)));
-
-		if (domains_len != 1 && i < domains_len - 1) {
-			strcat(c_str, ",");
-		}
-	}
-
-	if (domains_len > 0) {
-		strcat(c_str, ":");
-	}
-
-	// FIXME if (mailbox is not null)
-	strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(local)));
-
-	strcat(c_str, "@");
-
-	strcat(c_str, JS_EncodeString(cx, JSVAL_TO_STRING(domain)));
-	// FIXME endif
-
-	strcat(c_str, ">");
-
-	strcat(c_str, "\0");
-
-	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
-
-	free(c_str);
-
-	return JS_TRUE;
+out_clean:
+	string_buffer_cleanup(&sb);
+	JS_free(cx, str);
+	if (!ret)
+		JS_ReportErrno(cx, ENOMEM);
+	return ret;
 }
 
 static JSFunctionSpec SmtpPath_functions[] = {
