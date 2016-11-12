@@ -1,0 +1,389 @@
+/*
+ * Copyright (C) 2016 Mindbit SRL
+ *
+ * This file is part of mailfilter.
+ *
+ * mailfilter is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version
+ *
+ * mailfilter is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <resolv.h>
+#include <netdb.h>
+#include <errno.h>
+#include <jsmisc.h>
+
+#include "mailfilter.h"
+
+const struct {
+	ns_sect sect;
+	const char *prop;
+} smap[] = {
+	{ns_s_qd,	"question"},
+	{ns_s_an,	"answer"},
+	{ns_s_ns,	"ns"},
+	{ns_s_ar,	"additional"},
+};
+
+static JSBool parse_t_a(JSContext *cx, JSObject *robj, const ns_msg *hdl, const ns_rr *rr)
+{
+	char addr[16];
+	JSString *str;
+
+	if (ns_rr_rdlen(*rr) != 4)
+		return JS_TRUE;
+
+	if (!inet_ntop(AF_INET, ns_rr_rdata(*rr), addr, sizeof(addr)))
+		return JS_TRUE;
+
+	str = JS_NewStringCopyZ(cx, addr);
+	if (!str)
+		return JS_RetErrno(cx, ENOMEM);
+
+	if (!JS_DefineProperty(cx, robj, "data", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
+		return JS_RetErrno(cx, ENOMEM);
+
+	return JS_TRUE;
+}
+
+static JSBool parse_name(JSContext *cx, JSObject *robj, const ns_msg *hdl, const ns_rr *rr)
+{
+	char name[MAXDNAME];
+	JSString *str;
+	const unsigned char *base = ns_msg_base(*hdl), *end = ns_msg_end(*hdl);
+
+	if (ns_name_uncompress(base, end, ns_rr_rdata(*rr), name, sizeof(name)) < 0)
+		return JS_TRUE;
+
+	str = JS_NewStringCopyZ(cx, name);
+	if (!str)
+		return JS_RetErrno(cx, ENOMEM);
+
+	if (!JS_DefineProperty(cx, robj, "data", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
+		return JS_RetErrno(cx, ENOMEM);
+
+	return JS_TRUE;
+}
+
+const struct {
+	ns_type type;
+	JSBool (*func)(JSContext *, JSObject *, const ns_msg *, const ns_rr *);
+} pmap[] = {
+	{ns_t_a,	parse_t_a},
+	{ns_t_cname,	parse_name},
+	{ns_t_ns,	parse_name},
+};
+
+
+static JSBool parse_section(JSContext *cx, JSObject *sobj, ns_msg *hdl, ns_sect sect)
+{
+	int rrnum, i;
+	ns_rr rr;
+	JSObject *robj;
+	JSString *name;
+
+	for (rrnum = 0; rrnum < ns_msg_count(*hdl, sect); rrnum++) {
+		if (ns_parserr(hdl, sect, rrnum, &rr) < 0)
+			return JS_RetError(cx, "ns_parserr: %s", strerror(errno));
+
+		robj = JS_NewObject(cx, NULL, NULL, NULL);
+		if (!robj)
+			return JS_RetErrno(cx, ENOMEM);
+
+		if (!JS_DefineElement(cx, sobj, rrnum, OBJECT_TO_JSVAL(robj), NULL, NULL, JSPROP_ENUMERATE))
+			return JS_RetErrno(cx, ENOMEM);
+
+		name = JS_NewStringCopyZ(cx, ns_rr_name(rr));
+		if (!name || !JS_DefineProperty(cx, robj, "name", STRING_TO_JSVAL(name), NULL, NULL, JSPROP_ENUMERATE))
+			return JS_RetErrno(cx, ENOMEM);
+
+		if (!JS_DefineProperty(cx, robj, "type", INT_TO_JSVAL(ns_rr_type(rr)), NULL, NULL, JSPROP_ENUMERATE))
+			return JS_RetErrno(cx, ENOMEM);
+
+		for (i = 0; i < ARRAY_SIZE(pmap); i++) {
+			if (pmap[i].type != ns_rr_type(rr))
+				continue;
+			if (!pmap[i].func(cx, robj, hdl, &rr))
+				return JS_FALSE;
+			break;
+		}
+	}
+
+	return JS_TRUE;
+}
+
+static JSBool Dns_revAddr(JSContext *cx, unsigned argc, jsval *vp)
+{
+	char *addr = NULL, *darg = NULL, *rev = NULL;
+	const char *domain = NULL;
+	JSBool ret = JS_FALSE;
+	unsigned char buf[sizeof(struct in6_addr)];
+	size_t len;
+
+	if (argc < 1)
+		goto out_err;
+
+	addr = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]);
+	if (!addr)
+		goto out_err;
+
+	if (argc >= 2) {
+		darg = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]);
+		if (!darg)
+			goto out_err;
+		domain = darg;
+	}
+
+	if (inet_pton(AF_INET, addr, buf)) {
+		if (!domain)
+			domain = "in-addr.arpa";
+
+		len = 17 + strlen(domain);
+		rev = malloc(len);
+		if (!rev)
+			goto out_err;
+
+		snprintf(rev, len, "%hhu.%hhu.%hhu.%hhu.%s",
+				buf[3], buf[2], buf[1], buf[0], domain);
+	} else if (inet_pton(AF_INET6, addr, buf)) {
+		int i;
+
+		if (!domain)
+			domain = "ip6.arpa";
+
+		len = 65 + strlen(domain);
+		rev = malloc(len);
+		if (!rev)
+			goto out_err;
+
+		for (i = 15; i >= 0; i--)
+			sprintf(&rev[(15 - i) * 4], "%hhx.%hhx.",
+					buf[i] % 16, buf[i] / 16);
+		strcpy(&rev[64], domain);
+	}
+
+	if (rev) {
+		JSString *s = JS_NewStringCopyZ(cx, rev);
+		if (!s)
+			goto out_ret;
+		JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(s));
+	} else
+		JS_SET_RVAL(cx, vp, JSVAL_NULL);
+
+	ret = JS_TRUE;
+	goto out_ret;
+
+out_err:
+	JS_ReportErrno(cx, EINVAL);
+out_ret:
+	JS_free(cx, addr);
+	JS_free(cx, darg);
+	free(rev);
+	return ret;
+}
+
+static JSBool Dns_query(JSContext *cx, unsigned argc, jsval *vp)
+{
+	char *domain;
+	int32_t type;
+	struct __res_state rs;
+	unsigned char rsp[NS_PACKETSZ];
+	int rlen;
+	ns_msg hdl;
+	JSObject *robj, *sobj;
+	int i;
+
+	if (argc < 2)
+		return JS_RetErrno(cx, EINVAL);
+
+	if (res_ninit(&rs))
+		return JS_RetError(cx, "res_ninit: %s", hstrerror(h_errno));
+
+	if (!JS_ValueToInt32(cx, JS_ARGV(cx, vp)[1], &type))
+		return JS_RetErrno(cx, EINVAL);
+
+	if (!(domain = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0])))
+		return JS_RetErrno(cx, EINVAL);
+
+	rlen = res_nquery(&rs, domain, ns_c_in, type, rsp, sizeof(rsp));
+	JS_free(cx, domain);
+	if (rlen < 0) {
+		JS_SET_RVAL(cx, vp, INT_TO_JSVAL(h_errno));
+		return JS_TRUE;
+	}
+
+	if (ns_initparse(rsp, rlen, &hdl))
+		return JS_RetError(cx, "ns_initparse: %s", strerror(errno));
+
+	robj = JS_NewObject(cx, NULL, NULL, NULL);
+	if (!robj)
+		return JS_RetErrno(cx, ENOMEM);
+
+	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(robj));
+	for (i = 0; i < ARRAY_SIZE(smap); i++) {
+		sobj = JS_NewArrayObject(cx, 0, NULL);
+		if (!sobj) {
+			JS_SET_RVAL(cx, vp, JSVAL_NULL);
+			return JS_RetErrno(cx, ENOMEM);
+		}
+
+		if (!JS_DefineProperty(cx, robj, smap[i].prop, OBJECT_TO_JSVAL(sobj), NULL, NULL, JSPROP_ENUMERATE)) {
+			JS_SET_RVAL(cx, vp, JSVAL_NULL);
+			return JS_RetErrno(cx, ENOMEM);
+		}
+
+		if (!parse_section(cx, sobj, &hdl, smap[i].sect)) {
+			JS_SET_RVAL(cx, vp, JSVAL_NULL);
+			return JS_FALSE;
+		}
+	}
+
+	return JS_TRUE;
+}
+
+static JSClass Dns_class = {
+	"Dns", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
+	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
+	JS_ConvertStub, NULL, JSCLASS_NO_OPTIONAL_MEMBERS
+};
+
+static const struct {
+	const char *name;
+	int value;
+} Dns_props[] = {
+	// h_errno
+	{"HOST_NOT_FOUND",	HOST_NOT_FOUND},
+	{"TRY_AGAIN",		TRY_AGAIN},
+	{"NO_RECOVERY",		NO_RECOVERY},
+	{"NO_DATA",		NO_DATA},
+	// ns_type
+	{"t_invalid",		ns_t_invalid},
+	{"t_a",			ns_t_a},
+	{"t_ns",		ns_t_ns},
+	{"t_md",		ns_t_md},
+	{"t_mf",		ns_t_mf},
+	{"t_cname",		ns_t_cname},
+	{"t_soa",		ns_t_soa},
+	{"t_mb",		ns_t_mb},
+	{"t_mg",		ns_t_mg},
+	{"t_mr",		ns_t_mr},
+	{"t_null",		ns_t_null},
+	{"t_wks",		ns_t_wks},
+	{"t_ptr",		ns_t_ptr},
+	{"t_hinfo",		ns_t_hinfo},
+	{"t_minfo",		ns_t_minfo},
+	{"t_mx",		ns_t_mx},
+	{"t_txt",		ns_t_txt},
+	{"t_rp",		ns_t_rp},
+	{"t_afsdb",		ns_t_afsdb},
+	{"t_x25",		ns_t_x25},
+	{"t_isdn",		ns_t_isdn},
+	{"t_rt",		ns_t_rt},
+	{"t_nsap",		ns_t_nsap},
+	{"t_nsap_ptr",		ns_t_nsap_ptr},
+	{"t_sig",		ns_t_sig},
+	{"t_key",		ns_t_key},
+	{"t_px",		ns_t_px},
+	{"t_gpos",		ns_t_gpos},
+	{"t_aaaa",		ns_t_aaaa},
+	{"t_loc",		ns_t_loc},
+	{"t_nxt",		ns_t_nxt},
+	{"t_eid",		ns_t_eid},
+	{"t_nimloc",		ns_t_nimloc},
+	{"t_srv",		ns_t_srv},
+	{"t_atma",		ns_t_atma},
+	{"t_naptr",		ns_t_naptr},
+	{"t_kx",		ns_t_kx},
+	{"t_cert",		ns_t_cert},
+	{"t_a6",		ns_t_a6},
+	{"t_dname",		ns_t_dname},
+	{"t_sink",		ns_t_sink},
+	{"t_opt",		ns_t_opt},
+	{"t_apl",		ns_t_apl},
+	{"t_ds",		ns_t_ds},
+	{"t_sshfp",		ns_t_sshfp},
+	{"t_ipseckey",		ns_t_ipseckey},
+	{"t_rrsig",		ns_t_rrsig},
+	{"t_nsec",		ns_t_nsec},
+	{"t_dnskey",		ns_t_dnskey},
+	{"t_dhcid",		ns_t_dhcid},
+	{"t_nsec3",		ns_t_nsec3},
+	{"t_nsec3param",	ns_t_nsec3param},
+	{"t_tlsa",		ns_t_tlsa},
+	{"t_smimea",		ns_t_smimea},
+	{"t_hip",		ns_t_hip},
+	{"t_ninfo",		ns_t_ninfo},
+	{"t_rkey",		ns_t_rkey},
+	{"t_talink",		ns_t_talink},
+	{"t_cds",		ns_t_cds},
+	{"t_cdnskey",		ns_t_cdnskey},
+	{"t_openpgpkey",	ns_t_openpgpkey},
+	{"t_csync",		ns_t_csync},
+	{"t_spf",		ns_t_spf},
+	{"t_uinfo",		ns_t_uinfo},
+	{"t_uid",		ns_t_uid},
+	{"t_gid",		ns_t_gid},
+	{"t_unspec",		ns_t_unspec},
+	{"t_nid",		ns_t_nid},
+	{"t_l32",		ns_t_l32},
+	{"t_l64",		ns_t_l64},
+	{"t_lp",		ns_t_lp},
+	{"t_eui48",		ns_t_eui48},
+	{"t_eui64",		ns_t_eui64},
+	{"t_tkey",		ns_t_tkey},
+	{"t_tsig",		ns_t_tsig},
+	{"t_ixfr",		ns_t_ixfr},
+	{"t_axfr",		ns_t_axfr},
+	{"t_mailb",		ns_t_mailb},
+	{"t_maila",		ns_t_maila},
+	{"t_any",		ns_t_any},
+	{"t_uri",		ns_t_uri},
+	{"t_caa",		ns_t_caa},
+	{"t_avc",		ns_t_avc},
+	{"t_ta",		ns_t_ta},
+	{"t_dlv",		ns_t_dlv},
+};
+
+static JSFunctionSpec Dns_functions[] = {
+	JS_FS("revAddr", Dns_revAddr, 2, 0),
+	JS_FS("query", Dns_query, 2, 0),
+	JS_FS_END
+};
+
+
+JSBool js_dns_init(JSContext *cx, JSObject *global)
+{
+	JSObject *dns;
+	unsigned i;
+
+	dns = JS_DefineObject(cx, global, Dns_class.name, &Dns_class, NULL, 0);
+	if (!dns)
+		return JS_FALSE;
+
+	if (!JS_DefineFunctions(cx, dns, Dns_functions))
+		return JS_FALSE;
+
+	for (i = 0; i < ARRAY_SIZE(Dns_props); i++) {
+		JSBool status = JS_DefineProperty(cx, dns,
+				Dns_props[i].name,
+				INT_TO_JSVAL(Dns_props[i].value),
+				NULL, NULL,
+				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
+		if (!status)
+			return JS_FALSE;
+	}
+
+	return JS_TRUE;
+}
