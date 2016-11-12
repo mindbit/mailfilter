@@ -55,7 +55,9 @@ AC_ARG_WITH(jsmisc,
 #
 
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
-AC_SEARCH_LIBS([__res_mkquery], [resolv], , AC_MSG_ERROR([libresolv not found]))
+# FIXME res_nquery expands to __res_nquery (see /usr/include/resolv.h), so checking for
+# res_nquery fails because that's not a symbol; need to check this in a portable way
+AC_SEARCH_LIBS([__res_nquery], [resolv], , AC_MSG_ERROR([libresolv not found]))
 
 #
 # test for SpiderMonkey 17.0 (mozjs 17.0)
