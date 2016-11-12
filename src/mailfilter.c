@@ -130,7 +130,7 @@ static int js_init(const char *filename)
 	}
 
 	/* Initialize global objects */
-	if (js_sys_init(js_context, global))
+	if (!js_sys_init(js_context, global))
 		return -1;
 	if (!JS_GetProperty(js_context, global, "Sys", &sys))
 		return -1;
