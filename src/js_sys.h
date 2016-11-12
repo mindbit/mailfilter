@@ -3,6 +3,6 @@
 
 #include <jsapi.h>
 
-int js_sys_init(JSContext *cx, JSObject *global);
+JSBool js_sys_init(JSContext *cx, JSObject *global);
 
 #endif

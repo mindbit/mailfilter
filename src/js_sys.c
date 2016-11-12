@@ -130,17 +130,17 @@ static JSFunctionSpec Sys_functions[] = {
 	JS_FS_END
 };
 
-int js_sys_init(JSContext *cx, JSObject *global)
+JSBool js_sys_init(JSContext *cx, JSObject *global)
 {
 	JSObject *sys;
 	unsigned i;
 
 	sys = JS_DefineObject(cx, global, Sys_class.name, &Sys_class, NULL, 0);
 	if (!sys)
-		return -1;
+		return JS_FALSE;
 
 	if (!JS_DefineFunctions(cx, sys, Sys_functions))
-		return -1;
+		return JS_FALSE;
 
 	for (i = 0; i < ARRAY_SIZE(Sys_props); i++) {
 		JSBool status = JS_DefineProperty(cx, sys,
@@ -149,8 +149,8 @@ int js_sys_init(JSContext *cx, JSObject *global)
 				NULL, NULL,
 				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
 		if (!status)
-			return -1;
+			return JS_FALSE;
 	}
 
-	return 0;
+	return JS_TRUE;
 }
