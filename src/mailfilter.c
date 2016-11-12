@@ -45,6 +45,7 @@
 #include "config.h"
 #include "js_sys.h"
 #include "js_smtp.h"
+#include "js_dns.h"
 #include "smtp_server.h"
 
 // FIXME
@@ -137,6 +138,8 @@ static int js_init(const char *filename)
 	if (!JS_MiscInit(js_context, JSVAL_TO_OBJECT(sys)))
 		return -1;
 	if (!js_smtp_init(js_context, global))
+		return -1;
+	if (!js_dns_init(js_context, global))
 		return -1;
 
 	// FIXME will be called by Sys.loadModule() when supported
