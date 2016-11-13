@@ -96,6 +96,18 @@ SmtpServer.FILTER_ACCEPT = 0;
 SmtpServer.FILTER_REJECT_TEMPORARILY = 1;
 SmtpServer.FILTER_REJECT_PERMANENTLY = 2;
 
+// List of DNSBL domains:
+//   - first element is the DNSBL domain name
+//   - second element (optional) is a callback function // TODO
+//   - remaining elements (optional) are passed to the callback function // TODO
+SmtpServer.dnsbl = [
+	["zen.spamhaus.org"],		// Free for "private mail systems with low traffic";
+					// https://www.spamhaus.org/organization/dnsblusage/
+	["rbl.abuse.ro"],		// Open; http://abuse.ro/#three
+	//["b.barracudacentral.org"],	// Open; requires registation;
+					// http://barracudacentral.org/rbl
+];
+
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
 	this.smtpClient.sendCommand(cmd, args);
@@ -206,6 +218,25 @@ SmtpServer.prototype.filter = function(headers, body) {
 		return SmtpServer.FILTER_REJECT_TEMPORARILY;
 	case Spf.RESULT_PERMERROR:
 		Sys.log(Sys.LOG_DEBUG, "SPF: P (PermError)");
+		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+	}
+
+	for (var i in SmtpServer.dnsbl) {
+		var dnsbl = SmtpServer.dnsbl[i];
+		var raddr = Dns.revAddr(this.remoteAddr, dnsbl[0]);
+		var result = Dns.query(raddr, Dns.t_a);
+		if (typeof(result) == "number") {
+			Sys.log(Sys.LOG_DEBUG, "DNSBL: pass " + raddr + " (" + result + ")");
+			continue;
+		}
+		var rlist = [];
+		for (var j in result.answer) {
+			var rr = result.answer[j];
+			if (rr.type = Dns.t_a && rr.name.toLowerCase() == raddr.toLowerCase())
+				rlist.push(rr.data);
+		}
+		// TODO if `dnsbl` defines a callback function, call it and pass rlist
+		Sys.log(Sys.LOG_DEBUG, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
 		return SmtpServer.FILTER_REJECT_PERMANENTLY;
 	}
 
