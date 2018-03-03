@@ -103,6 +103,7 @@ SmtpServer.FILTER_REJECT_PERMANENTLY = 2;
 SmtpServer.dnsbl = [
 	["zen.spamhaus.org"],		// Free for "private mail systems with low traffic";
 					// https://www.spamhaus.org/organization/dnsblusage/
+	["dnsrbl.org"],			// Open; http://dnsrbl.org/
 	["rbl.abuse.ro"],		// Open; http://abuse.ro/#three
 	//["b.barracudacentral.org"],	// Open; requires registation;
 					// http://barracudacentral.org/rbl
