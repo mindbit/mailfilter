@@ -218,7 +218,10 @@ SmtpServer.prototype.filter = function(headers, body) {
 		return SmtpServer.FILTER_REJECT_TEMPORARILY;
 	case Spf.RESULT_PERMERROR:
 		Sys.log(Sys.LOG_DEBUG, "SPF: P (PermError)");
-		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+		// We get PermError if e.g. the domain declares multiple SPF records. In that case
+		// it means the SPF check is unreliable, so we just go on with other checks.
+		// TODO increase spam score
+		break;
 	}
 
 	for (var i in SmtpServer.dnsbl) {
