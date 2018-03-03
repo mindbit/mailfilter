@@ -34,11 +34,6 @@
 #include "smtp_server.h"
 #include "string_tools.h"
 
-#if 0
-
-static uint64_t key;
-static const char *module = "clamav";
-
 #include "pexec.h"
 
 int mod_clamav_send_headers(struct smtp_server_context *ctx, bfd_t *fw)
@@ -96,4 +91,3 @@ void mod_clamav_init(void)
 {
 }
 
-#endif
