@@ -109,6 +109,18 @@ SmtpServer.dnsbl = [
 					// http://barracudacentral.org/rbl
 ];
 
+SmtpServer.bypassFilters = [
+	'<test@localhost>',
+];
+
+Array.prototype.indexOfStr = function(str)
+{
+	for (var i in this)
+		if (this[i].toString() == str)
+			return i;
+	return -1;
+}
+
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
 	this.smtpClient.sendCommand(cmd, args);
@@ -158,17 +170,40 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	// Generate and insert the "Received" header
 	headers.unshift(this.receivedHeader());
 
+	var bypassFilters = false;
+	for (var i in SmtpServer.bypassFilters)
+		if (this.recipients.indexOfStr(SmtpServer.bypassFilters[i]) >= 0) {
+			bypassFilters = true;
+			break;
+		}
+
 	switch (this.filter(headers, body)) {
 	case SmtpServer.FILTER_REJECT_TEMPORARILY:
 		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-TEMPORARILY");
+		if (bypassFilters)
+			break;
 		this.relayCmd("RSET");
 		return new SmtpResponse(450, "Requested action not taken");
 	case SmtpServer.FILTER_REJECT_PERMANENTLY:
 		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-PERMANENTLY");
+		if (bypassFilters)
+			break;
 		this.relayCmd("RSET");
 		return new SmtpResponse(550, "Requested action not taken");
 	default:
 		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT");
+		bypassFilters = false;
+	}
+
+	if (bypassFilters) {
+		Sys.log(Sys.LOG_INFO, "bypassed filter action");
+		for (var i in headers) {
+			if (headers[i].name.toLowerCase() != "subject")
+				continue;
+			var parts = headers[i].parts;
+			parts[0] = "[SPAM] " + parts[0];
+			break;
+		}
 	}
 
 	var rsp = this.relayCmd("DATA");
