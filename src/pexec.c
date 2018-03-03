@@ -33,51 +33,64 @@
 #include "pexec.h"
 #include "bfd.h"
 
-#if 0
-
-int pexec(char * const *argv, int fd_in, int fd_out)
+static inline int std_fd(int fd)
 {
-	int i, fd_err;
-	struct rlimit rl = {0};
-
-	/* close all open file descriptors */
-	getrlimit(RLIMIT_NOFILE, &rl);
-	if (rl.rlim_max <= 0)
-		return 127;
-	for (i = 0; i < rl.rlim_max; i++) {
-		if (i == fd_in || i == fd_out)
-			continue;
-		close(i);
-	}
-
-	dup2(fd_in, 0);
-	dup2(fd_out, 1);
-	fd_err = open("/dev/null", 0);
-
-	// FIXME do we really need this? we should have fd_err == 2 anyway
-	if (fd_err != 2)
-		dup2(fd_err, 2);
-
-	execv(argv[0], argv);
-	return 127;
+	return fd >= 0 && fd <= 2;
 }
 
-int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char * const *argv,
-		pexec_send_headers_t pexec_send_headers, pexec_result_t pexec_result)
+static inline int dup_opt(int fd)
+{
+	return fd < 0 ? open("/dev/null", 0) : dup(fd);
+}
+
+
+int pexec_fd_execv(char * const *argv, int fd_in, int fd_out, int fd_err)
+{
+	int i;
+	struct rlimit rl = {0};
+
+	if (std_fd(fd_in) || std_fd(fd_out) || std_fd(fd_err))
+		return EINVAL;
+
+	/* close all open file descriptors */
+	errno = EINVAL;
+	getrlimit(RLIMIT_NOFILE, &rl);
+	if (rl.rlim_max <= 0)
+		return errno;
+	for (i = 0; i < rl.rlim_max; i++)
+		if (i != fd_in && i != fd_out && i != fd_err)
+			close(i);
+
+	if (dup(fd_in) < 0)
+		return errno;
+
+	if (dup_opt(fd_out) < 0)
+		return errno;
+
+	if (dup_opt(fd_err) < 0)
+		return errno;
+
+	execv(argv[0], argv);
+	return errno;
+}
+
+JSBool pexec_put_msg(JSContext *cx, char * const *argv, jsval hdrs, jsval path,
+		struct string_buffer *out, int *status)
 {
 	int status = 0, pr[2] = {-1, -1}, pw[2] = {-1, -1};
 	pid_t pid;
-	bfd_t *fr = NULL, *fw = NULL;
+	bfd_t *istream, ostream;
 	int ret = 0;
 
+	istream = smtp_body_open_read(cx, path);
+	if (!istream)
+		goto out_clean;
 	if (pipe(pr))
 		goto out_clean;
 	if (pipe(pw))
 		goto out_clean;
-	if ((fr = bfd_alloc(pr[0])) == NULL)
-		goto out_clean;
-	if ((fw = bfd_alloc(pw[1])) == NULL)
-		goto out_clean;
+	bfd_init(&ostream, pw[1]);
+	// ((fr = bfd_alloc(pr[0])) == NULL)
 
 	switch ((pid = fork())) {
 	case -1:
@@ -85,11 +98,11 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 		goto out_clean;
 	case 0:
 		/* child; pipe ends that we're not interested in (the ones used
-		 * by the parent) will be implicitly closed by pexec() because
-		 * it closes everything but our own pipe ends. */
-		status = pexec(argv, pw[0], pr[1]);
+		 * by the parent) will be implicitly closed by pexec_fd_execv()
+		 * because it closes everything but our own pipe ends. */
+		pexec_fd_execv(argv, pw[0], pr[1], -1);
 		/* pexec() should not return; if it does, something went wrong */
-		exit(status);
+		exit(127);
 	}
 
 	/* parent; close pipe ends that are meant for the child, so that we
@@ -98,6 +111,16 @@ int __pexec_hdlr_body(struct smtp_server_context *ctx, const char *module, char 
 	pr[1] = -1;
 	close(pw[0]);
 	pw[0] = -1;
+
+	status = smtp_copy_from_file(&ostream, istream, JSVAL_TO_OBJECT(hdrs), 0);
+
+	close(body_stream->fd);
+	free(body_stream);
+
+	if (status != EIO)
+		bfd_flush(client_stream);
+
+	return !status;
 
 	if (pexec_send_headers(ctx, fw)) {
 		JS_Log(JS_LOG_ERR, "could not copy message headers\n");
@@ -176,5 +199,3 @@ out_clean:
 		close(pw[1]);
 	return ret;
 }
-
-#endif
