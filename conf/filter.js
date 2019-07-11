@@ -22,8 +22,9 @@ SmtpServer.listenAddress = [["127.0.0.1", 8025]];
 SmtpServer.debugProtocol = true;
 
 SmtpServer.FILTER_ACCEPT = 0;
-SmtpServer.FILTER_REJECT_TEMPORARILY = 1;
-SmtpServer.FILTER_REJECT_PERMANENTLY = 2;
+SmtpServer.FILTER_ACCEPT_MARK = 1;
+SmtpServer.FILTER_REJECT_TEMPORARILY = 2;
+SmtpServer.FILTER_REJECT_PERMANENTLY = 3;
 
 // List of DNSBL domains:
 //   - first element is the DNSBL domain name
@@ -41,6 +42,11 @@ SmtpServer.dnsbl = [
 
 SmtpServer.bypassFilters = [
 	'<test@localhost>',
+];
+
+SmtpServer.trustSpfDomains = [
+	'gmail.com',
+	'yahoo.com',
 ];
 
 Array.prototype.indexOfStr = function(str)
@@ -158,6 +164,10 @@ SmtpServer.prototype.smtpData = function(headers, body)
 			break;
 		this.relayCmd("RSET");
 		return new SmtpResponse(550, "Requested action not taken");
+	case SmtpServer.FILTER_ACCEPT_MARK:
+		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT-MARK");
+		bypassFilters = true;
+		break;
 	default:
 		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT");
 		bypassFilters = false;
@@ -228,6 +238,10 @@ SmtpServer.prototype.filter = function(headers, body) {
 		break;
 	}
 
+	var ret = SmtpServer.FILTER_REJECT_PERMANENTLY;
+	if (rsp.result == Spf.RESULT_PASS && SmtpServer.trustSpfDomains.indexOfStr(this.sender.mailbox.domain) >= 0)
+		ret = SmtpServer.FILTER_ACCEPT_MARK;
+
 	for (var i in SmtpServer.dnsbl) {
 		var dnsbl = SmtpServer.dnsbl[i];
 		var raddr = Dns.revAddr(this.remoteAddr, dnsbl[0]);
@@ -244,7 +258,7 @@ SmtpServer.prototype.filter = function(headers, body) {
 		}
 		// TODO if `dnsbl` defines a callback function, call it and pass rlist
 		Sys.log(Sys.LOG_DEBUG, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
-		return SmtpServer.FILTER_REJECT_PERMANENTLY;
+		return ret;
 	}
 
 	return SmtpServer.FILTER_ACCEPT;
