@@ -1,7 +1,7 @@
-#ifndef _JS_SMTP_SERVER_H
-#define _JS_SMTP_SERVER_H
+#ifndef _JS_SMTP_H
+#define _JS_SMTP_H
 
-#include <jsapi.h>
+#include <duktape.h>
 
 #include "bfd.h"
 
@@ -13,6 +13,7 @@
 #define PR_REMOTE_ADDR	"remoteAddr"
 #define PR_REMOTE_PORT	"remotePort"
 
+#if 0
 int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs);
 
 // Creates Javascript Object with response
@@ -20,5 +21,6 @@ jsval smtp_create_response(JSContext *cx, int status, const char* message, int d
 
 JSBool js_init_envelope(JSContext *cx, JSObject *obj);
 JSBool js_smtp_init(JSContext *cx, JSObject *global);
+#endif
 
 #endif

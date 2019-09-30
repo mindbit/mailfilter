@@ -1,8 +1,8 @@
 #ifndef _JS_SYS_H
 #define _JS_SYS_H
 
-#include <jsapi.h>
+#include <duktape.h>
 
-JSBool js_sys_init(JSContext *cx, JSObject *global);
+duk_bool_t js_sys_init(duk_context *ctx);
 
 #endif
