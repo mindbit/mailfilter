@@ -3,31 +3,26 @@
 
 #include "mailfilter.h"
 
-static JSBool Sys_openlog(JSContext *cx, unsigned argc, jsval *vp)
+static int Sys_openlog(duk_context *ctx)
 {
-	static char ident[40] = "mailfilter";
-	size_t len = sizeof(ident) - 1;
-	int32_t facility = LOG_MAIL;
+	int argc = duk_get_top(ctx);
+	const char ident = "mailfilter";
+	int facility = LOG_MAIL;
 
-	if (argc >= 1) {
-		JSString *str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
-		len = JS_EncodeStringToBuffer(str, ident, len);
-		if (len < 0 || len >= sizeof(ident))
-			len = sizeof(ident) - 1;
-		ident[len] = '\0';
-	}
+	if (argc >= 1)
+		ident = duk_safe_to_string(ctx, 0);
 
 	if (argc >= 2)
-		JS_ValueToInt32(cx, JS_ARGV(cx, vp)[1], &facility);
+		facility = duk_to_int(ctx, 1);
 
 	openlog(ident, LOG_PID, facility);
 
 	// FIXME for better portability, do not pass vsyslog directly;
 	// instead create a wrapper function that translates priority
 	// from JS_LOG_* to LOG_*
-	JS_LogSetCallback(vsyslog);
+	js_log_set_callback(vsyslog);
 
-	return JS_TRUE;
+	return 0;
 }
 
 #if 0
@@ -46,26 +41,13 @@ static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 }
 #endif
 
-static JSBool Sys_loadModule(JSContext *cx, unsigned argc, jsval *vp)
+static int Sys_loadModule(duk_context *ctx)
 {
-	jsval module;
-	JSString *module_str;
-	char *module_name;
+	const char *module_name = duk_safe_to_string(ctx, 0);
 
-	module = JS_ARGV(cx, vp)[0];
+	js_log(JS_LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
 
-	if (!JSVAL_IS_STRING(module))
-		return JS_FALSE;
-
-	module_str = JSVAL_TO_STRING(module);
-	module_name = JS_EncodeString(cx, module_str);
-	if (!module_name)
-		return JS_FALSE;
-
-	JS_Log(JS_LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
-
-	JS_free(cx, module_name);
-	return JS_TRUE;
+	return 0;
 }
 
 #if 0
@@ -89,16 +71,7 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 }
 #endif
 
-static JSClass Sys_class = {
-	"Sys", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
-	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
-	JS_ConvertStub, NULL, JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static const struct {
-	const char *name;
-	int value;
-} Sys_props[] = {
+static const duk_number_list_entry Sys_props[] = {
 	// syslog facilities
 	{"SYSLOG_DAEMON",	LOG_DAEMON },
 	{"SYSLOG_USER",		LOG_USER },
@@ -122,35 +95,22 @@ static const struct {
 	{"SYSLOG_INFO",		LOG_INFO},
 	{"SYSLOG_DEBUG",	LOG_DEBUG},
 #endif
+	{NULL,			0.0}
 };
 
-static JSFunctionSpec Sys_functions[] = {
-	JS_FS("openlog", Sys_openlog, 2, 0),
-	JS_FS("loadModule", Sys_loadModule, 1, 0),
-	JS_FS_END
+static struct js_fn_def Sys_functions[] = {
+	{"openlog",	Sys_openlog, 	DUK_VARARGS},
+	{"loadModule",	Sys_loadModule,	1},
+	{NULL,		NULL,		0}
 };
 
-JSBool js_sys_init(JSContext *cx, JSObject *global)
+int js_sys_init(duk_context *ctx)
 {
-	JSObject *sys;
-	unsigned i;
+	duk_idx_t idx;
 
-	sys = JS_DefineObject(cx, global, Sys_class.name, &Sys_class, NULL, 0);
-	if (!sys)
-		return JS_FALSE;
+	idx = duk_push_object(ctx);
+	duk_put_number_list(ctx, idx, Sys_props);
+	duk_put_function_list(ctx, idx, Sys_functions);
 
-	if (!JS_DefineFunctions(cx, sys, Sys_functions))
-		return JS_FALSE;
-
-	for (i = 0; i < ARRAY_SIZE(Sys_props); i++) {
-		JSBool status = JS_DefineProperty(cx, sys,
-				Sys_props[i].name,
-				INT_TO_JSVAL(Sys_props[i].value),
-				NULL, NULL,
-				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
-		if (!status)
-			return JS_FALSE;
-	}
-
-	return JS_TRUE;
+	return duk_put_global_string(ctx, "Sys");
 }

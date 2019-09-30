@@ -29,17 +29,10 @@ CFLAGS="-Wall $CFLAGS"
 # additional configure arguments
 #
 
-AC_ARG_WITH(js-include,
-    AC_HELP_STRING([--with-js-include=DIR], [search for mozjs (spidermonkey) headers in DIR]),
+AC_ARG_WITH(duktape,
+    AC_HELP_STRING([--with-js-include=DIR], [search for Duktape headers in DIR]),
     [
-        JS_INCLUDE="$withval"
-    ]
-)
-
-AC_ARG_WITH(js-lib,
-    AC_HELP_STRING([--with-js-lib=NAME], [specify mozjs (spidermonkey) library name]),
-    [
-        JS_LIB="$withval"
+        DUKTAPE="$withval"
     ]
 )
 
@@ -60,56 +53,20 @@ AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 AC_SEARCH_LIBS([__res_nquery], [resolv], , AC_MSG_ERROR([libresolv not found]))
 
 #
-# test for SpiderMonkey 17.0 (mozjs 17.0)
+# test for Duktape
 #
 
-if test -z "$JS_INCLUDE" ; then
-    JS_INCLUDE=" \
-        /usr/include/js-17.0 \
-        /usr/local/include/js-17.0 \
-    "
-    AC_CHECK_HEADER(jsapi.h,[],[],-)
+if test -n "$DUKTAPE" ; then
+    CPPFLAGS="-I$DUKTAPE $CPPFLAGS"
 fi
-for incpath in $JS_INCLUDE; do
-    if test "x$ac_cv_header_jsapi_h" != xyes ; then
-        AC_MSG_CHECKING([for jsapi.h in $incpath])
-        save_cppflags="$CPPFLAGS"
-        CPPFLAGS="-I$incpath $CPPFLAGS"
-        AC_PREPROC_IFELSE([AC_LANG_PROGRAM([[
-                #include <jsapi.h>
-            ]])],
-            [
-                AC_MSG_RESULT(yes)
-                ac_cv_header_jsapi_h=yes
-            ],
-            [
-                AC_MSG_RESULT(no)
-                CPPFLAGS="$save_cppflags"
-            ]
-        )
-   fi
-done
-if test "x$ac_cv_header_jsapi_h" != xyes ; then
-    AC_MSG_ERROR([jsapi.h not found])
+AC_CHECK_HEADER(duktape.h,[],[],-)
+if test "x$ac_cv_header_duktape_h" != xyes ; then
+    AC_MSG_ERROR([duktape.h not found])
 fi
-
-if test -z "$JS_LIB" ; then
-    JS_LIB=" \
-        mozjs-17.0 \
-        mozjs \
-    "
-fi
-for lib in $JS_LIB; do
-    if test "x$js_lib_found" != xyes ; then
-        AC_CHECK_LIB([$lib],[JS_NewContext],[
-            LIBS="-l$lib $LIBS"
-            js_lib_found=yes
-        ])
-    fi
-done
-if test "x$js_lib_found" != xyes ; then
-    AC_MSG_ERROR([no usable mozjs (spidermonkey) library found])
-fi
+LIBS="-lm $LIBS"
+AC_CHECK_LIB([duktape],[duk_create_heap],[],[
+    AC_MSG_ERROR([Duktape library not found])
+])
 
 #
 # test for jsmisc
@@ -123,7 +80,7 @@ if test "x$ac_cv_header_jsmisc_h" != xyes ; then
     AC_MSG_ERROR([jsmisc.h not found])
 fi
 
-AC_CHECK_LIB([jsmisc],[JS_LogImpl],[],[
+AC_CHECK_LIB([jsmisc],[js_misc_init],[],[
     AC_MSG_ERROR([jsmisc library not found])
 ])
 

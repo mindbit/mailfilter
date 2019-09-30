@@ -55,116 +55,102 @@
 const char *white = "\r\n\t ";
 const char *tab_space = "\t ";
 
-JSContext *js_context; // FIXME make static
-static JSRuntime *js_runtime;
-
 // FIXME will be retrieved by dlsym() when loadable module support is available
-JSBool mod_spf_init(JSContext *cx, JSObject *global);
+//JSBool mod_spf_init(JSContext *cx, JSObject *global);
 
-static int js_init(const char *filename)
+static void js_fatal(void *udata, const char *msg) {
+	(void) udata;  /* ignored in this case, silence warning */
+
+	/* Note that 'msg' may be NULL. */
+	fprintf(stderr, "*** FATAL ERROR: %s\n", (msg ? msg : "no message"));
+	fflush(stderr);
+	abort();
+}
+
+static duk_context *js_init(const char *filename)
 {
-	JSObject *global;
-	jsval sys;
+	duk_context *ctx = NULL, *ret = NULL;
+	//jsval sys;
 
-	int fd;
-	void *buf;
-	off_t len;
+	int fd = -1;
+	void *buf = MAP_FAILED;
+	off_t len = 0;
 
-	/* The class of the global object. */
-	static JSClass global_class = {
-		"global", JSCLASS_GLOBAL_FLAGS, JS_PropertyStub,
-		JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-		JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
-		NULL, JSCLASS_NO_OPTIONAL_MEMBERS
-	};
+	ctx = duk_create_heap(NULL, NULL, NULL, NULL, js_fatal);
+	if (!ctx)
+		return ctx;
 
-	/*
-	 * Create a JS runtime. Each runtime has an owner thread, which is
-	 * by default the current thread at the time when the runtime is
-	 * created. Note that mailfilter is NOT multi-threaded.
-	 */
-	js_runtime = JS_NewRuntime(8 * 1024 * 1024);
-	if (js_runtime == NULL)
-		return -1;
-	/* Create a context. You always need a context per runtime. */
-	js_context = JS_NewContext(js_runtime, 8192);
-	if (js_context == NULL)
-		return -1;
-	JS_SetOptions(js_context, JSOPTION_VAROBJFIX | JSOPTION_METHODJIT);
-	JS_SetVersion(js_context, JSVERSION_LATEST);
-	JS_MiscSetErrorReporter(js_context);
+	/* Initialize global objects */
 
-	/*
-	 * Create the global object in a new compartment.
-	 * You always need a global object per context.
-	 */
-	global = JS_NewGlobalObject(js_context, &global_class, NULL);
-	if (global == NULL)
-		return -1;
+	if (!js_sys_init(ctx, global))
+		goto out_clean;
 
-	/*
-	 * Populate the global object with the standard JavaScript
-	 * function and object classes, such as Object, Array, Date.
-	 */
-	if (!JS_InitStandardClasses(js_context, global))
-		return -1;
+	if (!duk_get_global_string(ctx, "Sys"))
+		goto out_clean;
+	if (!js_misc_init(ctx, 0))
+		goto out_clean;
+
+	if (!js_smtp_init(ctx))
+		goto out_clean;
+
+	if (!js_dns_init(ctx))
+		goto out_clean;
+
+	// FIXME will be called by Sys.loadModule() when supported
+	mod_spf_init(ctx);
 
 	/* Read the file into memory */
+
 	fd = open(filename, O_RDONLY, 0);
 	if (fd < 0) {
 		perror(filename);
-		return -1;
+		goto out_clean;
 	}
 
 	len = lseek(fd, 0, SEEK_END);
 	if (len == (off_t) -1) {
-		close(fd);
 		perror("lseek");
-		return -1;
+		goto out_clean;
 	}
 
 	buf = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
 	if (buf == MAP_FAILED) {
-		close(fd);
 		perror("mmap");
-		return -1;
+		goto out_clean;
 	}
 
-	/* Initialize global objects */
-	if (!js_sys_init(js_context, global))
-		return -1;
-	if (!JS_GetProperty(js_context, global, "Sys", &sys))
-		return -1;
-	if (!JS_MiscInit(js_context, JSVAL_TO_OBJECT(sys)))
-		return -1;
-	if (!js_smtp_init(js_context, global))
-		return -1;
-	if (!js_dns_init(js_context, global))
-		return -1;
-
-	// FIXME will be called by Sys.loadModule() when supported
-	mod_spf_init(js_context, global);
-
 	/* Run script */
-	JS_EvaluateScript(js_context, global, buf, len, filename, 0, NULL);
+
+	duk_push_lstring(ctx, buf, len);
+	duk_push_string(ctx, filename);
+	if (duk_pcompile(ctx, 0)) {
+		fprintf(stderr, "Compile failed: %s\n",
+			duk_safe_to_string(ctx, -1));
+		goto out_clean;
+	}
+
+	if (duk_pcall(ctx, 0)) {
+		fprintf(stderr, "Call failed: %s\n",
+			duk_safe_to_string(ctx, -1));
+		goto out_clean;
+	}
+	duk_pop(ctx); /* ignore result */
+
+	ret = ctx;
 
 	// FIXME maybe parse the debugProtocol property, which should
 	// be in smtpServer instead of engine
-#if 0
-	/* Evaluate the changes caused by the script */
-	if (js_engine_parse(js_context, global))
-		return -1;
-#endif
 
-	return 0;
-}
+out_clean:
+	if (ctx && !ret)
+		duk_destroy_heap(ctx);
 
-void js_stop(void)
-{
-	/* Clean things up and shut down SpiderMonkey. */
-	JS_DestroyContext(js_context);
-	JS_DestroyRuntime(js_runtime);
-	JS_ShutDown();
+	if (buf != MAP_FAILED)
+		munmap(buf, len);
+
+	close(fd);
+
+	return ret;
 }
 
 /* Array of server sockets */

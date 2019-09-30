@@ -21,8 +21,10 @@
 #ifndef _JS_DNS_H
 #define _JS_DNS_H
 
-#include <jsapi.h>
+#include <duktape.h>
 
+#if 0
 JSBool js_dns_init(JSContext *cx, JSObject *global);
+#endif
 
 #endif
