@@ -6,7 +6,7 @@
 static int Sys_openlog(duk_context *ctx)
 {
 	int argc = duk_get_top(ctx);
-	const char ident = "mailfilter";
+	const char *ident = "mailfilter";
 	int facility = LOG_MAIL;
 
 	if (argc >= 1)
@@ -45,7 +45,7 @@ static int Sys_loadModule(duk_context *ctx)
 {
 	const char *module_name = duk_safe_to_string(ctx, 0);
 
-	js_log(JS_LOG_INFO, "[STUB] Loading module \"%s\".\n", module_name);
+	js_log(JS_LOG_INFO, "[STUB] Loading module \"%s\"\n", module_name);
 
 	return 0;
 }
@@ -98,19 +98,21 @@ static const duk_number_list_entry Sys_props[] = {
 	{NULL,			0.0}
 };
 
-static struct js_fn_def Sys_functions[] = {
+static duk_function_list_entry Sys_functions[] = {
 	{"openlog",	Sys_openlog, 	DUK_VARARGS},
 	{"loadModule",	Sys_loadModule,	1},
 	{NULL,		NULL,		0}
 };
 
-int js_sys_init(duk_context *ctx)
+/**
+ * @return 1 on success, throws error on failure
+ */
+duk_bool_t js_sys_init(duk_context *ctx)
 {
-	duk_idx_t idx;
+	duk_push_object(ctx);
+	duk_put_number_list(ctx, -1, Sys_props);
+	duk_put_function_list(ctx, -1, Sys_functions);
 
-	idx = duk_push_object(ctx);
-	duk_put_number_list(ctx, idx, Sys_props);
-	duk_put_function_list(ctx, idx, Sys_functions);
-
-	return duk_put_global_string(ctx, "Sys");
+	duk_put_global_string(ctx, "Sys");
+	return 1;
 }

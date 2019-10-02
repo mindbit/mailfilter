@@ -16,8 +16,7 @@
 #include "js_smtp.h"
 #include "string_tools.h"
 
-extern JSContext *js_context; // FIXME pass through arguments
-
+#if 0
 /**
  * Context for message header parser.
  */
@@ -1314,9 +1313,11 @@ static JSClass SmtpServer_class = {
 	JS_ResolveStub, JS_ConvertStub, NULL,
 	JSCLASS_NO_OPTIONAL_MEMBERS
 };
+#endif
 
-static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpServer_construct(duk_context *ctx)
 {
+#if 0
 	JSObject *obj;
 	JSString *str;
 
@@ -1348,8 +1349,11 @@ static JSBool SmtpServer_construct(JSContext *cx, unsigned argc, jsval *vp)
 
 	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
 	return JS_TRUE;
+#endif
+	return 0;
 }
 
+#if 0
 static JSBool SmtpServer_cleanup(JSContext *cx, unsigned argc, jsval *vp)
 {
 	return JS_TRUE;
@@ -1489,8 +1493,13 @@ static JSFunctionSpec SmtpServer_functions[] = {
 
 /* }}} SmtpServer */
 
-JSBool js_smtp_init(JSContext *cx, JSObject *global)
+#endif
+/**
+ * @return 1 on success, throws error on failure
+ */
+duk_bool_t js_smtp_init(duk_context *ctx)
 {
+#if 0
 	if (!JS_InitClass(cx, global, NULL, &SmtpPath_class, SmtpPath_construct, 1, NULL, SmtpPath_functions, NULL, NULL))
 		return JS_FALSE;
 
@@ -1505,8 +1514,13 @@ JSBool js_smtp_init(JSContext *cx, JSObject *global)
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpServer_class, SmtpServer_construct, 1, NULL, SmtpServer_functions, NULL, NULL))
 		return JS_FALSE;
+#endif
+	duk_push_c_function(ctx, SmtpServer_construct, 2);
+	duk_push_object(ctx);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "SmtpServer");
 
-	return JS_TRUE;
+	return 1;
 }
 
 // vim: foldmethod=marker
