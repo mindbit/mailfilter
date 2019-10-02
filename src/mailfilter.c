@@ -82,22 +82,25 @@ static duk_context *js_init(const char *filename)
 
 	/* Initialize global objects */
 
-	if (!js_sys_init(ctx, global))
+	if (!js_sys_init(ctx))
 		goto out_clean;
 
 	if (!duk_get_global_string(ctx, "Sys"))
 		goto out_clean;
-	if (!js_misc_init(ctx, 0))
+	if (!js_misc_init(ctx, -1))
 		goto out_clean;
+	duk_pop(ctx);
 
 	if (!js_smtp_init(ctx))
 		goto out_clean;
 
+#if 0
 	if (!js_dns_init(ctx))
 		goto out_clean;
 
 	// FIXME will be called by Sys.loadModule() when supported
 	mod_spf_init(ctx);
+#endif
 
 	/* Read the file into memory */
 
@@ -124,14 +127,12 @@ static duk_context *js_init(const char *filename)
 	duk_push_lstring(ctx, buf, len);
 	duk_push_string(ctx, filename);
 	if (duk_pcompile(ctx, 0)) {
-		fprintf(stderr, "Compile failed: %s\n",
-			duk_safe_to_string(ctx, -1));
+		js_log_error(ctx, -1);
 		goto out_clean;
 	}
 
 	if (duk_pcall(ctx, 0)) {
-		fprintf(stderr, "Call failed: %s\n",
-			duk_safe_to_string(ctx, -1));
+		js_log_error(ctx, -1);
 		goto out_clean;
 	}
 	duk_pop(ctx); /* ignore result */
@@ -230,7 +231,7 @@ static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
 	waitpid(info->si_pid, &status, WNOHANG);
 }
 
-static int get_socket_for_address(char *ip, unsigned short port)
+static int get_socket_for_address(const char *ip, unsigned short port)
 {
 	int sockfd = -1, status, yes = 1;
 	struct addrinfo *servinfo, *p, hints = {
@@ -288,93 +289,59 @@ static int get_socket_for_address(char *ip, unsigned short port)
 	return sockfd;
 }
 
-static int create_sockets(void)
+static int create_sockets(duk_context *ctx)
 {
-	JSObject *global, *smtpserver, *listen_address, *array;
-	jsval server_val, prop_val, array_elem;
+	duk_size_t i, n;
 
-	JSString *array_elem_obj;
-	char *ip;
-	int32_t port;
-
-	int i;
-	uint32_t array_len;
-
-	/* Get "global" object */
-	global = JS_GetGlobalForScopeChain(js_context);
-
-	if (!JS_GetProperty(js_context, global, "SmtpServer", &server_val))
-		return -1;
-	// FIXME smtpserver is NULL if property was not found
-	smtpserver = JSVAL_TO_OBJECT(server_val);
-
-	if (!JS_GetProperty(js_context, smtpserver, "listenAddress", &prop_val))
+	/* Get global SmtpServer object */
+	if (!duk_get_global_string(ctx, "SmtpServer"))
 		return -1;
 
-	/* Check if assigned value is not primitive */
-	if (JSVAL_IS_PRIMITIVE(prop_val))
-		return JS_FALSE;
+	/* Get SmtpServer.listenAddress and check it's an array */
+	if (!duk_get_prop_string(ctx, -1, "listenAddress"))
+		return -1;
+	if (!duk_is_array(ctx, -1))
+		return -1;
 
-	/* Check if object is an array */
-	listen_address = JSVAL_TO_OBJECT(prop_val);
-	if (!listen_address || !JS_IsArrayObject(js_context, listen_address))
-		return JS_FALSE;
+	/* Iterate over SmtpServer.listenAddress */
+	n = duk_get_length(ctx, -1);
+	for (i = 0; i < n; i++) {
+		const char *ip;
+		int port;
 
-	/* Get number of elements in array */
-	if (!JS_GetArrayLength(js_context, listen_address, &array_len))
-		return JS_FALSE;
+		duk_get_prop_index(ctx, -1, i);
 
-	/* Handle each of the array elements */
-	for (i = 0; i < array_len; i++) {
-		if (!JS_GetElement(js_context, listen_address, i, &array_elem))
-			return JS_FALSE;
-
-		/* Check if assigned value is not primitive */
-		if (JSVAL_IS_PRIMITIVE(array_elem))
-			return JS_FALSE;
-
-		/* Check if object is an array */
-		array = JSVAL_TO_OBJECT(array_elem);
-		if (!array || !JS_IsArrayObject(js_context, array))
-			return JS_FALSE;
-
-		/* Get number of elements in array */
-		if (!JS_GetArrayLength(js_context, array, &array_len))
-			return JS_FALSE;
-
-		if (array_len < 2)
-			return JS_FALSE;
+		/*
+		 * Each element of SmtpServer.listenAddress is a 2 element
+		 * array. Make sure this is what we get.
+		 */
+		if (!duk_is_array(ctx, -1) || duk_get_length(ctx, -1) < 2) {
+			duk_pop_3(ctx);
+			return -1;
+		}
 
 		/* Get IP address (1st element of array) */
-		if (!JS_GetElement(js_context, array, 0, &array_elem))
-			return JS_FALSE;
-
-		if (!JSVAL_IS_STRING(array_elem))
-			return JS_FALSE;
-
-		array_elem_obj = JSVAL_TO_STRING(array_elem);
-		if (!array_elem_obj)
-			return JS_FALSE;
-
-		ip = JS_EncodeString(js_context, array_elem_obj);
+		duk_get_prop_index(ctx, -1, 0);
+		ip = duk_safe_to_string(ctx, -1);
+		duk_pop(ctx);
 
 		/* Get Port number (2nd element of array) */
-		if (!JS_GetElement(js_context, array, 1, &array_elem))
-			return JS_FALSE;
+		duk_get_prop_index(ctx, -1, 1);
+		port = duk_to_int(ctx, -1);
+		duk_pop(ctx);
 
-		if (!JS_ValueToInt32(js_context, array_elem, &port))
-			return JS_FALSE;
+		if ((fds[fds_len++] = get_socket_for_address(ip, port)) < 0) {
+			duk_pop_3(ctx);
+			return -1;
+		}
 
-		if ((fds[fds_len++] = get_socket_for_address(ip, port)) < 0)
-			return JS_FALSE;
-		JS_Log(JS_LOG_INFO, "Listening on %s:%d\n", ip, (int)port);
-
-		JS_free(js_context, ip);
-
-		 // FIXME for now, handle only the first element of "listenAddress"
+		js_log(JS_LOG_INFO, "Listening on %s:%d\n", ip, port);
+		duk_pop(ctx);
+		// FIXME for now, handle only the first element of "listenAddress"
 		break;
 	}
 
+	duk_pop_2(ctx);
 	return 0;
 }
 
@@ -394,6 +361,7 @@ int main(int argc, char **argv)
 {
 	int opt, debug = 0;
 	char *config_path = "config.js";
+	duk_context *ctx;
 
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
@@ -417,21 +385,21 @@ int main(int argc, char **argv)
 		}
 	}
 
-	JS_Log(JS_LOG_INFO, "%s\n", VERSION_STR);
+	js_log(JS_LOG_INFO, "%s\n", VERSION_STR);
 
 	/* Intialize JavaScript engine */
-	if (js_init(config_path))
+	if (!(ctx = js_init(config_path)))
 		goto out;
 
 	/* Start listening on addresses and ports given in the JS config */
-	if (create_sockets() < 0) {
+	if (create_sockets(ctx)) {
 		fprintf(stderr, "Error setting up sockets.\n");
-		exit(EXIT_FAILURE);
+		goto out;
 	}
 
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
-	JS_Log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
+	js_log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
 
 	do {
 		struct sockaddr_in peer;
@@ -445,7 +413,7 @@ int main(int argc, char **argv)
 		}
 
 		if (debug) {
-			smtp_server_main(client_sock_fd, &peer);
+			//smtp_server_main(client_sock_fd, &peer);
 			continue;
 		}
 
@@ -464,23 +432,8 @@ int main(int argc, char **argv)
 			 * properly recover from the error. */
 			signal(SIGPIPE, SIG_IGN);
 
-			smtp_server_main(client_sock_fd, &peer);
-			// js_stop();
-			/*
-			 * FIXME handle fork() vs. mozjs multithreading properly
-			 *
-			 * Calling js_stop() here blocks the process:
-			 *
-			 * #0  0x00007f996e2c53df in pthread_cond_destroy@@GLIBC_2.3.2 () from /lib64/libpthread.so.0
-			 * #1  0x00007f996dc969f9 in PR_DestroyCondVar () from /lib64/libnspr4.so
-			 * #2  0x00007f996efa1973 in js::SourceCompressorThread::finish (this=0x7f996f804c78) at /usr/src/debug/mozjs17.0.0/js/src/jsscript.cpp:896
-			 * #3  0x00007f996eeb168d in JSRuntime::~JSRuntime (this=0x7f996f804010, __in_chrg=<value optimized out>) at /usr/src/debug/mozjs17.0.0/js/src/jsapi.cpp:954
-			 * #4  0x00007f996eeb1966 in delete_<JSRuntime> (rt=0x7f996f804010) at dist/include/js/Utility.h:616
-			 * #5  JS_Finish (rt=0x7f996f804010) at /usr/src/debug/mozjs17.0.0/js/src/jsapi.cpp:1079
-			 * #6  0x00000000004032a8 in js_stop () at mailfilter.c:157
-			 * #7  0x0000000000403d65 in main (argc=3, argv=0x7fffc9be3fb8) at mailfilter.c:475
-			 *
-			 */
+			//smtp_server_main(client_sock_fd, &peer);
+			duk_destroy_heap(ctx);
 			exit(EXIT_SUCCESS);
 		default:
 			close(client_sock_fd);
@@ -489,6 +442,6 @@ int main(int argc, char **argv)
 	} while (1);
 
 out:
-	js_stop();
+	duk_destroy_heap(ctx);
 	return 1;
 }
