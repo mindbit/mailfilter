@@ -64,7 +64,7 @@ struct smtp_response {
 	int code;
 
 	/* SMTP message to send back to client */
-	const char *message;
+	char *message;
 };
 
 struct esmtp_cap {
@@ -159,7 +159,7 @@ static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 			buf[t - h] = '\0';
 		} else
 			strncpy(buf, h, sz);
-		JS_Log(JS_LOG_DEBUG, "<<< %d-%s\n", rsp->code, buf);
+		js_log(JS_LOG_DEBUG, "<<< %d-%s\n", rsp->code, buf);
 
 		bfd_printf(f, "%d-", rsp->code);
 		bfd_write_full(f, h, t - h);
@@ -336,9 +336,9 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 	handler_name[i] = '\0';
 
 	/* Call the given function */
-	duk_put_string(ctx->dcx, handler_name);
+	duk_push_string(ctx->dcx, handler_name);
 	duk_insert(ctx->dcx, -(nargs + 1));
-	if (!duk_call_prop(ctx->dcx, ctx->js_srv_idx, nargs)) {
+	if (!duk_pcall_prop(ctx->dcx, ctx->js_srv_idx, nargs)) {
 		js_log_error(ctx->dcx, -1);
 		duk_pop(ctx->dcx);
 		js_log(JS_LOG_ERR, "failed calling '%s'\n", handler_name);
@@ -353,7 +353,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 	/* Sanity check on return type */
 	if (!duk_is_object(ctx->dcx, -1)) {
 		js_log(JS_LOG_ERR, "handler '%s' invalid rval\n", handler_name);
-		duk_pop(dcx);
+		duk_pop(ctx->dcx);
 		return EINVAL;
 	}
 
@@ -426,7 +426,7 @@ static duk_bool_t smtp_server_get_disconnect(struct smtp_server_context *ctx)
 	duk_bool_t ret = 0;
 
 	if (duk_get_prop_string(ctx->dcx, ctx->js_srv_idx, PR_DISCONNECT))
-		ret = duk_to_bool(ctx->dcx, -1);
+		ret = duk_to_boolean(ctx->dcx, -1);
 	else
 		js_log(JS_LOG_WARNING, "Cannot get disconnect flag\n");
 
@@ -444,7 +444,6 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 {
 	int status;
 	char *remote_addr = NULL;
-	jsval v, argv[2];
 	struct smtp_server_context ctx = { .dcx = dcx };
 	struct smtp_response rsp;
 
@@ -456,8 +455,8 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 	if (!duk_get_global_string(dcx, "SmtpServer"))
 		goto out_clean_srv;
 
-	duk_push_string(remote_addr);
-	duk_push_int(ntohs(peer->sin_port));
+	duk_push_string(dcx, remote_addr);
+	duk_push_int(dcx, ntohs(peer->sin_port));
 	if (duk_pnew(dcx, 2)) {
 		js_log_error(dcx, -1);
 		goto out_clean_all;
@@ -465,7 +464,7 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 	ctx.js_srv_idx = duk_get_top_index(dcx);
 
 	/* Handle initial greeting */
-	if (call_js_handler(&ctx, "INIT", 0, NULL, &rsp)) {
+	if (call_js_handler(&ctx, "INIT", 0, &rsp)) {
 		smtp_server_response(&ctx.stream, &smtp_rsp_int_err);
 		goto out_clean_all;
 	}
@@ -506,10 +505,6 @@ out_clean_srv:
  */
 static duk_bool_t smtp_path_parse_cmd(struct smtp_server_context *ctx, const char *arg, const char *word, char **trail)
 {
-	jsval v, rval;
-	JSObject *path;
-	JSString *str;
-
 	/* Look for passed-in word */
 	arg += strspn(arg, white);
 	if (strncasecmp(arg, word, strlen(word)))
@@ -536,8 +531,8 @@ static duk_bool_t smtp_path_parse_cmd(struct smtp_server_context *ctx, const cha
 	}
 
 	/* Invoke the parse() method */
-	duk_push_string("parse");
-	duk_push_string(arg);
+	duk_push_string(ctx->dcx, "parse");
+	duk_push_string(ctx->dcx, arg);
 	if (duk_pcall_prop(ctx->dcx, -3, 1)) {
 		js_log_error(ctx->dcx, -1);
 		duk_pop_2(ctx->dcx);
@@ -550,10 +545,10 @@ static duk_bool_t smtp_path_parse_cmd(struct smtp_server_context *ctx, const cha
 	}
 
 	if (trail)
-		*trail = duk_safe_to_string(ctx->dcx, -1);
+		*trail = strdup(duk_safe_to_string(ctx->dcx, -1));
 
 	duk_pop(ctx->dcx);
-	return path;
+	return 1;
 }
 
 // TODO fix auth handling
@@ -725,45 +720,38 @@ int smtp_hdlr_aplp(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	JSString *str;
-	int status;
-	jsval v;
+	size_t alen = strcspn(arg, white);
 	const char *proto = "ESMTP";
+	int status;
 
 	if (*arg == '\0')
 		return smtp_response_copy(rsp, &smtp_rsp_hostname_req);
 
-	str = JS_NewStringCopyN(js_context, arg, strcspn(arg, white));
-	if (!str)
-		return EINVAL;
-
-	v = STRING_TO_JSVAL(str);
-	status = call_js_handler(ctx, cmd, 1, &v, rsp);
+	/* Call JS handler - note: arg is always consumed */
+	duk_push_lstring(ctx->dcx, arg, alen);
+	status = call_js_handler(ctx, cmd, 1, rsp);
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_HOSTNAME, v, NULL, NULL, JSPROP_ENUMERATE))
-		goto out_err;
+	/* Set <SmtpServer>.hostname */
+	duk_push_lstring(ctx->dcx, arg, alen);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_HOSTNAME);
 
+	/* Note: cmd is "EHLO" when we are called by smtp_hdlr_ehlo() */
 	if (strcasecmp(cmd, "EHLO"))
 		proto++;
-	str = JS_NewStringCopyZ(js_context, proto);
-	if (!str)
-		goto out_err;
 
-	v = STRING_TO_JSVAL(str);
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_PROTO, v, NULL, NULL, JSPROP_ENUMERATE))
-		goto out_err;
+	/* Set <SmtpServer>.proto */
+	duk_push_string(ctx->dcx, proto);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_PROTO);
 
 	/* Reset SMTP transaction state: RFC5321 - 4.1.1.1 */
-	if (!js_init_envelope(js_context, ctx->js_srv))
-		goto out_err;
+	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
+		free(rsp->message);
+		return EINVAL;
+	}
 
 	return 0;
-
-out_err:
-	free(rsp->message);
-	return EINVAL;
 }
 
 /**
@@ -847,9 +835,12 @@ int smtp_hdlr_mail(struct smtp_server_context *ctx, const char *cmd, const char 
 
 	// FIXME check for trailing characters
 
+	duk_dup_top(ctx->dcx);
 	status = call_js_handler(ctx, cmd, 1, rsp);
-	if (status || !smtp_successful(rsp))
+	if (status || !smtp_successful(rsp)) {
+		duk_pop(ctx->dcx);
 		return status;
+	}
 
 	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_SENDER);
 	return 0;
@@ -877,12 +868,11 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
 	// FIXME check for null (or broken) recipient (e.g. "rcpt to:<>")
 	// before calling JS handler
 
-	if ((status = call_js_handler(ctx, cmd, 1, rsp)))
-		return status;
-
-	if (!smtp_successful(rsp)) {
+	duk_dup_top(ctx->dcx);
+	status = call_js_handler(ctx, cmd, 1, rsp);
+	if (status || !smtp_successful(rsp)) {
 		duk_pop(ctx->dcx);
-		return 0;
+		return status;
 	}
 
 	if (!duk_get_prop_string(ctx->dcx, ctx->js_srv_idx, PR_RECIPIENTS)) {
@@ -910,24 +900,27 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
+#ifdef FIXME
 	jsval v, js_arg[2];
 	JSObject *rcps, *hdrs;
 	JSString *str;
-	uint32_t len;
+	duk_size_t len;
 	char path[] = "/tmp/mailfilter.XXXXXX";
 	int fd, status = EIO;
 	bfd_t bstream;
 
-	if (!JS_GetProperty(js_context, ctx->js_srv, PR_RECIPIENTS, &v))
+	if (!duk_get_prop_string(ctx->dcx, ctx->js_srv, PR_RECIPIENTS)) {
+		duk_pop(ctx->dcx);
 		return EINVAL;
+	}
 
-	rcps = JSVAL_TO_OBJECT(v);
-	if (!rcps || !JS_IsArrayObject(js_context, rcps))
+	if (!duk_is_array(ctx->dcx, -1)) {
+		duk_pop(ctx->dcx);
 		return EINVAL;
+	}
 
-	if (!JS_GetArrayLength(js_context, rcps, &len))
-		return EINVAL;
-
+	len = duk_get_length(ctx->dcx, -1);
+	duk_pop(ctx->dcx);
 	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
@@ -995,6 +988,9 @@ out_clean:
 
 	unlink(path);
 	return status;
+#else
+	return 0;
+#endif
 }
 
 /**
@@ -1003,12 +999,12 @@ out_clean:
  */
 int smtp_hdlr_rset(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	int status = call_js_handler(ctx, cmd, 0, NULL, rsp);
+	int status = call_js_handler(ctx, cmd, 0, rsp);
 
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	if (!js_init_envelope(js_context, ctx->js_srv)) {
+	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
 		free(rsp->message);
 		status = EINVAL;
 	}
@@ -1031,8 +1027,8 @@ int smtp_hdlr_noop(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_quit(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-	if (!JS_DefineProperty(js_context, ctx->js_srv, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_TRUE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		JS_Log(JS_LOG_WARNING, "failed to set disconnect\n");
+	duk_push_true(ctx->dcx);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_DISCONNECT);
 
 	return smtp_response_copy(rsp, &smtp_rsp_bye);
 }
