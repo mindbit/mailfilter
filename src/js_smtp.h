@@ -13,12 +13,10 @@
 #define PR_REMOTE_ADDR	"remoteAddr"
 #define PR_REMOTE_PORT	"remotePort"
 
-#if 0
-int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs);
+int smtp_copy_to_file(duk_context *ctx, bfd_t *out, bfd_t *in);
 
 // Creates Javascript Object with response
-jsval smtp_create_response(JSContext *cx, int status, const char* message, int disconnect);
-#endif
+duk_bool_t smtp_create_response(duk_context *ctx, int code, const char *message, int disconnect);
 
 duk_bool_t js_init_envelope(duk_context *ctx, duk_idx_t obj_idx);
 duk_bool_t js_smtp_init(duk_context *ctx);

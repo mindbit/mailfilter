@@ -16,7 +16,6 @@
 #include "js_smtp.h"
 #include "string_tools.h"
 
-#if 0
 /**
  * Context for message header parser.
  */
@@ -30,91 +29,109 @@ struct im_header_context {
 		IM_H_FOLD,
 		IM_H_FIN
 	} state;
-	JSObject *curhdr;
-	JSObject *hdrs;
+	duk_context *dcx;
+	duk_bool_t hdr;
 	size_t max_size, curr_size;
 	struct string_buffer sb;
 };
 
 #define IM_HEADER_CONTEXT_INITIALIZER {\
 	.state = IM_H_NAME1,\
-	.curhdr = NULL,\
-	.hdrs = NULL,\
+	.hdr = 0,\
 	.max_size = 0,\
 	.curr_size = 0,\
 	.sb = STRING_BUFFER_INITIALIZER\
 }
 
-static JSBool header_add_part(JSContext *cx, JSObject *hdr, const char *c_str)
+/**
+ * Append a header part to a SmtpHeader instance.
+ *
+ * Duktape stack:
+ *	Input:	... | Object
+ *	Output:	... | Object
+ *		Object is a SmtpHeader instance.
+ */
+static duk_bool_t header_add_part(duk_context *ctx, const char *str)
 {
-	jsval parts;
-	JSString *js_str;
+	duk_bool_t ret;
 
-	if (!JS_GetProperty(js_context, hdr, "parts", &parts))
-		return JS_FALSE;
+	if (!duk_get_prop_string(ctx, -1, "parts")) {
+		duk_pop(ctx);
+		return 0;
+	}
 
-	js_str = JS_NewStringCopyZ(js_context, c_str);
-	if (!js_str)
-		return JS_FALSE;
+	duk_push_string(ctx, str);
+	ret = js_append_array_element(ctx, -2);
+	duk_pop(ctx); /* SmtpHeader.parts */
 
-	if (!JS_AppendArrayElement(js_context, JSVAL_TO_OBJECT(parts), STRING_TO_JSVAL(js_str), NULL, NULL, JSPROP_ENUMERATE))
-		return JS_FALSE;
-
-	return JS_TRUE;
+	return ret;
 }
 
 /**
- * Allocate a new header and initialize the name with the given string.
+ * Allocate a new SmtpHeader object and initialize the name property with the
+ * given string.
  *
- * @return Header object on success, NULL on error
+ * Duktape stack:
+ *	Input:	...
+ *	Output:	...						[failure]
+ *	Output:	... | Object					[success]
+ *		Object is a SmtpHeader instance.
  */
-static JSObject *header_alloc(JSContext *cx, const char *name)
+static duk_bool_t header_alloc(duk_context *ctx, const char *name)
 {
-	jsval ctor, argv;
-	JSObject *global;
-	JSString *str;
+	if (!duk_get_global_string(ctx, "SmtpHeader")) {
+		duk_pop(ctx);
+		return 0;
+	}
 
-	str = JS_NewStringCopyZ(js_context, name);
-	if (!str)
-		return NULL;
+	duk_push_string(ctx, name);
+	if (duk_pnew(ctx, 1)) {
+		js_log_error(ctx, -1);
+		duk_pop(ctx);
+		return 0;
+	}
 
-	global = JS_GetGlobalForScopeChain(cx);
-	if (!JS_GetProperty(js_context, global, "SmtpHeader", &ctor))
-		return NULL;
-
-	argv = STRING_TO_JSVAL(str);
-	return JS_New(cx, JSVAL_TO_OBJECT(ctor), 1, &argv);
+	return 1;
 }
 
 /**
  * Add a folding to the "current" (currently being parsed) header. The
  * folding position is the current position in the context string buffer.
+ *
+ * Duktape stack:
+ *	Input:	... | Object
+ *	Output:	... | Object
+ *		Object is a SmtpHeader instance.
  */
-static JSBool im_header_add_fold_ctx(struct im_header_context *ctx)
+static duk_bool_t im_header_add_fold_ctx(struct im_header_context *ctx)
 {
-	if (!header_add_part(js_context, ctx->curhdr, ctx->sb.s))
-		return JS_FALSE;
+	if (!header_add_part(ctx->dcx, ctx->sb.s))
+		return 0;
 
 	string_buffer_reset(&ctx->sb);
-	return JS_TRUE;
+	return 1;
 }
 
 /**
- * Set the value of the "current" (currently being parsed) header to the
- * contents of the context string buffer.
+ * Add the contents of the string buffer to the current header and push
+ * the header object to the array of header objects.
  *
- * @return JS_TRUE on success, JS_FALSE on error
+ * Duktape stack:
+ *	Input:	... | Array | Object
+ *	Output:	... | Array | Object				[failure]
+ *	Output:	... | Array					[success]
+ *		Object is a SmtpHeader instance.
  */
-static JSBool im_header_set_value_ctx(struct im_header_context *ctx)
+static duk_bool_t im_header_set_value_ctx(struct im_header_context *ctx)
 {
 	if (!im_header_add_fold_ctx(ctx))
-		return JS_FALSE;
+		return 0;
 
-	if (!JS_AppendArrayElement(js_context, ctx->hdrs, OBJECT_TO_JSVAL(ctx->curhdr), NULL, NULL, JSPROP_ENUMERATE))
-		return JS_FALSE;
+	if (!js_append_array_element(ctx->dcx, -2))
+		return 0;
 
-	ctx->curhdr = NULL;
-	return JS_TRUE;
+	ctx->hdr = 0;
+	return 1;
 }
 
 /*
@@ -131,8 +148,14 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 {
 	switch (ctx->state) {
 	case IM_H_NAME1:
+		/*
+		 * Expect a new header (the name part). But we can also get
+		 * white space (which means the previous header is a multiline
+		 * header) or the \r\n sequence (which marks the end of the
+		 * header section).
+		 */
 		if (strchr(tab_space, c)) {
-			if (!ctx->curhdr)
+			if (!ctx->hdr)
 				return EPROTO;
 			if (!im_header_add_fold_ctx(ctx))
 				return EINVAL;
@@ -143,7 +166,7 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FOLD;
 			return EAGAIN;
 		}
-		if (ctx->curhdr && !im_header_set_value_ctx(ctx))
+		if (ctx->hdr && !im_header_set_value_ctx(ctx))
 			return EINVAL;
 
 		if (c == '\n') {
@@ -153,14 +176,18 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 			ctx->state = IM_H_FIN;
 			return EAGAIN;
 		}
-		/* Intentionally fall back to IM_H_NAME2 */
+		/* Intentionally fall through to IM_H_NAME2 */
 	case IM_H_NAME2:
+		/*
+		 * Expect a regular character that is part of the header name.
+		 * We can also get the ':' delimiter, which marks the end of
+		 * the header name.
+		 */
 		if (c == ':') {
-			JSObject *hdr = header_alloc(js_context, ctx->sb.s);
-			if (!hdr)
+			if (!header_alloc(ctx->dcx, ctx->sb.s))
 				return EINVAL;
 			string_buffer_reset(&ctx->sb);
-			ctx->curhdr = hdr;
+			ctx->hdr = 1;
 			ctx->state = IM_H_VAL1;
 			return EAGAIN;
 		}
@@ -172,17 +199,33 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 		ctx->state = IM_H_NAME2;
 		return EAGAIN;
 	case IM_H_FOLD:
+		/*
+		 * Expect whitespace that is at the beginning of the line in a
+		 * multi-line header. Only the first whitespace character marks
+		 * a multi-line header - the following whitespace characters
+		 * (if present) are considered part of the header value.
+		 */
 		if (strchr(tab_space, c)) {
 			if (string_buffer_append_char(&ctx->sb, c))
 				return ENOMEM;
 			return EAGAIN;
 		}
-		/* Intentionally fall back to IM_H_VAL1 */
+		/* Intentionally fall through to IM_H_VAL1 */
 	case IM_H_VAL1:
+		/*
+		 * Expect initial whitespace before the header value. Skip all
+		 * whitespace, then fall through to the next state.
+		 */
 		if (strchr(tab_space, c))
 			return EAGAIN;
-		/* Intentionally fall back to IM_H_VAL2 */
+		/* Intentionally fall through to IM_H_VAL2 */
 	case IM_H_VAL2:
+		/* Expect any character that can be part of the header value
+		 * and append it to the buffer. We can also get the \r\n
+		 * sequence, which means we either advance to the next header
+		 * or continue this header on the next line, depending on the
+		 * first character on the next line.
+		 */
 		if (c == '\n') {
 			ctx->state = IM_H_NAME1;
 			return EAGAIN;
@@ -199,11 +242,22 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 		ctx->state = IM_H_VAL2;
 		return EAGAIN;
 	case IM_H_VAL3:
+		/*
+		 * Expect the '\n' character at the end of a header line. At
+		 * this point we have already seen '\r', so '\n' is the only
+		 * legal character.
+		 */
 		if (c != '\n')
 			return EPROTO;
 		ctx->state = IM_H_NAME1;
 		return EAGAIN;
 	case IM_H_FIN:
+		/*
+		 * Expect the '\n' character at the end of an empty line. At
+		 * this point we have already seen '\r', so '\n' is the only
+		 * legal character. This sequence marks the end of the
+		 * header section.
+		 */
 		if (c != '\n')
 			return EPROTO;
 		return 0;
@@ -212,7 +266,27 @@ static int im_header_feed(struct im_header_context *ctx, char c)
 	return EINVAL;
 }
 
-int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
+/**
+ * Copy a RFC5322 formatted Internet Message from a socket to a temporary file.
+ *
+ * Headers are parsed into SmtpHeader objects that are stored on the heap.
+ * Only the message body is copied to the temporary file.
+ *
+ * Duktape stack:
+ *	Input:	... | Array
+ *	Output:	... | Array
+ *
+ * Note: New SmtpHeader instances are created as headers are parsed. The
+ *       instances are added to the Array at the top of the stack.
+ *
+ * @return	0		parsing complete, no errors;
+ *		EIO
+ *		EOVERFLOW	header exceeded context max_size;
+ *		EINVAL		internal error; JS API error or something;
+ *		ENOMEM
+ *		EPROTO		header syntax error
+ */
+int smtp_copy_to_file(duk_context *ctx, bfd_t *out, bfd_t *in)
 {
 	/* "<CR><LF>.<CR><LF>" pattern and mask */
 	const unsigned long long TERMSEQ_PTRN = 0x0d0a2e0d0aULL;
@@ -237,8 +311,8 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
 	struct im_header_context im_hdr_ctx = IM_HEADER_CONTEXT_INITIALIZER;
 	int c;
 
+	im_hdr_ctx.dcx = ctx;
 	im_hdr_ctx.max_size = 65536; // FIXME use proper value
-	im_hdr_ctx.hdrs = hdrs;
 	while ((c = bfd_getc(in)) >= 0) {
 		buf = (buf << 8) | c;
 
@@ -274,13 +348,19 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
 	if (ret)
 		return ret;
 
-	if (im_state)
-		return im_state;
-
-	return 0;
+	return im_state;
 }
 
 /**
+ * Copy a RFC5322 formatted Internet Message from a temporary file to a socket.
+ *
+ * Headers are taken from SmtpHeader objects that are stored on the heap.
+ * Only the message body is copied from the temporary file.
+ *
+ * Duktape stack:
+ *	Input:	... | Array
+ *	Output:	... | Array
+ *
  * @param[in] dotconv Dot conversion flag. If set, a line comprising of a
  *            single dot in the input stream is converted to double dot
  *            before writing to the output stream. Additionally, a line
@@ -288,7 +368,7 @@ int smtp_copy_to_file(bfd_t *out, bfd_t *in, JSObject *hdrs)
  *            at the end. This is useful when sending a message to an
  *            SMTP server.
  */
-int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
+int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 {
 	const unsigned long CRLFDOT_PTRN = 0x0d0a2e;
 	const unsigned long CRLFDOT_MASK = 0xffffff;
@@ -296,31 +376,29 @@ int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
 	const unsigned long CRLF_PTRN = 0x0d0a;
 	const unsigned long CRLF_MASK = 0xffff;
 	unsigned long buf = 0;
-	uint32_t hdrs_len;
-	int fill = 0, add_crlf = 1;
-	int c, i;
-	jsval v;
+	duk_size_t i, len;
+	int c, fill = 0, add_crlf = 1;
 
 	/* send headers */
-	if (!JS_GetArrayLength(js_context, hdrs, &hdrs_len))
-		return EINVAL;
-
-	for (i = 0; i < (int)hdrs_len; i++) {
-		char *hdr;
-
-		if (!JS_GetElement(js_context, hdrs, i, &v))
+	len = duk_get_length(ctx, -1);
+	for (i = 0; i < len; i++) {
+		if (!duk_get_prop_index(ctx, -1, i)) {
+			duk_pop(ctx);
 			return EINVAL;
+		}
 
-		JS_CallFunctionName(js_context, JSVAL_TO_OBJECT(v), "toString",
-				0, NULL, &v);
+		duk_push_string(ctx, "toString");
+		if (duk_pcall_prop(ctx, -2, 0)) {
+			js_log_error(ctx, -1);
+			duk_pop_2(ctx);
+			return EINVAL;
+		}
 
-		hdr = JS_EncodeString(js_context, JSVAL_TO_STRING(v));
-
-		if (bfd_puts(out, hdr) < 0) {
-			JS_free(js_context, hdr);
+		if (bfd_puts(out, duk_safe_to_string(ctx, -1)) < 0) {
+			duk_pop_2(ctx);
 			return EIO;
 		}
-		JS_free(js_context, hdr);
+		duk_pop_2(ctx);
 
 		if (bfd_puts(out, "\r\n") < 0)
 			return EIO;
@@ -360,22 +438,18 @@ int smtp_copy_from_file(bfd_t *out, bfd_t *in, JSObject *hdrs, int dotconv)
 	return 0;
 }
 
-bfd_t *smtp_body_open_read(JSContext *cx, jsval path)
+bfd_t *smtp_body_open_read(duk_context *ctx, duk_idx_t obj_idx)
 {
-	char *pstr = JS_EncodeStringValue(cx, path);
+	const char *path = duk_safe_to_string(ctx, obj_idx);
 	int fd;
 	bfd_t *stream;
 
-	if (!pstr)
-		return NULL;
-
-	fd = open(pstr, O_RDONLY);
+	fd = open(path, O_RDONLY);
 	if (fd == -1) {
-		JS_ReportError(js_context, "File %s cannot be opened: %d", pstr, errno);
-		JS_free(cx, pstr);
+		// FIXME raise JS error
+		//JS_ReportError(js_context, "File %s cannot be opened: %d", path, errno);
 		return NULL;
 	}
-	JS_free(cx, pstr);
 
 	stream = bfd_alloc(fd);
 	if (!stream)
@@ -384,44 +458,39 @@ bfd_t *smtp_body_open_read(JSContext *cx, jsval path)
 	return stream;
 }
 
-jsval smtp_create_response(JSContext *cx, int code, const char *message, int disconnect)
+duk_bool_t smtp_create_response(duk_context *ctx, int code, const char *message, int disconnect)
 {
-	jsval ctor, argv[3];
-	JSString *str;
-	JSObject *global, *ret;
+	if (!duk_get_global_string(ctx, "SmtpResponse")) {
+		duk_pop(ctx);
+		return 0;
+	}
 
-	str = JS_NewStringCopyZ(cx, message);
-	if (!str)
-		return JSVAL_NULL;
+	duk_push_int(ctx, code);
+	duk_push_string(ctx, message);
+	duk_push_boolean(ctx, disconnect);
 
-	argv[0] = INT_TO_JSVAL(code);
-	argv[1] = STRING_TO_JSVAL(str);
-	argv[2] = BOOLEAN_TO_JSVAL(disconnect ? JS_TRUE: JS_FALSE);
+	if (duk_pnew(ctx, 3)) {
+		js_log_error(ctx, -1);
+		duk_pop(ctx);
+		return 0;
+	}
 
-	global = JS_GetGlobalForScopeChain(cx);
-	if (!JS_GetProperty(js_context, global, "SmtpResponse", &ctor))
-		return JSVAL_NULL;
-
-	ret = JS_New(cx, JSVAL_TO_OBJECT(ctor), 3, argv);
-	return OBJECT_TO_JSVAL(ret);
+	return 1;
 }
 
-JSBool js_init_envelope(JSContext *cx, JSObject *obj)
+duk_bool_t js_init_envelope(duk_context *ctx, duk_idx_t obj_idx)
 {
-	JSObject *recipients;
+	obj_idx = duk_normalize_index(ctx, obj_idx);
 
-	if (!JS_DefineProperty(cx, obj, PR_SENDER, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
-		return JS_FALSE;
+	duk_push_null(ctx);
+	duk_put_prop_string(ctx, obj_idx, PR_SENDER);
 
-	recipients = JS_NewArrayObject(cx, 0, NULL);
-	if (!recipients)
-		return JS_FALSE;
+	duk_push_array(ctx);
+	duk_put_prop_string(ctx, obj_idx, PR_RECIPIENTS);
 
-	if (!JS_DefineProperty(cx, obj, PR_RECIPIENTS, OBJECT_TO_JSVAL(recipients), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
-
-	return JS_TRUE;
+	return 1;
 }
+#if 0
 
 /* {{{ SmtpPath */
 
