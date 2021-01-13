@@ -413,7 +413,7 @@ int main(int argc, char **argv)
 		}
 
 		if (debug) {
-			//smtp_server_main(client_sock_fd, &peer);
+			smtp_server_main(ctx, client_sock_fd, &peer);
 			continue;
 		}
 
@@ -432,7 +432,7 @@ int main(int argc, char **argv)
 			 * properly recover from the error. */
 			signal(SIGPIPE, SIG_IGN);
 
-			//smtp_server_main(client_sock_fd, &peer);
+			smtp_server_main(ctx, client_sock_fd, &peer);
 			duk_destroy_heap(ctx);
 			exit(EXIT_SUCCESS);
 		default:

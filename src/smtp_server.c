@@ -338,7 +338,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 	/* Call the given function */
 	duk_push_string(ctx->dcx, handler_name);
 	duk_insert(ctx->dcx, -(nargs + 1));
-	if (!duk_pcall_prop(ctx->dcx, ctx->js_srv_idx, nargs)) {
+	if (duk_pcall_prop(ctx->dcx, ctx->js_srv_idx, nargs)) {
 		js_log_error(ctx->dcx, -1);
 		duk_pop(ctx->dcx);
 		js_log(JS_LOG_ERR, "failed calling '%s'\n", handler_name);
@@ -453,27 +453,27 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 
 	/* Create SmtpServer instance */
 	if (!duk_get_global_string(dcx, "SmtpServer"))
-		goto out_clean_srv;
+		goto out_close;
 
 	duk_push_string(dcx, remote_addr);
 	duk_push_int(dcx, ntohs(peer->sin_port));
 	if (duk_pnew(dcx, 2)) {
 		js_log_error(dcx, -1);
-		goto out_clean_all;
+		goto out_clean;
 	}
 	ctx.js_srv_idx = duk_get_top_index(dcx);
 
 	/* Handle initial greeting */
 	if (call_js_handler(&ctx, "INIT", 0, &rsp)) {
 		smtp_server_response(&ctx.stream, &smtp_rsp_int_err);
-		goto out_clean_all;
+		goto out_clean;
 	}
 
 	smtp_server_response(&ctx.stream, &rsp);
 	free(rsp.message);
 
 	if (smtp_server_get_disconnect(&ctx))
-		goto out_clean_all;
+		goto out_clean;
 
 	do {
 		status = smtp_server_hdle_one(&ctx);
@@ -486,10 +486,9 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 		js_log_error(dcx, -1);
 	duk_pop(dcx);
 
-out_clean_all:
+out_clean:
 	duk_pop(dcx); /* SmtpServer instance (or error) */
-out_clean_srv:
-	duk_pop(dcx); /* SmtpServer */
+out_close:
 	bfd_close(&ctx.stream);
 	js_log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
