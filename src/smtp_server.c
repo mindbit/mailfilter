@@ -325,10 +325,10 @@ static int smtp_server_hdle_one(struct smtp_server_context *ctx)
 static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk_idx_t nargs, struct smtp_response *rsp)
 {
 	char handler_name[10] = "smtp";
-	int code;
-	duk_size_t i, n;
+	int code, i;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 	char *message;
+	const char *str;
 
 	for (i = 4; i < sizeof(handler_name) - 1 && *cmd; i++)
 		handler_name[i] = tolower(*(cmd++));
@@ -352,72 +352,76 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 
 	/* Sanity check on return type */
 	if (!duk_is_object(ctx->dcx, -1)) {
-		js_log(JS_LOG_ERR, "handler '%s' invalid rval\n", handler_name);
+		js_log(JS_LOG_ERR, "%s: retval not an object\n", handler_name);
 		duk_pop(ctx->dcx);
 		return EINVAL;
 	}
 
+	/* Extract "code" field */
+	if (!duk_get_prop_string(ctx->dcx, -1, "code")) {
+		js_log(JS_LOG_ERR, "%s: retval missing code\n", handler_name);
+		duk_pop_2(ctx->dcx);
+		return EINVAL;
+	}
+	code = duk_get_int(ctx->dcx, -1);
+	duk_pop(ctx->dcx);
+
+	/* Extract "messages" field */
+	if (!duk_get_prop_string(ctx->dcx, -1, "messages")) {
+		js_log(JS_LOG_ERR, "%s: retval missing messages\n", handler_name);
+		duk_pop_2(ctx->dcx);
+		return EINVAL;
+	}
+	if (!duk_is_array(ctx->dcx, -1)) {
+		str = duk_safe_to_string(ctx->dcx, -1);
+		if (!strlen(str)) {
+			js_log(JS_LOG_ERR, "%s: retval empty messages\n", handler_name);
+			duk_pop_2(ctx->dcx);
+			return EINVAL;
+		}
+		message = strdup(str);
+	} else {
+		/* Extract array elements and append to string buffer */
+		duk_size_t i, n = duk_get_length(ctx->dcx, -1);
+
+		for (i = 0; i < n; i++) {
+			if (sb.cur && string_buffer_append_char(&sb, '\n'))
+				break;
+
+			duk_get_prop_index(ctx->dcx, -1, i);
+			str = duk_safe_to_string(ctx->dcx, -1);
+
+			if (string_buffer_append_string(&sb, str))
+				i = n;
+
+			duk_pop(ctx->dcx);
+		}
+
+		if (!sb.cur) {
+			js_log(JS_LOG_ERR, "%s: retval empty messages\n", handler_name);
+			duk_pop_2(ctx->dcx);
+			string_buffer_cleanup(&sb);
+			return EINVAL;
+		}
+
+		message = sb.s;
+	}
+	duk_pop(ctx->dcx);
+
 	/* Extract "disconnect" field */
 	if (!duk_get_prop_string(ctx->dcx, -1, PR_DISCONNECT)) {
+		js_log(JS_LOG_ERR, "%s: retval missing disconnect\n", handler_name);
 		duk_pop_2(ctx->dcx);
+		free(message);
 		return EINVAL;
 	}
 	duk_to_boolean(ctx->dcx, -1);
 	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_DISCONNECT);
 
-	/* Extract "code" field */
-	if (!duk_get_prop_string(ctx->dcx, -1, "code")) {
-		duk_pop_2(ctx->dcx);
-		return EINVAL;
-	}
-	code = duk_to_int(ctx->dcx, -1);
-	duk_pop(ctx->dcx);
-
-	/* Extract "messages" field */
-
-	if (!duk_get_prop_string(ctx->dcx, -1, "messages")) {
-		duk_pop_2(ctx->dcx);
-		return EINVAL;
-	}
-
-	if (!duk_is_array(ctx->dcx, -1)) {
-		message = strdup(duk_safe_to_string(ctx->dcx, -1));
-		goto out_ret;
-	}
-
-	/* Extract array elements and append to string buffer */
-
-	n = duk_get_length(ctx->dcx, -1);
-	for (i = 0; i < n; i++) {
-		const char *str;
-
-		duk_get_prop_index(ctx->dcx, -1, i);
-		str = duk_safe_to_string(ctx->dcx, -1);
-
-		if (sb.cur && string_buffer_append_char(&sb, '\n')) {
-			duk_pop(ctx->dcx);
-			break;
-		}
-
-		if (string_buffer_append_string(&sb, str)) {
-			duk_pop(ctx->dcx);
-			break;
-		}
-
-		duk_pop(ctx->dcx);
-	}
-
-	if (!sb.cur) {
-		duk_pop_2(ctx->dcx);
-		string_buffer_cleanup(&sb);
-		return EINVAL;
-	}
-
-	message = sb.s;
-out_ret:
-	duk_pop_2(ctx->dcx); /* hdlr ret + .messages */
+	duk_pop(ctx->dcx); /* JS handler return value */
 	rsp->code = code;
 	rsp->message = message;
+
 	return 0;
 }
 
