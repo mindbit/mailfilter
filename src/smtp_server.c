@@ -359,16 +359,16 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 	code = duk_get_int(ctx->dcx, -1);
 	duk_pop(ctx->dcx);
 
-	/* Extract "messages" field */
-	if (!duk_get_prop_string(ctx->dcx, -1, "messages")) {
-		js_log(JS_LOG_ERR, "%s: retval missing messages\n", handler_name);
+	/* Extract "message" field */
+	if (!duk_get_prop_string(ctx->dcx, -1, "message")) {
+		js_log(JS_LOG_ERR, "%s: retval missing message\n", handler_name);
 		duk_pop_2(ctx->dcx);
 		return EINVAL;
 	}
 	if (!duk_is_array(ctx->dcx, -1)) {
 		str = duk_safe_to_string(ctx->dcx, -1);
 		if (!strlen(str)) {
-			js_log(JS_LOG_ERR, "%s: retval empty messages\n", handler_name);
+			js_log(JS_LOG_ERR, "%s: retval empty message\n", handler_name);
 			duk_pop_2(ctx->dcx);
 			return EINVAL;
 		}
@@ -391,7 +391,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 		}
 
 		if (!sb.cur) {
-			js_log(JS_LOG_ERR, "%s: retval empty messages\n", handler_name);
+			js_log(JS_LOG_ERR, "%s: retval empty message\n", handler_name);
 			duk_pop_2(ctx->dcx);
 			string_buffer_cleanup(&sb);
 			return EINVAL;
