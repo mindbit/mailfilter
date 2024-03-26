@@ -461,6 +461,7 @@ bfd_t *smtp_body_open_read(duk_context *ctx, duk_idx_t obj_idx)
 duk_bool_t smtp_create_response(duk_context *ctx, int code, const char *message, int disconnect)
 {
 	if (!duk_get_global_string(ctx, "SmtpResponse")) {
+		js_log(JS_LOG_ERR, "SmtpResponse is not defined\n");
 		duk_pop(ctx);
 		return 0;
 	}
@@ -1024,76 +1025,46 @@ static JSFunctionSpec SmtpHeader_functions[] = {
 
 /* }}} SmtpHeader */
 
+#endif
+
 /* {{{ SmtpResponse */
 
-static JSClass SmtpResponse_class = {
-	"SmtpResponse", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SmtpResponse_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpResponse_construct(duk_context *ctx)
 {
-	jsval code, messages, aux;
-	jsval disconnect = BOOLEAN_TO_JSVAL(JS_FALSE);
-	JSObject *obj, *messages_arr;
+	duk_idx_t argc = duk_get_top(ctx);
+	duk_bool_t disconnect = 0;
 
 	if (argc < 2)
-		return JS_RetErrno(cx, EINVAL);
+		return DUK_RET_ERROR;
 
-	code = JS_ARGV(cx, vp)[0];
-	messages = JS_ARGV(cx, vp)[1];
-
-	if (argc >= 3)
-		disconnect = JS_ARGV(cx, vp)[2];
-
-	obj = JS_NewObjectForConstructor(cx, &SmtpResponse_class, vp);
-	if (!obj)
-		return JS_FALSE;
+	duk_push_this(ctx);
 
 	// Add code property
-	if (!JS_SetProperty(cx, obj, "code", &code))
-		return JS_FALSE;
+	duk_dup(ctx, 0);
+	duk_to_int(ctx, -1);
+	duk_put_prop_string(ctx, -2, "code");
 
-	// Add messages property
-	switch(JS_TypeOfValue(cx, messages)) {
-	case JSTYPE_STRING:
-		// Create the messages array property
-		messages_arr = JS_NewArrayObject(cx, 0, NULL);
-
-		if (!messages_arr)
-			return JS_FALSE;
-
-		// Add message to messages array
-		if (!JS_SetElement(cx, messages_arr, 0, &messages))
-			return JS_FALSE;
-
-		// Copy the messages to the property
-		aux = OBJECT_TO_JSVAL(messages_arr);
-		if (!JS_SetProperty(cx, obj, "messages", &aux))
-			return JS_FALSE;
-
-		break;
-	case JSTYPE_OBJECT:
-		// Copy the messages to the property
-		if (!JS_SetProperty(cx, obj, "messages", &messages))
-			return JS_FALSE;
-
-		break;
-	default:
-		return JS_FALSE;
-	}
+	// Add message property
+	duk_dup(ctx, 1);
+	if (!duk_is_array(ctx, -1))
+		duk_to_string(ctx, -1);
+	// FIXME if it's an array, coerce each element to string
+	duk_put_prop_string(ctx, -2, "message");
 
 	// Add disconnect property
-	if (!JS_SetProperty(cx, obj, "disconnect", &disconnect))
-		return JS_FALSE;
+	if (argc >= 3)
+		disconnect = duk_get_boolean(ctx, 2);
+	duk_push_boolean(ctx, disconnect);
+	duk_put_prop_string(ctx, -2, "disconnect");
 
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
+	duk_pop(ctx);
+
+	return 0;
 }
 
 /* }}} SmtpResponse */
+
+#if 0
 
 static int connect_to_address(char *host, unsigned short port)
 {
@@ -1574,10 +1545,12 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 
 	if (!JS_InitClass(cx, global, NULL, &SmtpHeader_class, SmtpHeader_construct, 1, NULL, SmtpHeader_functions, NULL, NULL))
 		return JS_FALSE;
+#endif
 
-	if (!JS_InitClass(cx, global, NULL, &SmtpResponse_class, SmtpResponse_construct, 1, NULL, NULL, NULL, NULL))
-		return JS_FALSE;
+	duk_push_c_function(ctx, SmtpResponse_construct, DUK_VARARGS);
+	duk_put_global_string(ctx, "SmtpResponse");
 
+#if 0
 	if (!JS_InitClass(cx, global, NULL, &SmtpClient_class, SmtpClient_construct, 1, NULL, SmtpClient_functions, NULL, NULL))
 		return JS_FALSE;
 
