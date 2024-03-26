@@ -1345,15 +1345,9 @@ static JSFunctionSpec SmtpClient_functions[] = {
 
 /* }}} SmtpClient */
 
-/* {{{ SmtpServer */
-
-static JSClass SmtpServer_class = {
-	"SmtpServer", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
 #endif
+
+/* {{{ SmtpServer */
 
 static int SmtpServer_construct(duk_context *ctx)
 {
@@ -1498,12 +1492,12 @@ out_clean:
 	JS_free(cx, s);
 	return ret;
 }
+#endif
 
 #define DEFINE_HANDLER_STUB(name) \
-	static JSBool smtp##name (JSContext *cx, unsigned argc, jsval *vp) { \
-		jsval rval = smtp_create_response(cx, 250, "def" #name, 0); \
-		JS_SET_RVAL(cx, vp, rval); \
-		return JS_TRUE; \
+	static int SmtpServer_smtp##name (duk_context *ctx) { \
+		duk_bool_t rc = smtp_create_response(ctx, 250, "def" #name, 0); \
+		return rc ? 1 : DUK_RET_ERROR; \
 	}
 
 DEFINE_HANDLER_STUB(Init);
@@ -1516,24 +1510,23 @@ DEFINE_HANDLER_STUB(Rcpt);
 DEFINE_HANDLER_STUB(Rset);
 DEFINE_HANDLER_STUB(Body);
 
-static JSFunctionSpec SmtpServer_functions[] = {
-	JS_FS("smtpInit", smtpInit, 0, 0),
-	JS_FS("smtpAuth", smtpAuth, 0, 0),
-	JS_FS("smtpEhlo", smtpEhlo, 0, 0),
-	JS_FS("smtpHelo", smtpHelo, 0, 0),
-	JS_FS("smtpData", smtpData, 0, 0),
-	JS_FS("smtpMail", smtpMail, 0, 0),
-	JS_FS("smtpRcpt", smtpRcpt, 0, 0),
-	JS_FS("smtpRset", smtpRset, 0, 0),
-	JS_FS("smtpBody", smtpBody, 0, 0),
-	JS_FS("cleanup", SmtpServer_cleanup, 0, 0),
-	JS_FS("receivedHeader", SmtpServer_receivedHeader, 0, 0),
-	JS_FS_END
+static const duk_function_list_entry SmtpServer_functions[] = {
+	{"smtpInit",		SmtpServer_smtpInit,		0},
+	{"smtpAuth",		SmtpServer_smtpAuth,		0},
+	{"smtpEhlo",		SmtpServer_smtpEhlo,		0},
+	{"smtpHelo",		SmtpServer_smtpHelo,		0},
+	{"smtpData",		SmtpServer_smtpData,		0},
+	{"smtpMail",		SmtpServer_smtpMail,		0},
+	{"smtpRcpt",		SmtpServer_smtpRcpt,		0},
+	{"smtpRset",		SmtpServer_smtpRset,		0},
+	{"smtpBody",		SmtpServer_smtpBody,		0},
+	//{"cleanup",		SmtpServer_cleanup,		0},
+	//{"receivedHeader",	SmtpServer_receivedHeader,	0},
+	{NULL,			NULL,				0}
 };
 
 /* }}} SmtpServer */
 
-#endif
 /**
  * @return 1 on success, throws error on failure
  */
@@ -1559,6 +1552,7 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 #endif
 	duk_push_c_function(ctx, SmtpServer_construct, 2);
 	duk_push_object(ctx);
+	duk_put_function_list(ctx, -1, SmtpServer_functions);
 	duk_put_prop_string(ctx, -2, "prototype");
 	duk_put_global_string(ctx, "SmtpServer");
 
