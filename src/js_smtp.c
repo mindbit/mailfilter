@@ -1351,76 +1351,68 @@ static JSFunctionSpec SmtpClient_functions[] = {
 
 static int SmtpServer_construct(duk_context *ctx)
 {
-#if 0
-	JSObject *obj;
-	JSString *str;
+	duk_push_this(ctx);
 
-	obj = JS_NewObjectForConstructor(cx, &SmtpServer_class, vp);
-	if (!obj)
-		return JS_FALSE;
+	// Set address
+	duk_dup(ctx, 0);
+	duk_to_string(ctx, -1);
+	duk_put_prop_string(ctx, -2, PR_REMOTE_ADDR);
 
-	// FIXME verify argument count
-	if (!JS_DefineProperty(cx, obj, PR_REMOTE_ADDR, JS_ARGV(cx, vp)[0], NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		return JS_FALSE;
-	if (!JS_DefineProperty(cx, obj, PR_REMOTE_PORT, JS_ARGV(cx, vp)[1], NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		return JS_FALSE;
+	// Set port
+	duk_dup(ctx, 1);
+	duk_to_int(ctx, -1);
+	duk_put_prop_string(ctx, -2, PR_REMOTE_PORT);
 
 	// Define and set session properties
-	if (!JS_DefineProperty(cx, obj, PR_HOSTNAME, JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE))
-		return JS_FALSE;
 
-	if (!js_init_envelope(cx, obj))
-		return JS_FALSE;
+	duk_push_null(ctx);
+	duk_put_prop_string(ctx, -2, PR_HOSTNAME);
 
-	if (!JS_DefineProperty(cx, obj, PR_DISCONNECT, BOOLEAN_TO_JSVAL(JS_FALSE), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		return JS_FALSE;
+	if (!js_init_envelope(ctx, -1))
+		return js_ret_errno(ctx, ENOMEM);
 
-	str = JS_NewStringCopyZ(cx, "SMTP");
-	if (!str)
-		return JS_FALSE;
-	if (!JS_DefineProperty(cx, obj, PR_PROTO, STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-		return JS_FALSE;
+	duk_push_boolean(ctx, 0);
+	duk_put_prop_string(ctx, -2, PR_DISCONNECT);
 
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
-#endif
+	duk_push_string(ctx, "SMTP");
+	duk_put_prop_string(ctx, -2, PR_PROTO);
+
 	return 0;
 }
 
-#if 0
-static JSBool SmtpServer_cleanup(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpServer_cleanup(duk_context *ctx)
 {
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpServer_receivedHeader(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval v;
-	char *fname = NULL, *proto = NULL, *addr = NULL;
-	JSBool ret = JS_FALSE;
+	duk_idx_t argc = duk_get_top(ctx);
+	duk_idx_t self;
+	const char *fname, *proto, *addr, *str;
 	struct sockaddr_in addr4 = {AF_INET};
 	char phost[NI_MAXHOST], lhost[HOST_NAME_MAX];
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
-	JSObject *hdr;
 	int err;
 	const char *myid = "mailfilter"; // FIXME take from config; should be similar to EHLO id
 	time_t t = time(NULL);
 	struct tm *tm = localtime(&t);
 	char ts[40];
-	char *s = NULL;
 
-	if (!JS_GetProperty(cx, self, PR_HOSTNAME, &v))
-		goto out_clean;
-	fname = JS_EncodeStringValue(cx, v);
+	duk_push_this(ctx);
+	self = duk_get_top_index(ctx);
 
-	if (!JS_GetProperty(cx, self, PR_PROTO, &v))
-		goto out_clean;
-	proto = JS_EncodeStringValue(cx, v);
+	if (!duk_get_prop_string(ctx, self, PR_HOSTNAME))
+		return js_ret_errno(ctx, EINVAL);
+	fname = duk_to_string(ctx, -1);
 
-	if (!JS_GetProperty(cx, self, PR_REMOTE_ADDR, &v))
-		goto out_clean;
-	addr = JS_EncodeStringValue(cx, v);
+	if (!duk_get_prop_string(ctx, self, PR_PROTO))
+		return js_ret_errno(ctx, EINVAL);
+	proto = duk_to_string(ctx, -1);
+
+	if (!duk_get_prop_string(ctx, self, PR_REMOTE_ADDR))
+		return js_ret_errno(ctx, EINVAL);
+	addr = duk_to_string(ctx, -1);
 
 	// TODO add IPv6 support
 	inet_pton(AF_INET, addr, &addr4.sin_addr); // FIXME check return value
@@ -1428,17 +1420,16 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 		strcpy(phost, "unknown");
 
 	if (gethostname(lhost, sizeof(lhost)))
-		goto out_clean;
+		return js_ret_errno(ctx, errno);
 
-	hdr = header_alloc(cx, "Received");
-	if (!hdr)
-		goto out_clean;
+	if (!header_alloc(ctx, "Received"))
+		return js_ret_errno(ctx, ENOMEM);
 
 	err = string_buffer_append_strings(&sb, "from ", fname ? fname :
 			"unknown", " (", phost, " [", addr, "])", NULL);
 	if (err)
 		goto out_clean;
-	if (!header_add_part(cx, hdr, sb.s))
+	if (!header_add_part(ctx, sb.s))
 		goto out_clean;
 
 	string_buffer_reset(&sb);
@@ -1448,29 +1439,27 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 		goto out_clean;
 
 	/* Add opt-info "ID" (if supplied as parameter #1) */
-	if (argc >= 1 && (s = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]))) {
-		if (string_buffer_append_strings(&sb, " id ", s, NULL))
+	if (argc >= 1) {
+		str = duk_to_string(ctx, 0);
+		if (string_buffer_append_strings(&sb, " id ", str, NULL))
 			goto out_clean;
-		JS_free(cx, s);
-		s = NULL;
 	}
 
 	/* Add opt-info "for" (if supplied as parameter #2) */
-	if (argc >= 2 && (s = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]))) {
-		if (!header_add_part(cx, hdr, sb.s))
+	if (argc >= 2) {
+		if (!header_add_part(ctx, sb.s))
 			goto out_clean;
 		string_buffer_reset(&sb);
-		if (string_buffer_append_strings(&sb, "\tfor ", s, NULL))
+		str = duk_to_string(ctx, 1);
+		if (string_buffer_append_strings(&sb, "\tfor ", str, NULL))
 			goto out_clean;
-		JS_free(cx, s);
-		s = NULL;
 	}
 
 	err = string_buffer_append_char(&sb, ';');
 	if (err)
 		goto out_clean;
 
-	if (!header_add_part(cx, hdr, sb.s))
+	if (!header_add_part(ctx, sb.s))
 		goto out_clean;
 
 	strftime(ts, sizeof(ts), "%a, %e %b %Y %H:%M:%S %z (%Z)", tm);
@@ -1478,21 +1467,17 @@ static JSBool SmtpServer_receivedHeader(JSContext *cx, unsigned argc, jsval *vp)
 	err = string_buffer_append_strings(&sb, "\t", ts, NULL);
 	if (err)
 		goto out_clean;
-	if (!header_add_part(cx, hdr, sb.s))
+	if (!header_add_part(ctx, sb.s))
 		goto out_clean;
 
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(hdr));
-	ret = JS_TRUE;
+	string_buffer_cleanup(&sb);
+
+	return 1;
 
 out_clean:
 	string_buffer_cleanup(&sb);
-	JS_free(cx, fname);
-	JS_free(cx, proto);
-	JS_free(cx, addr);
-	JS_free(cx, s);
-	return ret;
+	return js_ret_errno(ctx, ENOMEM);
 }
-#endif
 
 #define DEFINE_HANDLER_STUB(name) \
 	static int SmtpServer_smtp##name (duk_context *ctx) { \
@@ -1520,8 +1505,8 @@ static const duk_function_list_entry SmtpServer_functions[] = {
 	{"smtpRcpt",		SmtpServer_smtpRcpt,		0},
 	{"smtpRset",		SmtpServer_smtpRset,		0},
 	{"smtpBody",		SmtpServer_smtpBody,		0},
-	//{"cleanup",		SmtpServer_cleanup,		0},
-	//{"receivedHeader",	SmtpServer_receivedHeader,	0},
+	{"cleanup",		SmtpServer_cleanup,		0},
+	{"receivedHeader",	SmtpServer_receivedHeader,	0},
 	{NULL,			NULL,				0}
 };
 
@@ -1546,10 +1531,8 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 #if 0
 	if (!JS_InitClass(cx, global, NULL, &SmtpClient_class, SmtpClient_construct, 1, NULL, SmtpClient_functions, NULL, NULL))
 		return JS_FALSE;
-
-	if (!JS_InitClass(cx, global, NULL, &SmtpServer_class, SmtpServer_construct, 1, NULL, SmtpServer_functions, NULL, NULL))
-		return JS_FALSE;
 #endif
+
 	duk_push_c_function(ctx, SmtpServer_construct, 2);
 	duk_push_object(ctx);
 	duk_put_function_list(ctx, -1, SmtpServer_functions);
