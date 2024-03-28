@@ -446,8 +446,7 @@ bfd_t *smtp_body_open_read(duk_context *ctx, duk_idx_t obj_idx)
 
 	fd = open(path, O_RDONLY);
 	if (fd == -1) {
-		// FIXME raise JS error
-		//JS_ReportError(js_context, "File %s cannot be opened: %d", path, errno);
+		js_report_error(ctx, "File %s cannot be opened: %d", path, errno);
 		return NULL;
 	}
 
@@ -1064,9 +1063,7 @@ static int SmtpResponse_construct(duk_context *ctx)
 
 /* }}} SmtpResponse */
 
-#if 0
-
-static int connect_to_address(char *host, unsigned short port)
+static int connect_to_address(duk_context *ctx, const char *host, unsigned short port)
 {
 	int sockfd;
 	struct sockaddr_in serv_addr = {AF_INET};
@@ -1089,9 +1086,8 @@ static int connect_to_address(char *host, unsigned short port)
 	serv_addr.sin_port = htons(port);
 
 	if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-		JS_ReportError(js_context, "Cannot connect to %s:%hu!", host, port);
 		close(sockfd);
-		return -1;
+		return js_report_error(ctx, "Cannot connect to %s:%hu!", host, port);
 	}
 
 	return sockfd;
@@ -1099,116 +1095,103 @@ static int connect_to_address(char *host, unsigned short port)
 
 /* {{{ SmtpClient */
 
-static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj);
-static JSClass SmtpClient_class = {
-	"SmtpClient", JSCLASS_HAS_PRIVATE, JS_PropertyStub,
-	JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-	JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
-	SmtpClient_finalize, JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SmtpClient_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int __SmtpClient_closeStream(duk_context *ctx)
 {
-	JSObject *obj;
-	jsval host, port;
+	bfd_t *stream = NULL;
 
-	host = JS_ARGV(cx, vp)[0];
-	port = JS_ARGV(cx, vp)[1];
-
-	obj = JS_NewObjectForConstructor(cx, &SmtpClient_class, vp);
-	if (!obj)
-		return JS_FALSE;
-
-	// Add host
-	if (!JS_SetProperty(cx, obj, "host", &host))
-		return JS_FALSE;
-
-	// Add port
-	if (!JS_SetProperty(cx, obj, "port", &port))
-		return JS_FALSE;
-
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
-}
-
-static void SmtpClient_finalize(JSFreeOp *fop, JSObject *obj)
-{
-	bfd_t *stream = (bfd_t *)JS_GetPrivate(obj);
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "stream"))
+		stream = duk_get_pointer(ctx, -1);
+	duk_del_prop_string(ctx, -2, "stream");
+	duk_pop_2(ctx);
 
 	if (stream) {
 		bfd_close(stream);
 		free(stream);
 	}
+
+	return 0;
 }
 
-static JSBool SmtpClient_connect(JSContext *cx, unsigned argc, jsval *vp) {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval host, port;
-	char *c_host;
+static int SmtpClient_construct(duk_context *ctx)
+{
+	duk_push_this(ctx);
+
+	// Add host
+	duk_dup(ctx, 0);
+	duk_to_string(ctx, -1);
+	duk_put_prop_string(ctx, -2, "host");
+
+	// Add port
+	duk_dup(ctx, 1);
+	duk_to_int(ctx, -1);
+	duk_put_prop_string(ctx, -2, "port");
+
+	duk_pop(ctx);
+
+	return 0;
+}
+
+static int SmtpClient_finalize(duk_context *ctx)
+{
+	return __SmtpClient_closeStream(ctx);
+}
+
+static int SmtpClient_connect(duk_context *ctx)
+{
+	const char *host;
+	int port;
 	int sockfd;
-	int32_t num;
 	bfd_t *stream;
 
+	duk_push_this(ctx);
+
 	// Get host
-	if (!JS_GetProperty(cx, self, "host", &host)) {
-		return JS_FALSE;
-	}
+	duk_get_prop_string(ctx, -1, "host");
+	host = duk_get_string(ctx, -1);
 
 	// Get port
-	if (!JS_GetProperty(cx, self, "port", &port))
-		return JS_FALSE;
-	if (!JS_ValueToInt32(cx, port, &num))
-		return JS_FALSE;
+	duk_get_prop_string(ctx, -2, "port");
+	port = duk_get_int(ctx, -1);
 
-	c_host = JS_EncodeString(cx, JSVAL_TO_STRING(host));
+	if (!host || !port)
+		js_report_error(ctx, "Invalid host or port %s:%d", host, port);
 
-	sockfd = connect_to_address(c_host, num);
+	sockfd = connect_to_address(ctx, host, port);
 	// FIXME connect_to_address may fail; check return value and bail out
 
 	stream = bfd_alloc(sockfd);
 	// FIXME bfd_alloc can fail
 
 	// FIXME client may already be connected; don't leak previous connection
-	JS_SetPrivate(self, stream);
+	duk_push_pointer(ctx, stream);
+	duk_put_prop_string(ctx, -4, "stream");
 
-	JS_free(cx, c_host);
+	duk_pop_3(ctx);
 
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool SmtpClient_disconnect(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpClient_disconnect(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	bfd_t *stream = JS_GetPrivate(self);
-
-	if (!stream)
-		return JS_FALSE;
-
-	bfd_close(stream);
-	free(stream);
-	JS_SetPrivate(self, NULL);
-
-	return JS_TRUE;
+	return __SmtpClient_closeStream(ctx);
 }
 
-static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpClient_readResponse(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval content, response;
-	jsval js_code, js_messages, js_disconnect;
-	JSObject *messages_obj, *global;
-
 	int code, lines_count;
 	char buf[SMTP_COMMAND_MAX + 1], *p, sep;
 	ssize_t sz;
-	bfd_t *stream;
+	bfd_t *stream = NULL;
 
-	stream = (bfd_t *)JS_GetPrivate(self);
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "stream"))
+		stream = duk_get_pointer(ctx, -1);
+	duk_pop_2(ctx);
 	if (!stream)
-		return JS_RetErrno(cx, ENOTCONN);
+		return js_ret_errno(ctx, ENOTCONN);
 
-	global = JS_GetGlobalForScopeChain(cx);
-	messages_obj = JS_NewArrayObject(cx, 0, 0);
+	duk_push_array(ctx);
 
 	lines_count = 0;
 	do {
@@ -1216,21 +1199,21 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp)
 		do {
 			buf[SMTP_COMMAND_MAX] = '\n';
 			if ((sz = bfd_read_line(stream, buf, SMTP_COMMAND_MAX)) <= 0)
-				return JS_RetErrno(cx, EIO);
+				return js_ret_errno(ctx, EIO);
 		} while (buf[SMTP_COMMAND_MAX] != '\n');
 		buf[sz] = '\0';
 
 		if (sz < 4)
-			return JS_RetErrno(cx, EPROTO);
+			return js_ret_errno(ctx, EPROTO);
 
 		sep = buf[3];
 		buf[3] = '\0';
 		code = strtol(buf, &p, 10);
 
 		if ((sep != ' ' && sep != '-') || *p != '\0')
-			return JS_RetErrno(cx, EPROTO);
+			return js_ret_errno(ctx, EPROTO);
 		if (code < 100 || code > 999)
-			return JS_RetErrno(cx, EPROTO);
+			return js_ret_errno(ctx, EPROTO);
 
 		if (buf[sz - 1] == '\n')
 			buf[--sz] = '\0';
@@ -1238,92 +1221,97 @@ static JSBool SmtpClient_readResponse(JSContext *cx, unsigned argc, jsval *vp)
 			buf[--sz] = '\0';
 
 		//add response
-		content = STRING_TO_JSVAL(JS_InternString(cx, buf + 4));
-		if (!JS_SetElement(cx, messages_obj, lines_count++, &content))
-			return JS_RetErrno(cx, EFAULT);
+		duk_push_string(ctx, buf + 4);
+		duk_put_prop_index(ctx, -2, lines_count++);
 	} while (sep == '-');
 
-	js_code = INT_TO_JSVAL(code);
-	js_messages = OBJECT_TO_JSVAL(messages_obj);
-	js_disconnect = JSVAL_FALSE;
-	jsval argv[] = {js_code, js_messages, js_disconnect};
+	if (!duk_get_global_string(ctx, "SmtpResponse"))
+		return js_ret_error(ctx, "SmtpResponse is not defined");
+	duk_insert(ctx, -2);
 
-	JS_CallFunctionName(cx, global, "SmtpResponse",
-				3, argv, &response);
+	duk_push_int(ctx, code);
+	duk_insert(ctx, -2);
 
-	JS_SET_RVAL(cx, vp, response);
-	return JS_TRUE;
+	duk_push_boolean(ctx, 0);
+	duk_new(ctx, 3);
+
+	return 1;
 }
 
-static JSBool SmtpClient_sendCommand(JSContext *cx, unsigned argc, jsval *vp)
+/*
+ * The corresponding JS function takes 2 arguments:
+ *  - SMTP verb (mandatory)
+ *  - parameters to the SMTP verb (optional)
+ *
+ * We use a fixed number of two arguments when we bind the native C function,
+ * and rely on the fact that Duktape pads missing arguments with undefined to
+ * determine if the second argument was specified at call time. As a bonus, this
+ * also handles the case when a wrapper function has two arguments and always
+ * passes the second argument, but the wrapper itself is called with only one
+ * argument.
+ */
+static int SmtpClient_sendCommand(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	bfd_t *stream = (bfd_t *)JS_GetPrivate(self);
-	char *str;
+	bfd_t *stream = NULL;
+	const char *str;
 	int status;
 
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "stream"))
+		stream = duk_get_pointer(ctx, -1);
+	duk_pop_2(ctx);
 	if (!stream)
-		return JS_RetErrno(cx, ENOTCONN);
+		return js_ret_errno(ctx, ENOTCONN);
 
-	if (!argc)
-		return JS_RetErrno(cx, EINVAL);
-
-	str = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]);
-	if (!str)
-		return JS_RetErrno(cx, EINVAL);
+	str = duk_to_string(ctx, 0);
 
 	status = bfd_puts(stream, str);
-	JS_free(cx, str);
 	if (status < 0)
-		return JS_RetErrno(cx, EIO);
+		return js_ret_errno(ctx, EIO);
 
-	if (argc <= 1 || JSVAL_IS_VOID(JS_ARGV(cx, vp)[1]))
+	if (duk_is_undefined(ctx, 1))
 		goto out_flush;
 
-	if (bfd_putc(stream, ' ') < 0)
-		return JS_RetErrno(cx, EIO);
+	str = duk_to_string(ctx, 1);
 
-	str = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]);
-	if (!str)
-		return JS_RetErrno(cx, EINVAL);
+	if (bfd_putc(stream, ' ') < 0)
+		return js_ret_errno(ctx, EIO);
 
 	status = bfd_puts(stream, str);
-	JS_free(cx, str);
 	if (status < 0)
-		return JS_RetErrno(cx, EIO);
+		return js_ret_errno(ctx, EIO);
 
 out_flush:
 	if (bfd_puts(stream, "\r\n") < 0)
-		return JS_RetErrno(cx, EIO);
+		return js_ret_errno(ctx, EIO);
 
 	if (bfd_flush(stream) < 0)
-		return JS_RetErrno(cx, EIO);
+		return js_ret_errno(ctx, EIO);
 
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpClient_sendMessage(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	int status;
-	jsval hdrs, path;
-	bfd_t *client_stream, *body_stream;
+	bfd_t *client_stream = NULL, *body_stream;
 
-	if (argc < 2)
-		return JS_FALSE;
-
-	hdrs = JS_ARGV(cx, vp)[0];
-	path = JS_ARGV(cx, vp)[1];
-
-	client_stream = (bfd_t *)JS_GetPrivate(self);
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "stream"))
+		client_stream = duk_get_pointer(ctx, -1);
+	duk_pop_2(ctx);
 	if (!client_stream)
-		return JS_FALSE;
+		return js_ret_errno(ctx, ENOTCONN);
 
-	body_stream = smtp_body_open_read(cx, path);
+	body_stream = smtp_body_open_read(ctx, 1);
 	if (!body_stream)
-		return JS_FALSE;
+		return js_ret_errno(ctx, ENOMEM);
 
-	status = smtp_copy_from_file(client_stream, body_stream, JSVAL_TO_OBJECT(hdrs), 1);
+	// Duktape guarantees that exactly 2 elements are on the stack at
+	// function entry, since we use a fixed number of arguments.
+	// Remove the 2nd argument and leave the first at the stack top.
+	duk_pop(ctx);
+	status = smtp_copy_from_file(ctx, client_stream, body_stream, 1);
 
 	close(body_stream->fd);
 	free(body_stream);
@@ -1331,21 +1319,22 @@ static JSBool SmtpClient_sendMessage(JSContext *cx, unsigned argc, jsval *vp)
 	if (status != EIO)
 		bfd_flush(client_stream);
 
-	return !status;
+	if (status)
+		return js_ret_errno(ctx, status);
+
+	return 0;
 }
 
-static JSFunctionSpec SmtpClient_functions[] = {
-	JS_FS("connect", SmtpClient_connect, 0, 0),
-	JS_FS("disconnect", SmtpClient_disconnect, 0, 0),
-	JS_FS("readResponse", SmtpClient_readResponse, 0, 0),
-	JS_FS("sendCommand", SmtpClient_sendCommand, 2, 0),
-	JS_FS("sendMessage", SmtpClient_sendMessage, 2, 0),
-	JS_FS_END
+static const duk_function_list_entry SmtpClient_functions[] = {
+	{"connect",		SmtpClient_connect,		0},
+	{"disconnect",		SmtpClient_disconnect,		0},
+	{"readResponse",	SmtpClient_readResponse,	0},
+	{"sendCommand",		SmtpClient_sendCommand,		2},
+	{"sendMessage",		SmtpClient_sendMessage,		2},
+	{NULL,			NULL,				0}
 };
 
 /* }}} SmtpClient */
-
-#endif
 
 /* {{{ SmtpServer */
 
@@ -1528,10 +1517,13 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 	duk_push_c_function(ctx, SmtpResponse_construct, DUK_VARARGS);
 	duk_put_global_string(ctx, "SmtpResponse");
 
-#if 0
-	if (!JS_InitClass(cx, global, NULL, &SmtpClient_class, SmtpClient_construct, 1, NULL, SmtpClient_functions, NULL, NULL))
-		return JS_FALSE;
-#endif
+	duk_push_c_function(ctx, SmtpClient_construct, 2);
+	duk_push_object(ctx);
+	duk_push_c_function(ctx, SmtpClient_finalize, 2);
+	duk_set_finalizer(ctx, -2);
+	duk_put_function_list(ctx, -1, SmtpClient_functions);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "SmtpClient");
 
 	duk_push_c_function(ctx, SmtpServer_construct, 2);
 	duk_push_object(ctx);
