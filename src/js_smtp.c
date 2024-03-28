@@ -490,54 +490,32 @@ duk_bool_t js_init_envelope(duk_context *ctx, duk_idx_t obj_idx)
 
 	return 1;
 }
-#if 0
 
 /* {{{ SmtpPath */
 
-static JSClass SmtpPath_class = {
-	"SmtpPath", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SmtpPath_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpPath_construct(duk_context *ctx)
 {
-	JSObject *domains, *mailbox, *obj;
-
-	obj = JS_NewObjectForConstructor(cx, &SmtpPath_class, vp);
-	if (!obj)
-		return JS_FALSE;
+	duk_push_this(ctx);
 
 	// Add domains property
-	domains = JS_NewArrayObject(cx, 0, NULL);
-	if (!domains)
-		return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, obj, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
+	duk_push_array(ctx);
+	duk_put_prop_string(ctx, -2, "domains");
 
 	// Add mailbox property
-	mailbox = JS_NewObject(cx, NULL, NULL, NULL);
-	if (!mailbox)
-		return JS_FALSE;
+	duk_push_object(ctx);
+	duk_push_null(ctx);
+	duk_put_prop_string(ctx, -2, "local");
+	duk_push_null(ctx);
+	duk_put_prop_string(ctx, -2, "domain");
+	duk_put_prop_string(ctx, -2, "mailbox");
 
-	if (!JS_DefineProperty(cx, mailbox, "local", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
+	duk_pop(ctx);
 
-	if (!JS_DefineProperty(cx, mailbox, "domain", JSVAL_NULL, NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, obj, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
-
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpPath_parse(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
 	enum {
 		S_INIT,
 		S_SEPARATOR,
@@ -546,34 +524,22 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 		S_MBOX_DOMAIN,
 		S_FINAL
 	} state = S_INIT;
-	JSBool ret = JS_TRUE;
-	char *c_str = NULL, *arg, *token = NULL;
-	JSString *js_str, *local = NULL, *domain = NULL, *trail = NULL;
-	JSObject *domains, *mailbox;
-	uint32_t idx = 0;
+	const char *arg, *token = NULL;
+	duk_idx_t self, domains, mailbox, local, domain;
+	duk_uarridx_t idx = 0;
 
 	/* Check arguments; prepare parsed data placeholders */
-	JS_SET_RVAL(cx, vp, JSVAL_NULL);
-
-	if (!argc || !self)
-		goto out_ret;
-
-	js_str = JSVAL_TO_STRING(JS_ARGV(cx, vp)[0]);
-	if (!js_str)
-		goto out_ret;
-
-	c_str = JS_EncodeString(cx, js_str);
-	if (!c_str)
-		goto out_ret;
-
-	ret = JS_FALSE;
-
-	domains = JS_NewArrayObject(cx, 0, NULL);
-	if (!domains)
-		goto out_ret;
+	arg = duk_to_string(ctx, 0);
+	duk_push_this(ctx);
+	self = duk_get_top_index(ctx);
+	domains = duk_push_array(ctx);
+	mailbox = duk_push_object(ctx);
+	duk_push_null(ctx);
+	local = duk_get_top_index(ctx);
+	duk_push_null(ctx);
+	domain = duk_get_top_index(ctx);
 
 	/* Parsing state machine */
-	arg = c_str;
 	while (*arg != '\0') {
 		switch (state) {
 		case S_INIT:
@@ -604,11 +570,8 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 			if (*arg == ',' || *arg == ':') {
 				if (token == arg)
 					break;
-				js_str = JS_NewStringCopyN(cx, token, arg - token);
-				if (!js_str)
-					goto out_ret;
-				if (!JS_DefineElement(cx, domains, idx++, STRING_TO_JSVAL(js_str), NULL, NULL, 0))
-					goto out_ret;
+				duk_push_lstring(ctx, token, arg - token);
+				duk_put_prop_index(ctx, domains, idx++);
 			}
 			if (*arg == ',') {
 				++arg;
@@ -627,10 +590,8 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 				if (token == arg)
 					break;
 
-				local = JS_NewStringCopyN(cx, token, arg - token);
-				if (!local)
-					goto out_ret;
-
+				duk_push_lstring(ctx, token, arg - token);
+				duk_replace(ctx, local);
 				state = S_MBOX_DOMAIN;
 				token = ++arg;
 				continue;
@@ -642,10 +603,8 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 				if (token == arg)
 					break;
 
-				domain = JS_NewStringCopyN(cx, token, arg - token);
-				if (!domain)
-					goto out_ret;
-
+				duk_push_lstring(ctx, token, arg - token);
+				duk_replace(ctx, domain);
 				state = S_FINAL;
 			}
 			arg++;
@@ -657,75 +616,61 @@ static JSBool SmtpPath_parse(JSContext *cx, unsigned argc, jsval *vp)
 	}
 
 	if (state != S_FINAL) {
-		ret = JS_TRUE;
-		goto out_ret;
+		duk_pop_n(ctx, 5);
+		duk_push_null(ctx);
+		return 0;
 	}
 
 	/* Parsing successful; save parsed data to object and return */
+	duk_put_prop_string(ctx, mailbox, "domain");
+	duk_put_prop_string(ctx, mailbox, "local");
+	duk_put_prop_string(ctx, self, "mailbox");
+	duk_put_prop_string(ctx, self, "domains");
+	duk_pop(ctx); // self (aka this)
+	duk_push_string(ctx, arg);
 
-	if (!JS_DefineProperty(cx, self, "domains", OBJECT_TO_JSVAL(domains), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		goto out_ret;
-
-	// Add mailbox property
-	mailbox = JS_NewObject(cx, NULL, NULL, NULL);
-	if (!mailbox)
-		goto out_ret;
-
-	if (!JS_DefineProperty(cx, mailbox, "local", JS_StringToJsval(local), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		goto out_ret;
-
-	if (!JS_DefineProperty(cx, mailbox, "domain", JS_StringToJsval(domain), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		goto out_ret;
-
-	if (!JS_DefineProperty(cx, self, "mailbox", OBJECT_TO_JSVAL(mailbox), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		goto out_ret;
-
-	trail = JS_NewStringCopyZ(cx, arg);
-	JS_SET_RVAL(cx, vp, JS_StringToJsval(trail));
-	ret = JS_TRUE;
-
-out_ret:
-	JS_free(cx, c_str);
-	return ret;
+	return 0;
 }
 
-static JSBool SmtpPath_toString(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpPath_toString(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval domain, local, domains, mailbox, v;
-	uint32_t domains_len, i = 0;
+	duk_idx_t self, domains, mailbox, local, domain;
+	int domains_len, i = 0;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
-	char c, *str = NULL;
-	JSBool ret = JS_FALSE;
+	char c;
 
-	if (!JS_GetProperty(cx, self, "domains", &domains))
-		return JS_RetErrno(cx, EINVAL);
+	duk_push_this(ctx);
+	self = duk_get_top_index(ctx);
 
-	if (!JS_GetProperty(cx, self, "mailbox", &mailbox) || JSVAL_IS_NULL(mailbox))
-		return JS_RetErrno(cx, EINVAL);
+	if (!duk_get_prop_string(ctx, self, "domains"))
+		return js_ret_errno(ctx, EINVAL);
+	domains = duk_get_top_index(ctx);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "local", &local))
-		return JS_RetErrno(cx, EINVAL);
+	if (!duk_get_prop_string(ctx, self, "mailbox") || duk_is_null(ctx, -1))
+		return js_ret_errno(ctx, EINVAL);
+	mailbox = duk_get_top_index(ctx);
 
-	if (!JS_GetProperty(cx, JSVAL_TO_OBJECT(mailbox), "domain", &domain))
-		return JS_RetErrno(cx, EINVAL);
+	if (!duk_get_prop_string(ctx, mailbox, "local"))
+		return js_ret_errno(ctx, EINVAL);
+	local = duk_get_top_index(ctx);
 
-	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(domains), &domains_len))
-		return JS_RetErrno(cx, EINVAL);
+	if (!duk_get_prop_string(ctx, mailbox, "domain"))
+		return js_ret_errno(ctx, EINVAL);
+	domain = duk_get_top_index(ctx);
+
+	domains_len = duk_get_length(ctx, domains);
 
 	if (string_buffer_append_char(&sb, '<'))
 		goto out_clean;
 
 	while (i < domains_len) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(domains), i, &v))
+		if (!duk_get_prop_index(ctx, domains, i))
 			goto out_clean;
 
 		if (string_buffer_append_char(&sb, '@'))
 			goto out_clean;
 
-		JS_free(cx, str);
-		str = JS_EncodeString(cx, JSVAL_TO_STRING(v));
-		if (string_buffer_append_string(&sb, str))
+		if (string_buffer_append_string(&sb, duk_to_string(ctx, -1)))
 			goto out_clean;
 
 		c = ++i < domains_len ? ',' : ':';
@@ -733,45 +678,42 @@ static JSBool SmtpPath_toString(JSContext *cx, unsigned argc, jsval *vp)
 			goto out_clean;
 	}
 
-	if (!JSVAL_IS_NULL(local)) {
-		JS_free(cx, str);
-		str = JS_EncodeString(cx, JSVAL_TO_STRING(local));
-		if (string_buffer_append_string(&sb, str))
+	if (!duk_is_null(ctx, local)) {
+		if (string_buffer_append_string(&sb, duk_to_string(ctx, local)))
 			goto out_clean;
 	}
 
-	if (!JSVAL_IS_NULL(domain)) {
+	if (!duk_is_null(ctx, domain)) {
 		if (string_buffer_append_char(&sb, '@'))
 			goto out_clean;
 
-		JS_free(cx, str);
-		str = JS_EncodeString(cx, JSVAL_TO_STRING(domain));
-		if (string_buffer_append_string(&sb, str))
+		if (string_buffer_append_string(&sb, duk_to_string(ctx, domain)))
 			goto out_clean;
 	}
 
 	if (string_buffer_append_char(&sb, '>'))
 		goto out_clean;
 
-	// FIXME avoid extra copy with JS_NewUCString; but arg is jschar!
-	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_NewStringCopyZ(cx, sb.s)));
-	ret = JS_TRUE;
+	duk_pop_n(ctx, 5);
+	duk_push_string(ctx, sb.s);
+	string_buffer_cleanup(&sb);
+
+	return 1;
 
 out_clean:
 	string_buffer_cleanup(&sb);
-	JS_free(cx, str);
-	if (!ret)
-		JS_ReportErrno(cx, ENOMEM);
-	return ret;
+	return js_report_errno(ctx, ENOMEM);
 }
 
-static JSFunctionSpec SmtpPath_functions[] = {
-	JS_FS("parse", SmtpPath_parse, 1, 0),
-	JS_FS("toString", SmtpPath_toString, 0, 0),
-	JS_FS_END
+static const duk_function_list_entry SmtpPath_functions[] = {
+	{"parse",		SmtpPath_parse,			1},
+	{"toString",		SmtpPath_toString,		0},
+	{NULL,			NULL,				0}
 };
 
 /* }}} SmtpPath */
+
+#if 0
 
 /* {{{ SmtpHeader */
 
@@ -1506,10 +1448,13 @@ static const duk_function_list_entry SmtpServer_functions[] = {
  */
 duk_bool_t js_smtp_init(duk_context *ctx)
 {
-#if 0
-	if (!JS_InitClass(cx, global, NULL, &SmtpPath_class, SmtpPath_construct, 1, NULL, SmtpPath_functions, NULL, NULL))
-		return JS_FALSE;
+	duk_push_c_function(ctx, SmtpPath_construct, 0);
+	duk_push_object(ctx);
+	duk_put_function_list(ctx, -1, SmtpPath_functions);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "SmtpPath");
 
+#if 0
 	if (!JS_InitClass(cx, global, NULL, &SmtpHeader_class, SmtpHeader_construct, 1, NULL, SmtpHeader_functions, NULL, NULL))
 		return JS_FALSE;
 #endif
