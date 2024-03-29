@@ -896,16 +896,12 @@ int smtp_hdlr_rcpt(struct smtp_server_context *ctx, const char *cmd, const char 
  */
 int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
 {
-#ifdef FIXME
-	jsval v, js_arg[2];
-	JSObject *rcps, *hdrs;
-	JSString *str;
 	duk_size_t len;
 	char path[] = "/tmp/mailfilter.XXXXXX";
 	int fd, status = EIO;
 	bfd_t bstream;
 
-	if (!duk_get_prop_string(ctx->dcx, ctx->js_srv, PR_RECIPIENTS)) {
+	if (!duk_get_prop_string(ctx->dcx, ctx->js_srv_idx, PR_RECIPIENTS)) {
 		duk_pop(ctx->dcx);
 		return EINVAL;
 	}
@@ -920,9 +916,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (!len)
 		return smtp_response_copy(rsp, &smtp_rsp_no_recipients);
 
-	hdrs = JS_NewArrayObject(js_context, 0, NULL);
-	if (!hdrs)
-		return EINVAL;
+	duk_push_array(ctx->dcx); // headers
 
 	/* prepare temporary file to store message body */
 	if ((fd = mkstemp(path)) == -1)
@@ -931,7 +925,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	bfd_init(&bstream, fd);
 
 	if (!smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
-		status = smtp_copy_to_file(&bstream, &ctx->stream, hdrs);
+		status = smtp_copy_to_file(ctx->dcx, &bstream, &ctx->stream);
 
 	if (bfd_close(&bstream) && !status)
 		status = EINVAL;
@@ -953,14 +947,8 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 		goto out_error;
 	}
 
-	status = EINVAL;
-	str = JS_NewStringCopyZ(js_context, path);
-	if (!str)
-		goto out_error;
-
-	js_arg[0] = OBJECT_TO_JSVAL(hdrs);
-	js_arg[1] = STRING_TO_JSVAL(str);
-	status = call_js_handler(ctx, cmd, 2, js_arg, rsp);
+	duk_push_string(ctx->dcx, path);
+	status = call_js_handler(ctx, cmd, 2, rsp);
 	goto out_clean;
 
 out_error:
@@ -970,12 +958,13 @@ out_error:
 	 * NULL arguments to give the JS side a chance to clean up the
 	 * transaction state (e.g. RSET the client connection).
 	 */
-	js_arg[0] = JSVAL_NULL;
-	js_arg[1] = JSVAL_NULL;
-	call_js_handler(ctx, cmd, 2, js_arg, NULL);
+	duk_pop(ctx->dcx); // headers
+	duk_push_null(ctx->dcx);
+	duk_push_null(ctx->dcx);
+	call_js_handler(ctx, cmd, 2, NULL);
 
 out_clean:
-	if (!js_init_envelope(js_context, ctx->js_srv)) {
+	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
 		if (!status)
 			free(rsp->message);
 		if (status != EIO)
@@ -984,9 +973,6 @@ out_clean:
 
 	unlink(path);
 	return status;
-#else
-	return 0;
-#endif
 }
 
 /**
