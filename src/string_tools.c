@@ -106,17 +106,3 @@ void string_remove_whitespace(char *str)
 	}
 	memset(p, 0, curr - p);
 }
-
-void string_remove_beginning_whitespace(char *str)
-{
-	char *p, *curr;
-	int ok = 1;
-
-	for (p = curr = str; *curr; curr++) {
-		if (ok && isspace(*curr))
-			continue;
-		ok = 0;
-		*p++ = *curr;
-	}
-	memset(p, 0, curr - p);
-}

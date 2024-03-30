@@ -713,260 +713,196 @@ static const duk_function_list_entry SmtpPath_functions[] = {
 
 /* }}} SmtpPath */
 
-#if 0
-
 /* {{{ SmtpHeader */
 
-static JSClass SmtpHeader_class = {
-	"SmtpHeader", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SmtpHeader_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpHeader_construct(duk_context *ctx)
 {
-	jsval name, parts;
-	JSObject *obj, *pr;
+	duk_idx_t argc = duk_get_top(ctx);
 
-	name = JS_ARGV(cx, vp)[0];
-	parts = JS_ARGV(cx, vp)[1];
+	if (argc < 1)
+		return js_ret_errno(ctx, EINVAL);
 
-	obj = JS_NewObjectForConstructor(cx, &SmtpHeader_class, vp);
-	if (!obj)
-		return JS_FALSE;
+	duk_push_this(ctx);
 
 	// Set name property
-	if (!JS_SetProperty(js_context, obj, "name", &name))
-		return JS_FALSE;
+	duk_dup(ctx, 0);
+	duk_to_string(ctx, -1);
+	duk_put_prop_string(ctx, -2, "name");
 
 	// Add parts property
-	if (argc >= 2 && JS_TypeOfValue(cx, parts) == JSTYPE_OBJECT) {
-		if (!JS_SetProperty(js_context, obj, "parts", &parts))
-			return JS_FALSE;
+	if (argc >= 2 && duk_is_object(ctx, 1)) {
+		duk_dup(ctx, 1);
 		goto out_ret;
 	}
 
-	pr = JS_NewArrayObject(js_context, 0, NULL);
-	if (!pr)
-		return JS_FALSE;
+	duk_push_array(ctx);
 
-	if (argc >= 2 && JS_TypeOfValue(cx, parts) == JSTYPE_STRING) {
+	if (argc >= 2) {
 		// Add message to messages array
-		if (!JS_SetElement(js_context, pr, 0, &parts))
-			return JS_FALSE;
-		goto out_ret;
+		duk_dup(ctx, 1);
+		duk_to_string(ctx, -1);
+		duk_put_prop_index(ctx, -2, 0);
 	}
-
-	if (argc >= 2)
-		return JS_FALSE;
 
 out_ret:
-	parts = OBJECT_TO_JSVAL(pr);
+	duk_put_prop_string(ctx, -2, "parts");
 
-	if (!JS_SetProperty(js_context, obj, "parts", &parts))
-		return JS_FALSE;
-
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool SmtpHeader_getValue(JSContext *cx, unsigned argc, jsval *vp)
+/*
+ * Get the canonical value of the header by left trimming each part and
+ * concatenating the parts. The object is not modified.
+ */
+static int SmtpHeader_getValue(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval parts, rval;
+	duk_size_t len, i;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	int err;
 
-	uint32_t parts_len, header_len;
-	int i;
-	char *c_str, *header_no_wsp;
+	duk_push_this(ctx);
 
-	// Get parts
-	if (!JS_GetProperty(cx, self, "parts", &parts)) {
-		return JS_FALSE;
+	if (!duk_get_prop_string(ctx, -1, "parts")) {
+		duk_pop_2(ctx);
+		return js_ret_errno(ctx, EINVAL);
 	}
 
 	// Get number of parts
-	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(parts), &parts_len)) {
-		return -1;
+	len = duk_get_length(ctx, -1);
+
+	for (i = 0; i < len; i++) {
+		if (i && (err = string_buffer_append_char(&sb, ' ')))
+			goto out_ret;
+
+		duk_get_prop_index(ctx, -1, i);
+		err = string_buffer_append_string(&sb,
+			ltrim(duk_to_string(ctx, -1)));
+		duk_pop(ctx);
+		if (err)
+			goto out_ret;
 	}
 
-	if (parts_len == 0) {
-		JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, "")));
+	duk_pop_2(ctx);
+	duk_push_string(ctx, sb.s ? sb.s : "");
+	string_buffer_cleanup(&sb);
 
-		return JS_TRUE;
-	}
+	return 1;
 
-	header_len = 0;
+out_ret:
+	duk_pop_2(ctx);
+	string_buffer_cleanup(&sb);
 
-	for (i = 0; i < (int) parts_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
-			return -1;
-		}
-		header_len += JS_GetStringLength(JSVAL_TO_STRING(rval));
-	}
-
-	header_len += 3 * ((int) parts_len - 1);
-
-	c_str = malloc(header_len + 1);
-
-	if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), 0, &rval)) {
-		return -1;
-	}
-
-	// Remove beginning whitespace chars
-	header_no_wsp = JS_EncodeString(cx, JSVAL_TO_STRING(rval));
-	string_remove_beginning_whitespace(header_no_wsp);
-
-	strcpy(c_str, header_no_wsp);
-	strcat(c_str, " ");
-
-	free(header_no_wsp);
-
-	for (i = 1; i < (int) parts_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &rval)) {
-			return -1;
-		}
-
-		// Remove beginning whitespace chars
-		header_no_wsp = JS_EncodeString(cx, JSVAL_TO_STRING(rval));
-		string_remove_beginning_whitespace(header_no_wsp);
-
-		strcat(c_str, header_no_wsp);
-		free(header_no_wsp);
-
-		if (i < (int) (parts_len - 1)) {
-			strcat(c_str, " ");
-		}
-	}
-
-	strcat(c_str, "\0");
-
-	JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(JS_InternString(cx, c_str)));
-
-	free(c_str);
-
-	return JS_TRUE;
+	return js_ret_errno(ctx, err);
 }
 
-static JSBool SmtpHeader_toString(JSContext *cx, unsigned argc, jsval *vp)
+/*
+ * Get a string representation of the entire header, including folding. The
+ * result contains the header name, followed by ": ", followed by all value
+ * parts with their existing leading whitespace and concatenated by "\r\n".
+ */
+static int SmtpHeader_toString(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval rval, name, parts, part;
-	uint32_t parts_len;
-	int i;
+	duk_size_t len, i;
+	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
+	int err = EINVAL;
+
+	duk_push_this(ctx);
 
 	// Get name
-	if (!JS_GetProperty(cx, self, "name", &name)) {
-		return JS_FALSE;
-	}
+	if (!duk_get_prop_string(ctx, -1, "name"))
+		goto out_ret;
+
+	if ((err = string_buffer_append_string(&sb, duk_get_string(ctx, -1))))
+		goto out_ret;
+	if ((err = string_buffer_append_string(&sb, ": ")))
+		goto out_ret;
+
+	duk_pop(ctx);
 
 	// Get parts
-	if (!JS_GetProperty(cx, self, "parts", &parts)) {
-		return JS_FALSE;
+	if (!duk_get_prop_string(ctx, -1, "parts")) {
+		err = EINVAL;
+		goto out_ret;
 	}
 
 	// Get number of parts
-	if (!JS_GetArrayLength(cx, JSVAL_TO_OBJECT(parts), &parts_len)) {
-		return -1;
+	len = duk_get_length(ctx, -1);
+
+	for (i = 0; i < len; i++) {
+		if (i && (err = string_buffer_append_string(&sb, "\r\n")))
+			goto out_ret;
+
+		duk_get_prop_index(ctx, -1, i);
+		err = string_buffer_append_string(&sb,
+			duk_to_string(ctx, -1));
+		duk_pop(ctx);
+		if (err)
+			goto out_ret;
 	}
 
-	rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(name), JS_InternString(cx, ": ")));
+	duk_pop_2(ctx);
+	duk_push_string(ctx, sb.s);
+	string_buffer_cleanup(&sb);
 
-	for (i = 0; i < (int) parts_len; i++) {
-		if (!JS_GetElement(cx, JSVAL_TO_OBJECT(parts), i, &part)) {
-			return -1;
-		}
+	return 1;
 
-		rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JSVAL_TO_STRING(part)));
+out_ret:
+	duk_pop_2(ctx);
+	string_buffer_cleanup(&sb);
 
-		if (i < (int) parts_len - 1) {
-			rval = STRING_TO_JSVAL(JS_ConcatStrings(cx, JSVAL_TO_STRING(rval), JS_InternString(cx, "\r\n")));
-		}
-	}
-
-	JS_SET_RVAL(cx, vp, rval);
-	return JS_TRUE;
+	return js_ret_errno(ctx, err);
 }
 
-static JSBool SmtpHeader_refold(JSContext *cx, unsigned argc, jsval *vp)
+static int SmtpHeader_refold(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	jsval name, value, parts;
-	int width, len;
-	char /* *c_name, */ *c_value, *p1, *p2, *p3, *c_part;
+	int hdridx = 0, err;
+	const int width = duk_get_int(ctx, 0);
+	char *value, *part, *ptr, *end;
 
-	width = JSVAL_TO_INT(JS_ARGV(cx, vp)[0]);
+	// Get canonical value
+	if ((err = SmtpHeader_getValue(ctx)) < 0)
+		return err;
+	if (!(value = strdup(duk_get_string(ctx, -1))))
+		return js_ret_errno(ctx, ENOMEM);
+	duk_pop(ctx);
 
-	// Get name
-	if (!JS_GetProperty(cx, self, "name", &name)) {
-		return JS_FALSE;
+	// Prepare new header parts
+	duk_push_this(ctx);
+	duk_push_array(ctx);
+
+	for (part = value; *part; part = end + !!*end) {
+		// Find the longest substring that starts at [part], ends with
+		// either ' ' or '\0' and is shorter than [width]. If there is
+		// no ' ' within the first [width] characters, take everything
+		// up to the first ' ' (or the end of string if no ' ' exists).
+		for (end = NULL, ptr = part; *ptr; end = ptr, ptr += !!*ptr) {
+			ptr = strchr(ptr, ' ') ?: strchr(ptr, '\0');
+			if (ptr - part > width)
+				break;
+		}
+		if (!end) // the first substring is longer than width
+			end = ptr;
+		if (hdridx)
+			*--part = '\t';
+		duk_push_lstring(ctx, part, end - part);
+		duk_put_prop_index(ctx, -1, hdridx++);
 	}
+	free(value);
 
-	// Get value
-	if (SmtpHeader_getValue(cx, argc, vp)) {
-		value = *vp;
-	}
+	duk_put_prop_string(ctx, -2, "parts");
+	duk_pop(ctx);
 
-	// Delete header parts
-	if (!JS_GetProperty(cx, self, "parts", &parts))
-		return JS_FALSE;
-	if (!JS_SetArrayLength(cx, JSVAL_TO_OBJECT(parts), 0))
-		return JS_FALSE;
-
-	//c_name = JS_EncodeString(cx, JSVAL_TO_STRING(name));
-	c_value = JS_EncodeString(cx, JSVAL_TO_STRING(value));
-
-	p1 = c_value;
-	p2 = p1;
-	p3 = c_value;
-	len = 0;
-
-	do {
-		int count = 0;
-		do {
-			len += p2 - p1;
-			p1 = p2;
-
-			if ((p2 = strchr(p1, ' ')) == NULL) {
-				c_part = malloc(strlen(c_value) + 2);
-				c_part[0] = '\t';
-				strncpy(c_part + 1, c_value, strlen(c_value) + 1);
-				header_add_part(js_context, self, c_part);
-				free(c_part);
-				free(p3);
-				return JS_TRUE;
-			}
-			p2++;
-			count++;
-		} while (len + p2 - p1 < width);
-
-		// Add tab, then header, then null terminator
-		c_part = malloc(len + 1);
-		c_part[0] = '\t';
-		strncpy(c_part + 1, c_value, len - 1);
-		c_part[len] = '\0';
-
-		// Add this new part to header.parts
-		header_add_part(js_context, self, c_part);
-		c_value += len;
-		free(c_part);
-
-		len = 0;
-	} while (1);
-
-	return JS_TRUE;
+	return 0;
 }
 
-static JSFunctionSpec SmtpHeader_functions[] = {
-	JS_FS("getValue", SmtpHeader_getValue, 0, 0),
-	JS_FS("toString", SmtpHeader_toString, 0, 0),
-	JS_FS("refold", SmtpHeader_refold, 0, 0),
-	JS_FS_END
+static const duk_function_list_entry SmtpHeader_functions[] = {
+	{"getValue",		SmtpHeader_getValue,		0},
+	{"toString",		SmtpHeader_toString,		0},
+	{"refold",		SmtpHeader_refold,		0},
+	{NULL,			NULL,				0}
 };
 
 /* }}} SmtpHeader */
-
-#endif
 
 /* {{{ SmtpResponse */
 
@@ -1454,10 +1390,11 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 	duk_put_prop_string(ctx, -2, "prototype");
 	duk_put_global_string(ctx, "SmtpPath");
 
-#if 0
-	if (!JS_InitClass(cx, global, NULL, &SmtpHeader_class, SmtpHeader_construct, 1, NULL, SmtpHeader_functions, NULL, NULL))
-		return JS_FALSE;
-#endif
+	duk_push_c_function(ctx, SmtpHeader_construct, DUK_VARARGS);
+	duk_push_object(ctx);
+	duk_put_function_list(ctx, -1, SmtpHeader_functions);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "SmtpHeader");
 
 	duk_push_c_function(ctx, SmtpResponse_construct, DUK_VARARGS);
 	duk_put_global_string(ctx, "SmtpResponse");
