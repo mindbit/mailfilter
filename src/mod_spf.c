@@ -6,231 +6,190 @@
 
 #include "mailfilter.h"
 
-#define sr_js_int_prop(func, rp) \
-	INT_TO_JSVAL(SPF_response_##func(rp)), \
-	NULL, NULL, JSPROP_ENUMERATE
-
-#define sr_js_str_prop(cx, func, rp) \
-	STRING_TO_JSVAL(JS_NewStringCopyZ(cx, SPF_response_get_##func(rp))), \
-	NULL, NULL, JSPROP_ENUMERATE
-
-static JSObject *build_spf_response(JSContext *cx, SPF_errcode_t status, SPF_response_t *rp)
+static duk_bool_t build_spf_response(duk_context *ctx, SPF_errcode_t status, SPF_response_t *rp)
 {
-	JSObject *global = JS_GetGlobalForScopeChain(cx);
-	JSObject *obj, *msar;
-	jsval ctor;
 	int msglen, i;
 
-	if (!JS_GetProperty(cx, global, "SpfResponse", &ctor))
-		return NULL;
-
-	obj = JS_New(cx, JSVAL_TO_OBJECT(ctor), 0, NULL);
-	if (!obj)
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "status", INT_TO_JSVAL(status), NULL, NULL, JSPROP_ENUMERATE))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "result", sr_js_int_prop(result, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "reason", sr_js_int_prop(reason, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "errcode", sr_js_int_prop(errcode, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "spfRecord", sr_js_str_prop(cx, received_spf, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "spfValue", sr_js_str_prop(cx, received_spf_value, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "headerComment", sr_js_str_prop(cx, header_comment, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "smtpComment", sr_js_str_prop(cx, smtp_comment, rp)))
-		return NULL;
-
-	if (!JS_DefineProperty(cx, obj, "explanation", sr_js_str_prop(cx, explanation, rp)))
-		return NULL;
-
-	msar = JS_NewArrayObject(cx, 0, 0);
-	if (!JS_DefineProperty(cx, obj, "errors", OBJECT_TO_JSVAL(msar), NULL, NULL, JSPROP_ENUMERATE))
-		return NULL;
-
-	msglen = SPF_response_messages(rp);
-	for (i = 0; i < msglen; i++) {
-		JSObject *msg = JS_NewObject(cx, NULL, NULL, NULL);
-		if (!JS_DefineElement(cx, msar, i, OBJECT_TO_JSVAL(msg), NULL, NULL, JSPROP_ENUMERATE))
-			return NULL;
-
-		SPF_error_t *e = SPF_response_message(rp, i);
-
-		if (!JS_DefineProperty(cx, msg, "code", INT_TO_JSVAL(SPF_error_code(e)), NULL, NULL, JSPROP_ENUMERATE))
-			return NULL;
-
-		if (!JS_DefineProperty(cx, msg, "message", STRING_TO_JSVAL(JS_NewStringCopyZ(cx, SPF_error_message(e))), NULL, NULL, JSPROP_ENUMERATE))
-			return NULL;
-
-		if (!JS_DefineProperty(cx, msg, "isError", BOOLEAN_TO_JSVAL(SPF_error_errorp(e)), NULL, NULL, JSPROP_ENUMERATE))
-			return NULL;
+	if (!duk_get_global_string(ctx, "SpfResponse")) {
+		duk_pop(ctx);
+		return 0;
 	}
 
-	return obj;
+	duk_new(ctx, 0);
+
+	duk_push_int(ctx, status);
+	duk_put_prop_string(ctx, -2, "status");
+
+	duk_push_int(ctx, SPF_response_result(rp));
+	duk_put_prop_string(ctx, -2, "result");
+
+	duk_push_int(ctx, SPF_response_reason(rp));
+	duk_put_prop_string(ctx, -2, "reason");
+
+	duk_push_int(ctx, SPF_response_errcode(rp));
+	duk_put_prop_string(ctx, -2, "errcode");
+
+	duk_push_string(ctx, SPF_response_get_received_spf(rp));
+	duk_put_prop_string(ctx, -2, "spfRecord");
+
+	duk_push_string(ctx, SPF_response_get_received_spf_value(rp));
+	duk_put_prop_string(ctx, -2, "spfValue");
+
+	duk_push_string(ctx, SPF_response_get_header_comment(rp));
+	duk_put_prop_string(ctx, -2, "headerComment");
+
+	duk_push_string(ctx, SPF_response_get_smtp_comment(rp));
+	duk_put_prop_string(ctx, -2, "smtpComment");
+
+	duk_push_string(ctx, SPF_response_get_explanation(rp));
+	duk_put_prop_string(ctx, -2, "explanation");
+
+	duk_push_array(ctx);
+	msglen = SPF_response_messages(rp);
+	for (i = 0; i < msglen; i++) {
+		SPF_error_t *e = SPF_response_message(rp, i);
+
+		duk_push_object(ctx);
+
+		duk_push_int(ctx, SPF_error_code(e));
+		duk_put_prop_string(ctx, -2, "code");
+
+		duk_push_string(ctx, SPF_error_message(e));
+		duk_put_prop_string(ctx, -2, "message");
+
+		duk_push_boolean(ctx, SPF_error_errorp(e));
+		duk_put_prop_string(ctx, -2, "isError");
+
+		duk_put_prop_index(ctx, -2, i);
+	}
+	duk_put_prop_string(ctx, -2, "errors");
+
+	return 1;
 }
 
 /* {{{ SpfServer */
 
-static void SpfServer_finalize(JSFreeOp *fop, JSObject *obj);
-static JSClass SpfServer_class = {
-	"SpfServer", JSCLASS_HAS_PRIVATE, JS_PropertyStub,
-	JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-	JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
-	SpfServer_finalize, JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SpfServer_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SpfServer_construct(duk_context *ctx)
 {
-	JSObject *obj;
-	int32_t dnstype;
 	SPF_server_t *server;
 
-	if (argc < 1)
-		return JS_RetErrno(cx, EINVAL);
+	if (duk_is_undefined(ctx, 0))
+		return js_ret_errno(ctx, EINVAL);
 
-	if (!JS_ValueToInt32(cx, JS_ARGV(cx, vp)[0], &dnstype))
-		return JS_RetErrno(cx, EINVAL);
-
-	obj = JS_NewObjectForConstructor(cx, &SpfServer_class, vp);
-	if (!obj)
-		return JS_RetErrno(cx, ENOMEM);
-
-	server = SPF_server_new(dnstype, 1);
+	server = SPF_server_new(duk_to_int32(ctx, 0), 1);
 	if (!server)
-		return JS_RetErrno(cx, EINVAL);
+		return js_ret_errno(ctx, EINVAL);
 
-	JS_SetPrivate(obj, server);
+	duk_push_this(ctx);
+	duk_push_pointer(ctx, server);
+	duk_put_prop_string(ctx, -2, "server");
+	duk_pop(ctx);
 
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
+	return 0;
 }
 
-static void SpfServer_finalize(JSFreeOp *fop, JSObject *obj)
+static int SpfServer_finalize(duk_context *ctx)
 {
-	SPF_server_t *server = JS_GetPrivate(obj);
+	SPF_server_t *server = NULL;
+
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "server")) {
+		server = duk_get_pointer(ctx, -1);
+	}
+	duk_pop_2(ctx);
+
 	if (server)
 		SPF_server_free(server);
+
+	return 0;
 }
 
 // FIXME de vazut ce face SPF_request_query_rcptto; eventual fac 2 metode: queryMailFrom si queryRcptTo
 // TODO primeste ca param adresa si domeniul
-static JSBool SpfServer_query(JSContext *cx, unsigned argc, jsval *vp)
+static int SpfServer_query(duk_context *ctx)
 {
-	JSObject *self = JSVAL_TO_OBJECT(JS_THIS(cx, vp));
-	JSObject *robj;
-	char *addr, *from;
-	JSBool ret = JS_FALSE;
-	SPF_request_t *spf_request = NULL;
+	const char *addr, *from;
+	SPF_server_t *server;
+	SPF_request_t *spf_request;
 	SPF_response_t  *spf_response = NULL;
 	SPF_errcode_t status;
+	duk_bool_t robj;
 
-	if (argc < 2)
-		return JS_RetErrno(cx, EINVAL);
+	duk_push_this(ctx);
 
-	addr = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]);
-	from = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]);
-	if (!addr || !from) {
-		JS_ReportErrno(cx, EINVAL);
-		goto out_clean;
-	}
+	if (!duk_get_prop_string(ctx, -1, "server"))
+		return js_ret_errno(ctx, EFAULT);
+	server = duk_get_pointer(ctx, -1);
 
-	spf_request = SPF_request_new(JS_GetPrivate(self));
-	if (!spf_request) {
-		JS_ReportErrno(cx, ENOMEM);
-		goto out_clean;
-	}
+	if (duk_is_undefined(ctx, 0) || duk_is_undefined(ctx, 1))
+		return js_ret_errno(ctx, EINVAL);
+
+	addr = duk_to_string(ctx, 0);
+	from = duk_to_string(ctx, 1);
+
+	spf_request = SPF_request_new(server);
+	if (!spf_request)
+		return js_ret_errno(ctx, ENOMEM);
 
 	status = SPF_request_set_ipv4_str(spf_request, addr);
 	if (status == SPF_E_INVALID_IP4)
 		status = SPF_request_set_ipv6_str(spf_request, addr);
 	if (status != SPF_E_SUCCESS) {
-		JS_ReportErrno(cx, EINVAL);
-		goto out_clean;
+		SPF_request_free(spf_request);
+		return js_ret_errno(ctx, EINVAL);
 	}
 
 	status = SPF_request_set_env_from(spf_request, from);
 	if (status != SPF_E_SUCCESS) {
-		JS_ReportErrno(cx, EINVAL);
-		goto out_clean;
+		SPF_request_free(spf_request);
+		return js_ret_errno(ctx, EINVAL);
 	}
 
 	status = SPF_request_query_mailfrom(spf_request, &spf_response);
 	/*
 	 * The libspf2 API is messed up. Don't check status here and
 	 * throw an error, because we may get status != SPF_E_SUCCESS if
-	 * e.g. the domain does not exist. Check if spf_response was set
-	 * instead.
+	 * e.g. the domain does not exist. Instead, check if spf_response
+	 * has been set.
 	 */
 	if (!spf_response) {
-		JS_ReportErrno(cx, EIO);
-		goto out_clean;
-	}
-
-	robj = build_spf_response(cx, status, spf_response);
-	if (robj) {
-		JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(robj));
-		ret = JS_TRUE;
-	}
-
-out_clean:
-	if (spf_response)
-		SPF_response_free(spf_response);
-	if (spf_request)
 		SPF_request_free(spf_request);
-	JS_free(cx, addr);
-	JS_free(cx, from);
-	return ret;
+		return js_ret_errno(ctx, EIO);
+	}
+
+	robj = build_spf_response(ctx, status, spf_response);
+	SPF_response_free(spf_response);
+	SPF_request_free(spf_request);
+	if (!robj)
+		return js_ret_error(ctx, "SpfResponse is not defined");
+
+	return 1;
 }
 
-static JSFunctionSpec SpfServer_functions[] = {
-	JS_FS("query", SpfServer_query, 0, 0),
-	JS_FS_END
+static duk_function_list_entry SpfServer_functions[] = {
+	{"query",	SpfServer_query, 	2},
+	{NULL,		NULL,			0}
 };
 
 /* }}} SpfServer */
 
 /* {{{ SpfResponse */
 
-static JSClass SpfResponse_class = {
-	"SpfResponse", 0, JS_PropertyStub, JS_PropertyStub,
-	JS_PropertyStub, JS_StrictPropertyStub, JS_EnumerateStub,
-	JS_ResolveStub, JS_ConvertStub, NULL,
-	JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static JSBool SpfResponse_construct(JSContext *cx, unsigned argc, jsval *vp)
+static int SpfResponse_construct(duk_context *ctx)
 {
-	JSObject *obj;
-
-	obj = JS_NewObjectForConstructor(cx, &SpfResponse_class, vp);
-	if (!obj)
-		return JS_RetErrno(cx, ENOMEM);
-
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(obj));
-	return JS_TRUE;
+	return 0;
 }
 
 /* }}} SpfResponse */
 
 /* {{{ libspf2 Logging Handlers */
 
-static void __attribute__((noreturn)) JS_LogSpfError(const char *file, int line, const char *errmsg)
+static void __attribute__((noreturn)) js_log_spf_error(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	JS_LogImpl(JS_LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(JS_LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	JS_LogImpl(JS_LOG_ERR, "[%s] %s\n", file, errmsg);
+	jS_log_impl(JS_LOG_ERR, "[%s] %s\n", file, errmsg);
 #endif
 	/*
 	 * FIXME abort() required by libspf2, but this really should be
@@ -240,30 +199,30 @@ static void __attribute__((noreturn)) JS_LogSpfError(const char *file, int line,
 	abort();
 }
 
-static void JS_LogSpfWarning(const char *file, int line, const char *errmsg)
+static void js_log_spf_warning(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	JS_LogImpl(JS_LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(JS_LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	JS_LogImpl(JS_LOG_WARNING, "[%s] %s\n", file, errmsg);
+	js_log_impl(JS_LOG_WARNING, "[%s] %s\n", file, errmsg);
 #endif
 }
 
-static void JS_LogSpfInfo(const char *file, int line, const char *errmsg)
+static void js_log_spf_info(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	JS_LogImpl(JS_LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(JS_LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	JS_LogImpl(JS_LOG_INFO, "[%s] %s\n", file, errmsg);
+	js_log_impl(JS_LOG_INFO, "[%s] %s\n", file, errmsg);
 #endif
 }
 
-static void JS_LogSpfDebug(const char *file, int line, const char *errmsg)
+static void js_log_spf_debug(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	JS_LogImpl(JS_LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(JS_LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	JS_LogImpl(JS_LOG_DEBUG, "[%s] %s\n", file, errmsg);
+	js_log_impl(JS_LOG_DEBUG, "[%s] %s\n", file, errmsg);
 #endif
 }
 
@@ -271,10 +230,7 @@ static void JS_LogSpfDebug(const char *file, int line, const char *errmsg)
 
 #define SPF_PROP(prop) {#prop, SPF_##prop}
 
-static const struct {
-	const char *name;
-	int value;
-} Spf_props[] = {
+static const duk_number_list_entry Spf_props[] = {
 	/* enum SPF_server_dnstype_enum */
 	SPF_PROP(DNS_RESOLV),
 	SPF_PROP(DNS_CACHE),
@@ -330,36 +286,32 @@ static const struct {
 	SPF_PROP(E_INCLUDE_RETURNED_NONE),
 	SPF_PROP(E_RECURSIVE),
 	SPF_PROP(E_MULTIPLE_RECORDS),
+	{NULL, 0.0}
 };
 
-JSBool mod_spf_init(JSContext *cx, JSObject *global)
+duk_bool_t mod_spf_init(duk_context *ctx)
 {
-	JSObject *obj;
-	int i;
+	SPF_error_handler = js_log_spf_error;
+	SPF_warning_handler = js_log_spf_warning;
+	SPF_info_handler = js_log_spf_info;
+	SPF_debug_handler = js_log_spf_debug;
 
-	SPF_error_handler = JS_LogSpfError;
-	SPF_warning_handler = JS_LogSpfWarning;
-	SPF_info_handler = JS_LogSpfInfo;
-	SPF_debug_handler = JS_LogSpfDebug;
+	duk_push_c_function(ctx, SpfServer_construct, 1);
+	duk_push_object(ctx);
+	duk_push_c_function(ctx, SpfServer_finalize, 2);
+	duk_set_finalizer(ctx, -2);
+	duk_put_function_list(ctx, -1, SpfServer_functions);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "SpfServer");
 
-	if (!JS_InitClass(cx, global, NULL, &SpfServer_class, SpfServer_construct, 1, NULL, SpfServer_functions, NULL, NULL))
-		return JS_FALSE;
+	duk_push_c_function(ctx, SpfResponse_construct, 0);
+	duk_put_global_string(ctx, "SpfResponse");
 
-	if (!JS_InitClass(cx, global, NULL, &SpfResponse_class, SpfResponse_construct, 1, NULL, NULL/* FIXME SpfResponse_functions*/, NULL, NULL))
-		return JS_FALSE;
+	duk_push_object(ctx);
+	duk_put_number_list(ctx, -1, Spf_props);
+	duk_put_global_string(ctx, "Spf");
 
-	obj = JS_NewObject(cx, NULL, NULL, NULL);
-	if (!obj)
-		return JS_FALSE;
-
-	for (i = 0; i < ARRAY_SIZE(Spf_props); i++)
-		if (!JS_DefineProperty(cx, obj, Spf_props[i].name, INT_TO_JSVAL(Spf_props[i].value), NULL, NULL, JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT))
-			return JS_FALSE;
-
-	if (!JS_DefineProperty(cx, global, "Spf", OBJECT_TO_JSVAL(obj), NULL, NULL, JSPROP_ENUMERATE | JSPROP_PERMANENT))
-		return JS_FALSE;
-
-	return JS_TRUE;
+	return 1;
 }
 
 // vim: foldmethod=marker

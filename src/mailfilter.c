@@ -56,7 +56,7 @@ const char *white = "\r\n\t ";
 const char *tab_space = "\t ";
 
 // FIXME will be retrieved by dlsym() when loadable module support is available
-//JSBool mod_spf_init(JSContext *cx, JSObject *global);
+duk_bool_t mod_spf_init(duk_context *ctx);
 
 static void js_fatal(void *udata, const char *msg) {
 	(void) udata;  /* ignored in this case, silence warning */
@@ -97,10 +97,10 @@ static duk_context *js_init(const char *filename)
 #if 0
 	if (!js_dns_init(ctx))
 		goto out_clean;
+#endif
 
 	// FIXME will be called by Sys.loadModule() when supported
 	mod_spf_init(ctx);
-#endif
 
 	/* Read the file into memory */
 
