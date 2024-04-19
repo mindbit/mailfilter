@@ -6,7 +6,44 @@
 
 #include "mailfilter.h"
 
-static duk_bool_t build_spf_response(duk_context *ctx, SPF_errcode_t status, SPF_response_t *rp)
+/* {{{ SpfServer */
+
+static int SpfServer_construct(duk_context *ctx)
+{
+	SPF_server_t *server;
+
+	if (duk_is_undefined(ctx, 0))
+		return js_ret_errno(ctx, EINVAL);
+
+	server = SPF_server_new(duk_to_int32(ctx, 0), 1);
+	if (!server)
+		return js_ret_errno(ctx, EINVAL);
+
+	duk_push_this(ctx);
+	duk_push_pointer(ctx, server);
+	duk_put_prop_string(ctx, -2, "server");
+	duk_pop(ctx);
+
+	return 0;
+}
+
+static int SpfServer_finalize(duk_context *ctx)
+{
+	SPF_server_t *server = NULL;
+
+	duk_push_this(ctx);
+	if (duk_get_prop_string(ctx, -1, "server")) {
+		server = duk_get_pointer(ctx, -1);
+	}
+	duk_pop_2(ctx);
+
+	if (server)
+		SPF_server_free(server);
+
+	return 0;
+}
+
+static duk_bool_t __build_spf_response(duk_context *ctx, SPF_errcode_t status, SPF_response_t *rp)
 {
 	int msglen, i;
 
@@ -67,43 +104,6 @@ static duk_bool_t build_spf_response(duk_context *ctx, SPF_errcode_t status, SPF
 	return 1;
 }
 
-/* {{{ SpfServer */
-
-static int SpfServer_construct(duk_context *ctx)
-{
-	SPF_server_t *server;
-
-	if (duk_is_undefined(ctx, 0))
-		return js_ret_errno(ctx, EINVAL);
-
-	server = SPF_server_new(duk_to_int32(ctx, 0), 1);
-	if (!server)
-		return js_ret_errno(ctx, EINVAL);
-
-	duk_push_this(ctx);
-	duk_push_pointer(ctx, server);
-	duk_put_prop_string(ctx, -2, "server");
-	duk_pop(ctx);
-
-	return 0;
-}
-
-static int SpfServer_finalize(duk_context *ctx)
-{
-	SPF_server_t *server = NULL;
-
-	duk_push_this(ctx);
-	if (duk_get_prop_string(ctx, -1, "server")) {
-		server = duk_get_pointer(ctx, -1);
-	}
-	duk_pop_2(ctx);
-
-	if (server)
-		SPF_server_free(server);
-
-	return 0;
-}
-
 // FIXME de vazut ce face SPF_request_query_rcptto; eventual fac 2 metode: queryMailFrom si queryRcptTo
 // TODO primeste ca param adresa si domeniul
 static int SpfServer_query(duk_context *ctx)
@@ -157,7 +157,7 @@ static int SpfServer_query(duk_context *ctx)
 		return js_ret_errno(ctx, EIO);
 	}
 
-	robj = build_spf_response(ctx, status, spf_response);
+	robj = __build_spf_response(ctx, status, spf_response);
 	SPF_response_free(spf_response);
 	SPF_request_free(spf_request);
 	if (!robj)
@@ -182,51 +182,7 @@ static int SpfResponse_construct(duk_context *ctx)
 
 /* }}} SpfResponse */
 
-/* {{{ libspf2 Logging Handlers */
-
-static void __attribute__((noreturn)) js_log_spf_error(const char *file, int line, const char *errmsg)
-{
-#ifdef JS_DEBUG
-	js_log_impl(JS_LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
-#else
-	jS_log_impl(JS_LOG_ERR, "[%s] %s\n", file, errmsg);
-#endif
-	/*
-	 * FIXME abort() required by libspf2, but this really should be
-	 * fixed upstream - who wants to link against a library that
-	 * aborts instead of returning error codes?
-	 */
-	abort();
-}
-
-static void js_log_spf_warning(const char *file, int line, const char *errmsg)
-{
-#ifdef JS_DEBUG
-	js_log_impl(JS_LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
-#else
-	js_log_impl(JS_LOG_WARNING, "[%s] %s\n", file, errmsg);
-#endif
-}
-
-static void js_log_spf_info(const char *file, int line, const char *errmsg)
-{
-#ifdef JS_DEBUG
-	js_log_impl(JS_LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
-#else
-	js_log_impl(JS_LOG_INFO, "[%s] %s\n", file, errmsg);
-#endif
-}
-
-static void js_log_spf_debug(const char *file, int line, const char *errmsg)
-{
-#ifdef JS_DEBUG
-	js_log_impl(JS_LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
-#else
-	js_log_impl(JS_LOG_DEBUG, "[%s] %s\n", file, errmsg);
-#endif
-}
-
-/* }}} libspf2 Logging Handlers */
+/* {{{ Spf */
 
 #define SPF_PROP(prop) {#prop, SPF_##prop}
 
@@ -288,6 +244,54 @@ static const duk_number_list_entry Spf_props[] = {
 	SPF_PROP(E_MULTIPLE_RECORDS),
 	{NULL, 0.0}
 };
+
+/* }}} Spf */
+
+/* {{{ libspf2 Logging Handlers */
+
+static void __attribute__((noreturn)) js_log_spf_error(const char *file, int line, const char *errmsg)
+{
+#ifdef JS_DEBUG
+	js_log_impl(JS_LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
+#else
+	jS_log_impl(JS_LOG_ERR, "[%s] %s\n", file, errmsg);
+#endif
+	/*
+	 * FIXME abort() required by libspf2, but this really should be
+	 * fixed upstream - who wants to link against a library that
+	 * aborts instead of returning error codes?
+	 */
+	abort();
+}
+
+static void js_log_spf_warning(const char *file, int line, const char *errmsg)
+{
+#ifdef JS_DEBUG
+	js_log_impl(JS_LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
+#else
+	js_log_impl(JS_LOG_WARNING, "[%s] %s\n", file, errmsg);
+#endif
+}
+
+static void js_log_spf_info(const char *file, int line, const char *errmsg)
+{
+#ifdef JS_DEBUG
+	js_log_impl(JS_LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
+#else
+	js_log_impl(JS_LOG_INFO, "[%s] %s\n", file, errmsg);
+#endif
+}
+
+static void js_log_spf_debug(const char *file, int line, const char *errmsg)
+{
+#ifdef JS_DEBUG
+	js_log_impl(JS_LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
+#else
+	js_log_impl(JS_LOG_DEBUG, "[%s] %s\n", file, errmsg);
+#endif
+}
+
+/* }}} libspf2 Logging Handlers */
 
 duk_bool_t mod_spf_init(duk_context *ctx)
 {
