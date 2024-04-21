@@ -27,16 +27,6 @@
 
 #include "mailfilter.h"
 
-const struct {
-	ns_sect sect;
-	const char *prop;
-} smap[] = {
-	{ns_s_qd,	"question"},
-	{ns_s_an,	"answer"},
-	{ns_s_ns,	"ns"},
-	{ns_s_ar,	"additional"},
-};
-
 static int parse_t_a(duk_context *ctx, const ns_msg *hdl, const ns_rr *rr)
 {
 	char addr[16];
@@ -67,21 +57,21 @@ static int parse_name(duk_context *ctx, const ns_msg *hdl, const ns_rr *rr)
 	return 0;
 }
 
-const struct {
-	ns_type type;
-	int (*func)(duk_context *, const ns_msg *, const ns_rr *);
-} pmap[] = {
-	{ns_t_a,	parse_t_a},
-	{ns_t_cname,	parse_name},
-	{ns_t_ns,	parse_name},
-};
-
 /*
  * Parse a single answer section. The topmost element on the Duktape stack is an
  * array object that the resource records will be stored in.
  */
 static int parse_section(duk_context *ctx, ns_msg *hdl, ns_sect sect)
 {
+	static const struct {
+		ns_type type;
+		int (*func)(duk_context *, const ns_msg *, const ns_rr *);
+	} pmap[] = {
+		{ns_t_a,	parse_t_a},
+		{ns_t_cname,	parse_name},
+		{ns_t_ns,	parse_name},
+	};
+
 	int rrnum, i;
 	ns_rr rr;
 
@@ -162,6 +152,16 @@ static int Dns_revAddr(duk_context *ctx)
 
 static int Dns_query(duk_context *ctx)
 {
+	static const struct {
+		ns_sect sect;
+		const char *prop;
+	} smap[] = {
+		{ns_s_qd,	"question"},
+		{ns_s_an,	"answer"},
+		{ns_s_ns,	"ns"},
+		{ns_s_ar,	"additional"},
+	};
+
 	const char *domain;
 	int32_t type;
 	struct __res_state rs;
