@@ -148,7 +148,7 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	// least one of them is null, it means the SMTP engine rejected
 	// the DATA command (e.g. the message failed to parse). In this
 	// case we need to clean up the transaction state with the real
-	// SMTP server. We should not return an SmtpStatus, since it's
+	// SMTP server. We should not return a SmtpResponse, since it's
 	// ignored anyway by the engine.
 	if (!headers || !body) {
 		this.relayCmd("RSET");
