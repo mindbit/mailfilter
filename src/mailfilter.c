@@ -94,10 +94,8 @@ static duk_context *js_init(const char *filename)
 	if (!js_smtp_init(ctx))
 		goto out_clean;
 
-#if 0
 	if (!js_dns_init(ctx))
 		goto out_clean;
-#endif
 
 	// FIXME will be called by Sys.loadModule() when supported
 	mod_spf_init(ctx);

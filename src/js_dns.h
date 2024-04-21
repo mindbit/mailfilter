@@ -23,8 +23,6 @@
 
 #include <duktape.h>
 
-#if 0
-JSBool js_dns_init(JSContext *cx, JSObject *global);
-#endif
+duk_bool_t js_dns_init(duk_context *ctx);
 
 #endif

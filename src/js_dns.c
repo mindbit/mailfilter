@@ -37,114 +37,91 @@ const struct {
 	{ns_s_ar,	"additional"},
 };
 
-static JSBool parse_t_a(JSContext *cx, JSObject *robj, const ns_msg *hdl, const ns_rr *rr)
+static int parse_t_a(duk_context *ctx, const ns_msg *hdl, const ns_rr *rr)
 {
 	char addr[16];
-	JSString *str;
 
 	if (ns_rr_rdlen(*rr) != 4)
-		return JS_TRUE;
+		return 0;
 
 	if (!inet_ntop(AF_INET, ns_rr_rdata(*rr), addr, sizeof(addr)))
-		return JS_TRUE;
+		return 0;
 
-	str = JS_NewStringCopyZ(cx, addr);
-	if (!str)
-		return JS_RetErrno(cx, ENOMEM);
+	duk_push_string(ctx, addr);
+	duk_put_prop_string(ctx, -2, "data");
 
-	if (!JS_DefineProperty(cx, robj, "data", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
-		return JS_RetErrno(cx, ENOMEM);
-
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool parse_name(JSContext *cx, JSObject *robj, const ns_msg *hdl, const ns_rr *rr)
+static int parse_name(duk_context *ctx, const ns_msg *hdl, const ns_rr *rr)
 {
 	char name[MAXDNAME];
-	JSString *str;
 	const unsigned char *base = ns_msg_base(*hdl), *end = ns_msg_end(*hdl);
 
 	if (ns_name_uncompress(base, end, ns_rr_rdata(*rr), name, sizeof(name)) < 0)
-		return JS_TRUE;
+		return 0;
 
-	str = JS_NewStringCopyZ(cx, name);
-	if (!str)
-		return JS_RetErrno(cx, ENOMEM);
+	duk_push_string(ctx, name);
+	duk_put_prop_string(ctx, -2, "data");
 
-	if (!JS_DefineProperty(cx, robj, "data", STRING_TO_JSVAL(str), NULL, NULL, JSPROP_ENUMERATE))
-		return JS_RetErrno(cx, ENOMEM);
-
-	return JS_TRUE;
+	return 0;
 }
 
 const struct {
 	ns_type type;
-	JSBool (*func)(JSContext *, JSObject *, const ns_msg *, const ns_rr *);
+	int (*func)(duk_context *, const ns_msg *, const ns_rr *);
 } pmap[] = {
 	{ns_t_a,	parse_t_a},
 	{ns_t_cname,	parse_name},
 	{ns_t_ns,	parse_name},
 };
 
-
-static JSBool parse_section(JSContext *cx, JSObject *sobj, ns_msg *hdl, ns_sect sect)
+/*
+ * Parse a single answer section. The topmost element on the Duktape stack is an
+ * array object that the resource records will be stored in.
+ */
+static int parse_section(duk_context *ctx, ns_msg *hdl, ns_sect sect)
 {
 	int rrnum, i;
 	ns_rr rr;
-	JSObject *robj;
-	JSString *name;
 
 	for (rrnum = 0; rrnum < ns_msg_count(*hdl, sect); rrnum++) {
 		if (ns_parserr(hdl, sect, rrnum, &rr) < 0)
-			return JS_RetError(cx, "ns_parserr: %s", strerror(errno));
+			return js_ret_error(ctx, "ns_parserr: %s", strerror(errno));
 
-		robj = JS_NewObject(cx, NULL, NULL, NULL);
-		if (!robj)
-			return JS_RetErrno(cx, ENOMEM);
+		duk_push_object(ctx);
+		duk_push_string(ctx, ns_rr_name(rr));
+		duk_put_prop_string(ctx, -2, "name");
+		duk_push_int(ctx, ns_rr_type(rr));
+		duk_put_prop_string(ctx, -2, "type");
 
-		if (!JS_DefineElement(cx, sobj, rrnum, OBJECT_TO_JSVAL(robj), NULL, NULL, JSPROP_ENUMERATE))
-			return JS_RetErrno(cx, ENOMEM);
+		for (i = 0; i < ARRAY_SIZE(pmap); i++)
+			if (pmap[i].type == ns_rr_type(rr)) {
+				pmap[i].func(ctx, hdl, &rr);
+				break;
+			}
 
-		name = JS_NewStringCopyZ(cx, ns_rr_name(rr));
-		if (!name || !JS_DefineProperty(cx, robj, "name", STRING_TO_JSVAL(name), NULL, NULL, JSPROP_ENUMERATE))
-			return JS_RetErrno(cx, ENOMEM);
-
-		if (!JS_DefineProperty(cx, robj, "type", INT_TO_JSVAL(ns_rr_type(rr)), NULL, NULL, JSPROP_ENUMERATE))
-			return JS_RetErrno(cx, ENOMEM);
-
-		for (i = 0; i < ARRAY_SIZE(pmap); i++) {
-			if (pmap[i].type != ns_rr_type(rr))
-				continue;
-			if (!pmap[i].func(cx, robj, hdl, &rr))
-				return JS_FALSE;
-			break;
-		}
+		duk_put_prop_index(ctx, -2, rrnum);
 	}
 
-	return JS_TRUE;
+	return 0;
 }
 
-static JSBool Dns_revAddr(JSContext *cx, unsigned argc, jsval *vp)
+static int Dns_revAddr(duk_context *ctx)
 {
-	char *addr = NULL, *darg = NULL, *rev = NULL;
-	const char *domain = NULL;
-	JSBool ret = JS_FALSE;
+	int argc = duk_get_top(ctx);
+	const char *addr, *domain = NULL;
+	char *rev = NULL;
 	unsigned char buf[sizeof(struct in6_addr)];
 	size_t len;
 
 	if (argc < 1)
-		goto out_err;
+		return js_ret_errno(ctx, EINVAL);
 
-	addr = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0]);
-	if (!addr)
-		goto out_err;
+	addr = duk_to_string(ctx, 0);
 
-	if (argc >= 2) {
-		darg = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[1]);
-		if (!darg)
-			goto out_err;
-		domain = darg;
-	}
+	if (argc >= 2)
+		domain = duk_to_string(ctx, 1);
 
 	if (inet_pton(AF_INET, addr, buf)) {
 		if (!domain)
@@ -153,7 +130,7 @@ static JSBool Dns_revAddr(JSContext *cx, unsigned argc, jsval *vp)
 		len = 17 + strlen(domain);
 		rev = malloc(len);
 		if (!rev)
-			goto out_err;
+			return js_ret_errno(ctx, ENOMEM);
 
 		snprintf(rev, len, "%hhu.%hhu.%hhu.%hhu.%s",
 				buf[3], buf[2], buf[1], buf[0], domain);
@@ -166,7 +143,7 @@ static JSBool Dns_revAddr(JSContext *cx, unsigned argc, jsval *vp)
 		len = 65 + strlen(domain);
 		rev = malloc(len);
 		if (!rev)
-			goto out_err;
+			return js_ret_errno(ctx, ENOMEM);
 
 		for (i = 15; i >= 0; i--)
 			sprintf(&rev[(15 - i) * 4], "%hhx.%hhx.",
@@ -175,94 +152,50 @@ static JSBool Dns_revAddr(JSContext *cx, unsigned argc, jsval *vp)
 	}
 
 	if (rev) {
-		JSString *s = JS_NewStringCopyZ(cx, rev);
-		if (!s)
-			goto out_ret;
-		JS_SET_RVAL(cx, vp, STRING_TO_JSVAL(s));
+		duk_push_string(ctx, rev);
+		free(rev);
 	} else
-		JS_SET_RVAL(cx, vp, JSVAL_NULL);
+		duk_push_null(ctx);
 
-	ret = JS_TRUE;
-	goto out_ret;
-
-out_err:
-	JS_ReportErrno(cx, EINVAL);
-out_ret:
-	JS_free(cx, addr);
-	JS_free(cx, darg);
-	free(rev);
-	return ret;
+	return 1;
 }
 
-static JSBool Dns_query(JSContext *cx, unsigned argc, jsval *vp)
+static int Dns_query(duk_context *ctx)
 {
-	char *domain;
+	const char *domain;
 	int32_t type;
 	struct __res_state rs;
 	unsigned char rsp[NS_PACKETSZ];
 	int rlen;
 	ns_msg hdl;
-	JSObject *robj, *sobj;
 	int i;
 
-	if (argc < 2)
-		return JS_RetErrno(cx, EINVAL);
-
 	if (res_ninit(&rs))
-		return JS_RetError(cx, "res_ninit: %s", hstrerror(h_errno));
+		return js_ret_error(ctx, "res_ninit: %s", hstrerror(h_errno));
 
-	if (!JS_ValueToInt32(cx, JS_ARGV(cx, vp)[1], &type))
-		return JS_RetErrno(cx, EINVAL);
-
-	if (!(domain = JS_EncodeStringValue(cx, JS_ARGV(cx, vp)[0])))
-		return JS_RetErrno(cx, EINVAL);
-
+	domain = duk_to_string(ctx, 0);
+	type = duk_to_int32(ctx, 1);
 	rlen = res_nquery(&rs, domain, ns_c_in, type, rsp, sizeof(rsp));
-	JS_free(cx, domain);
+
 	if (rlen < 0) {
-		JS_SET_RVAL(cx, vp, INT_TO_JSVAL(h_errno));
-		return JS_TRUE;
+		duk_push_int(ctx, h_errno);
+		return 1;
 	}
 
 	if (ns_initparse(rsp, rlen, &hdl))
-		return JS_RetError(cx, "ns_initparse: %s", strerror(errno));
+		return js_ret_error(ctx, "ns_initparse: %s", strerror(errno));
 
-	robj = JS_NewObject(cx, NULL, NULL, NULL);
-	if (!robj)
-		return JS_RetErrno(cx, ENOMEM);
-
-	JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(robj));
+	duk_push_object(ctx);
 	for (i = 0; i < ARRAY_SIZE(smap); i++) {
-		sobj = JS_NewArrayObject(cx, 0, NULL);
-		if (!sobj) {
-			JS_SET_RVAL(cx, vp, JSVAL_NULL);
-			return JS_RetErrno(cx, ENOMEM);
-		}
-
-		if (!JS_DefineProperty(cx, robj, smap[i].prop, OBJECT_TO_JSVAL(sobj), NULL, NULL, JSPROP_ENUMERATE)) {
-			JS_SET_RVAL(cx, vp, JSVAL_NULL);
-			return JS_RetErrno(cx, ENOMEM);
-		}
-
-		if (!parse_section(cx, sobj, &hdl, smap[i].sect)) {
-			JS_SET_RVAL(cx, vp, JSVAL_NULL);
-			return JS_FALSE;
-		}
+		duk_push_array(ctx);
+		parse_section(ctx, &hdl, smap[i].sect);
+		duk_put_prop_string(ctx, -2, smap[i].prop);
 	}
 
-	return JS_TRUE;
+	return 1;
 }
 
-static JSClass Dns_class = {
-	"Dns", 0, JS_PropertyStub, JS_PropertyStub, JS_PropertyStub,
-	JS_StrictPropertyStub, JS_EnumerateStub, JS_ResolveStub,
-	JS_ConvertStub, NULL, JSCLASS_NO_OPTIONAL_MEMBERS
-};
-
-static const struct {
-	const char *name;
-	int value;
-} Dns_props[] = {
+static const duk_number_list_entry Dns_props[] = {
 	// h_errno
 	{"HOST_NOT_FOUND",	HOST_NOT_FOUND},
 	{"TRY_AGAIN",		TRY_AGAIN},
@@ -354,36 +287,21 @@ static const struct {
 	{"t_avc",		ns_t_avc},
 	{"t_ta",		ns_t_ta},
 	{"t_dlv",		ns_t_dlv},
+	{NULL,			0.0}
 };
 
-static JSFunctionSpec Dns_functions[] = {
-	JS_FS("revAddr", Dns_revAddr, 2, 0),
-	JS_FS("query", Dns_query, 2, 0),
-	JS_FS_END
+static duk_function_list_entry Dns_functions[] = {
+	{"revAddr",	Dns_revAddr, 	DUK_VARARGS},
+	{"query",	Dns_query,	2},
+	{NULL,		NULL,		0}
 };
 
-
-JSBool js_dns_init(JSContext *cx, JSObject *global)
+duk_bool_t js_dns_init(duk_context *ctx)
 {
-	JSObject *dns;
-	unsigned i;
+	duk_push_object(ctx);
+	duk_put_number_list(ctx, -1, Dns_props);
+	duk_put_function_list(ctx, -1, Dns_functions);
+	duk_put_global_string(ctx, "Dns");
 
-	dns = JS_DefineObject(cx, global, Dns_class.name, &Dns_class, NULL, 0);
-	if (!dns)
-		return JS_FALSE;
-
-	if (!JS_DefineFunctions(cx, dns, Dns_functions))
-		return JS_FALSE;
-
-	for (i = 0; i < ARRAY_SIZE(Dns_props); i++) {
-		JSBool status = JS_DefineProperty(cx, dns,
-				Dns_props[i].name,
-				INT_TO_JSVAL(Dns_props[i].value),
-				NULL, NULL,
-				JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT);
-		if (!status)
-			return JS_FALSE;
-	}
-
-	return JS_TRUE;
+	return 1;
 }
