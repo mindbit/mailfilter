@@ -1,5 +1,5 @@
-// Switch logging to syslog
-Sys.openlog();
+// Uncomment the line below to switch logging to syslog
+//Sys.openlog();
 
 // Load the "sql" module. Registers the global "sql" object, which has
 // the getConnection(url) method.
