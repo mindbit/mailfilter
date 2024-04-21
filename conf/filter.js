@@ -100,13 +100,14 @@ SmtpServer.FILTER_REJECT_PERMANENTLY = 2;
 //   - first element is the DNSBL domain name
 //   - second element (optional) is a callback function // TODO
 //   - remaining elements (optional) are passed to the callback function // TODO
+// See https://www.dnsbl.info/dnsbl-list.php for a list of (active) DNS blacklists
 SmtpServer.dnsbl = [
 	["zen.spamhaus.org"],		// Free for "private mail systems with low traffic";
 					// https://www.spamhaus.org/organization/dnsblusage/
-	["dnsrbl.org"],			// Open; http://dnsrbl.org/
-	["rbl.abuse.ro"],		// Open; http://abuse.ro/#three
+	["bl.spamcop.net"],		// Open; https://www.spamcop.net/bl.shtml
+	["rbl.abuse.ro"],		// Open; https://abuse.ro/#three
 	//["b.barracudacentral.org"],	// Open; requires registation;
-					// http://barracudacentral.org/rbl
+					// https://barracudacentral.org/
 ];
 
 SmtpServer.prototype.relayCmd = function(cmd, args)
