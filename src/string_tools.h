@@ -18,23 +18,19 @@
  */
 struct string_buffer {
 	char *s;
-	size_t size, cur, chunk;
+	size_t size;
+	size_t cur;
+	size_t chunk;
 };
 
 #define STRING_BUFFER_CHUNK 256
 
-#define __STRING_BUFFER_INITIALIZER(__chunk) {\
-	.s = NULL,\
-	.size = 0,\
-	.cur = 0,\
-	.chunk = __chunk\
-}
-
+#define __STRING_BUFFER_INITIALIZER(__chunk) { .chunk = __chunk }
 #define STRING_BUFFER_INITIALIZER __STRING_BUFFER_INITIALIZER(STRING_BUFFER_CHUNK)
 
 static inline void __string_buffer_init(struct string_buffer *sb, size_t chunk)
 {
-	memset(sb, 0, sizeof(struct string_buffer));
+	memset(sb, 0, sizeof(*sb));
 	sb->chunk = chunk;
 }
 
@@ -59,35 +55,8 @@ static inline void string_buffer_reset(struct string_buffer *sb)
 	 * expects the memory to be already zeroed */
 }
 
-static inline int string_buffer_append_char(struct string_buffer *sb, char c)
-{
-	int err;
-
-	/* we add 1 to keep an extra byte for the null terminator */
-	if (sb->cur + 1 >= sb->size && (err = string_buffer_enlarge(sb)))
-		return err;
-
-	sb->s[sb->cur++] = c;
-	/* we don't need to add a '\0' because string_buffer_enlarge()
-	 * zeroes the newly allocated memory for us */
-
-	return 0;
-}
-
-static inline int string_buffer_append_string(struct string_buffer *sb, const char *s)
-{
-	size_t len = strlen(s);
-	int err;
-
-	if (sb->cur + len >= sb->size && (err = __string_buffer_enlarge(sb, sb->chunk * ((sb->chunk + sb->cur + len - sb->size) / sb->chunk))))
-		return err;
-
-	strcpy(sb->s + sb->cur, s);
-	sb->cur += len;
-
-	return 0;
-}
-
+int string_buffer_append_char(struct string_buffer *sb, char c);
+int string_buffer_append_string(struct string_buffer *sb, const char *s);
 int string_buffer_append_strings(struct string_buffer *sb, ...);
 
 /* ------------------ Generic string functionality ---------------- */
@@ -113,7 +82,7 @@ int string_kv_split(char *str, char delim, struct list_head *lh);
 /*
  * Removes all whitespace from a string by altering the original string
  * No additional storage is allocated so the user must be careful to pass
- * a copy of the original string if he needs to preserve the original
+ * a copy of the original string if they need to preserve the original.
  */
 void string_remove_whitespace(char *str);
 

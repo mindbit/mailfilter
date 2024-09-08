@@ -7,6 +7,7 @@
 #include <stdarg.h>
 
 #include "string_tools.h"
+#include "mailfilter.h"
 
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 {
@@ -18,6 +19,38 @@ int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 	memset(s + sb->size, 0, chunk);
 	sb->s = s;
 	sb->size += chunk;
+
+	return 0;
+}
+
+int string_buffer_append_char(struct string_buffer *sb, char c)
+{
+	int err;
+
+	/* we add 1 to reserve an extra byte for the null terminator */
+	if (sb->cur + 1 >= sb->size && (err = string_buffer_enlarge(sb)))
+		return err;
+
+	sb->s[sb->cur++] = c;
+	/* we don't need to add a '\0' because string_buffer_enlarge()
+	 * zeroes the newly allocated memory for us */
+
+	return 0;
+}
+
+int string_buffer_append_string(struct string_buffer *sb, const char *s)
+{
+	size_t len = strlen(s);
+
+	if (sb->cur + len >= sb->size) {
+		int err = __string_buffer_enlarge(sb,
+			  ROUND_UP(sb->cur + len + 1 - sb->size, sb->chunk));
+		if (err)
+			return err;
+	}
+
+	strcpy(sb->s + sb->cur, s);
+	sb->cur += len;
 
 	return 0;
 }
