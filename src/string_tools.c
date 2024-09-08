@@ -16,7 +16,6 @@ int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 	if (s == NULL)
 		return ENOMEM;
 
-	memset(s + sb->size, 0, chunk);
 	sb->s = s;
 	sb->size += chunk;
 
@@ -32,8 +31,7 @@ int string_buffer_append_char(struct string_buffer *sb, char c)
 		return err;
 
 	sb->s[sb->cur++] = c;
-	/* we don't need to add a '\0' because string_buffer_enlarge()
-	 * zeroes the newly allocated memory for us */
+	sb->s[sb->cur] = '\0';
 
 	return 0;
 }
