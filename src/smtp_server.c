@@ -461,7 +461,7 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection) */
 	duk_push_string(dcx, "cleanup");
-	if (!duk_pcall_prop(dcx, ctx.js_srv_idx, 0))
+	if (duk_pcall_prop(dcx, ctx.js_srv_idx, 0) != DUK_EXEC_SUCCESS)
 		js_log_error(dcx, -1);
 	duk_pop(dcx);
 
