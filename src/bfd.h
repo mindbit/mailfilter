@@ -4,6 +4,7 @@
 #define _BFD_H
 
 #include <string.h>
+#include <errno.h>
 #include <sys/types.h>
 
 struct bfd;
@@ -19,25 +20,32 @@ extern int bfd_printf(bfd_t *bfd, const char *format, ...);
 extern ssize_t bfd_read_line(bfd_t *bfd, char *buf, size_t len);
 extern int bfd_copy(bfd_t *src, bfd_t *dst);
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 static inline int bfd_puts(bfd_t *bfd, const char *s)
 {
 	return bfd_write_full(bfd, s, strlen(s));
 }
 
-extern off_t bfd_seek(bfd_t *bfd, off_t offset, int whence);
-
+/**
+ * @return	char read on success; negative POSIX error code on error
+ */
 static inline int bfd_getc(bfd_t *bfd)
 {
 	unsigned char c;
-
-	return bfd_read(bfd, (void *)&c, 1) <= 0 ? -1 : c;
+	int err = bfd_read(bfd, (void *)&c, 1);
+	return err < 0 ? err : (err ? c : -EAGAIN);
 }
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 static inline int bfd_putc(bfd_t *bfd, int _c)
 {
 	unsigned char c = _c & 0xff;
-
-	return bfd_write(bfd, (void *)&c, 1) <= 0 ? -1 : 0;
+	int err = bfd_write(bfd, (void *)&c, 1);
+	return err < 0 ? -err : (err ? 0 : EAGAIN);
 }
 
 #endif

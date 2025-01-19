@@ -142,7 +142,7 @@ static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 	}
 
 	js_log(JS_LOG_DEBUG, "<<< %d %.*s\n", rsp->code, log_len, h);
-	if (bfd_printf(f, "%d %s\r\n", rsp->code, h) >= 0) {
+	if (bfd_printf(f, "%d %s\r\n", rsp->code, h) == 0) {
 		bfd_flush(f);
 		return 0;
 	}
@@ -197,11 +197,9 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
  * @param[out]	size String length after "\r\n" was trimmed and
  *		excluding the null-terminator
  *
- * @return	Positive value: successful read; indicates how many
- *		lines were written to the buffer.
- *		0: no data could be read from the stream (e.g. socket
- *		closed).
- *		-1: socket read error (errno is set).
+ * @return	0 or positive value: the number of lines successfully
+ *		from the stream and written to the buffer;
+ *		negative POSIX error code on error
  */
 static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
 {

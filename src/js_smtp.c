@@ -317,14 +317,14 @@ int smtp_copy_to_file(duk_context *ctx, bfd_t *out, bfd_t *in)
 		buf = (buf << 8) | c;
 
 		if (++fill > PTRN_LEN) {
-			if (bfd_putc(out, (buf >> (PTRN_LEN * 8)) & 0xff) < 0)
+			if (bfd_putc(out, (buf >> (PTRN_LEN * 8)) & 0xff))
 				break;
 			fill = PTRN_LEN;
 		}
 
 		/* double-dot conversion: test for "<CR><LF>." and discard dot */
 		if ((buf & CRLFDOT_MASK) == CRLFDOT_PTRN && fill == PTRN_LEN) {
-			if (bfd_putc(out, 0x0d) < 0 || bfd_putc(out, 0x0a) < 0)
+			if (bfd_putc(out, 0x0d) || bfd_putc(out, 0x0a))
 				break;
 			fill = 2;
 		}
@@ -394,18 +394,18 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 			return EINVAL;
 		}
 
-		if (bfd_puts(out, duk_safe_to_string(ctx, -1)) < 0) {
+		if (bfd_puts(out, duk_safe_to_string(ctx, -1))) {
 			duk_pop_2(ctx);
 			return EIO;
 		}
 		duk_pop_2(ctx);
 
-		if (bfd_puts(out, "\r\n") < 0)
+		if (bfd_puts(out, "\r\n"))
 			return EIO;
 	}
 
 	/* send header delimiter */
-	if (bfd_puts(out, "\r\n") < 0)
+	if (bfd_puts(out, "\r\n"))
 		return EIO;
 
 	/* send body */
@@ -413,7 +413,7 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 		do {
 			buf = (buf << 8) | c;
 			if (++fill > PTRN_LEN) {
-				if (bfd_putc(out, buf >> (PTRN_LEN * 8)) < 0)
+				if (bfd_putc(out, buf >> (PTRN_LEN * 8)))
 					return EIO;
 				fill = PTRN_LEN;
 			}
@@ -425,14 +425,14 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 	while (fill) {
 		if (fill == 2 && (buf & CRLF_MASK) == CRLF_PTRN)
 			add_crlf = 0;
-		if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff) < 0)
+		if (bfd_putc(out, (buf >> (--fill * 8)) & 0xff))
 			return EIO;
 	}
 
 	/* send termination marker */
-	if (add_crlf && bfd_puts(out, "\r\n") < 0)
+	if (add_crlf && bfd_puts(out, "\r\n"))
 		return EIO;
-	if (dotconv && bfd_puts(out, ".\r\n") < 0)
+	if (dotconv && bfd_puts(out, ".\r\n"))
 		return EIO;
 
 	return 0;
@@ -1130,7 +1130,6 @@ static int SmtpClient_sendCommand(duk_context *ctx)
 {
 	bfd_t *stream = NULL;
 	const char *str;
-	int status;
 
 	duk_push_this(ctx);
 	if (duk_get_prop_string(ctx, -1, "stream"))
@@ -1141,8 +1140,7 @@ static int SmtpClient_sendCommand(duk_context *ctx)
 
 	str = duk_to_string(ctx, 0);
 
-	status = bfd_puts(stream, str);
-	if (status < 0)
+	if (bfd_puts(stream, str))
 		return js_ret_errno(ctx, EIO);
 
 	if (duk_is_undefined(ctx, 1))
@@ -1150,18 +1148,17 @@ static int SmtpClient_sendCommand(duk_context *ctx)
 
 	str = duk_to_string(ctx, 1);
 
-	if (bfd_putc(stream, ' ') < 0)
+	if (bfd_putc(stream, ' '))
 		return js_ret_errno(ctx, EIO);
 
-	status = bfd_puts(stream, str);
-	if (status < 0)
+	if (bfd_puts(stream, str))
 		return js_ret_errno(ctx, EIO);
 
 out_flush:
-	if (bfd_puts(stream, "\r\n") < 0)
+	if (bfd_puts(stream, "\r\n"))
 		return js_ret_errno(ctx, EIO);
 
-	if (bfd_flush(stream) < 0)
+	if (bfd_flush(stream))
 		return js_ret_errno(ctx, EIO);
 
 	return 0;
@@ -1191,8 +1188,10 @@ static int SmtpClient_sendMessage(duk_context *ctx)
 
 	bfd_free(body_stream);
 
-	if (status != EIO)
-		bfd_flush(client_stream);
+	if (status != EIO) {
+		int err = bfd_flush(client_stream);
+		status = err ? err : status;
+	}
 
 	if (status)
 		return js_ret_errno(ctx, status);

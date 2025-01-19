@@ -36,20 +36,18 @@ bfd_t *bfd_alloc(int fd)
 }
 
 /**
- * @return	0 on success;
- *		-1 on error (errno is set);
+ * @return	0 on success; POSIX error code on error
  */
 int bfd_free(bfd_t *bfd)
 {
 	int ret = bfd_flush(bfd);
-	ret = close(bfd->fd) ? -1 : ret;
+	ret = close(bfd->fd) ? errno : ret;
 	free(bfd);
 	return ret;
 }
 
 /**
- * @return	0 on success;
- *		-1 on error (errno is set);
+ * @return	0 on success; POSIX error code on error
  */
 int bfd_flush(bfd_t *bfd)
 {
@@ -63,7 +61,7 @@ int bfd_flush(bfd_t *bfd)
 				memcpy(&bfd->wb[0], &bfd->wb[off], bfd->wi - off);
 				bfd->wi -= off;
 			}
-			return sz;
+			return errno;
 		}
 		off += sz;
 	}
@@ -75,7 +73,7 @@ int bfd_flush(bfd_t *bfd)
 
 /**
  * @return	0 or positive value: the number of bytes written;
- * 		-1 socket write error (errno is set)
+ * 		negative POSIX error code on error
  */
 ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 {
@@ -87,7 +85,7 @@ ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 	if (bfd->wi >= BFD_SIZE) {
 		sz = write(bfd->fd, bfd->wb, BFD_SIZE);
 		if (sz <= 0)
-			return sz;
+			return sz ? -errno : 0;
 		bfd->wi = BFD_SIZE - sz;
 		memcpy(&bfd->wb[0], &bfd->wb[sz], bfd->wi);
 	}
@@ -100,8 +98,7 @@ ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 }
 
 /**
- * @return	0 on success;
- * 		-1 socket write error (errno is set)
+ * @return	0 on success; POSIX error code on error
  */
 int bfd_write_full(bfd_t *bfd, const char *p, size_t len)
 {
@@ -110,7 +107,7 @@ int bfd_write_full(bfd_t *bfd, const char *p, size_t len)
 	while (len) {
 		sz = bfd_write(bfd, p, len);
 		if (sz < 0)
-			return sz;
+			return -sz;
 		p += sz;
 		len -= sz;
 	}
@@ -119,9 +116,8 @@ int bfd_write_full(bfd_t *bfd, const char *p, size_t len)
 }
 
 /**
- * @return	positive value: number of bytes read;
- * 		0: no data could be read from the socket
- * 		-1: socket read error (errno is set)
+ * @return	0 or positive value: the number of bytes read;
+ * 		negative POSIX error code on error
  */
 ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 {
@@ -133,7 +129,7 @@ ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 	if (bfd->rh >= bfd->rt) {
 		sz = read(bfd->fd, bfd->rb, BFD_SIZE);
 		if (sz <= 0)
-			return sz;
+			return sz ? -errno : 0;
 		bfd->rh = 0;
 		bfd->rt = sz;
 	}
@@ -146,8 +142,7 @@ ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 }
 
 /**
- * @return	0 on success;
- * 		-1 socket write error (errno is set)
+ * @return	0 on success; POSIX error code on error
  */
 int bfd_printf(bfd_t *bfd, const char *format, ...)
 {
@@ -159,18 +154,19 @@ int bfd_printf(bfd_t *bfd, const char *format, ...)
 	len = vsnprintf(buf, sizeof(buf), format, ap);
 	va_end(ap);
 
-	if (len >= sizeof(buf)) {
-		errno = ENOMEM;
-		return -1;
-	}
+	if (len >= sizeof(buf))
+		return ENOMEM;
 
-	return bfd_write_full(bfd, buf, len) < 0 ? -1 : len;
+	return bfd_write_full(bfd, buf, len);
 }
 
 /**
- * @return	positive value: number of bytes read;
- * 		0: no data could be read from the socket
- * 		-1: socket read error (errno is set)
+ * Read up to (and including) len bytes into buf or until '\n' is read,
+ * whichever occurs first. The resulting string is *not* null terminated.
+ * The '\n' character is included in the resulting string.
+ *
+ * @return	0 or positive value: the number of bytes read;
+ * 		negative POSIX error code on error
  */
 ssize_t bfd_read_line(bfd_t *bfd, char *buf, size_t len)
 {
@@ -189,28 +185,22 @@ ssize_t bfd_read_line(bfd_t *bfd, char *buf, size_t len)
 	return ret;
 }
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 int bfd_copy(bfd_t *src, bfd_t *dst)
 {
 	char buf[4096];
-	size_t sz;
+	ssize_t sz;
+	int err;
 
 	// FIXME use read() and write() directly to avoid unnecessary memcpy()
 	while ((sz = bfd_read(src, buf, sizeof(buf)))) {
 		if (sz < 0)
-			return sz;
-		if (bfd_write_full(dst, buf, sz) < 0)
-			return -1;
+			return -sz;
+		if ((err = bfd_write_full(dst, buf, sz)))
+			return err;
 	}
 
 	return 0;
-}
-
-off_t bfd_seek(bfd_t *bfd, off_t offset, int whence)
-{
-	if (bfd_flush(bfd) < 0)
-		return -1;
-
-	bfd->rh = bfd->rt = 0;
-
-	return lseek(bfd->fd, offset, whence);
 }
