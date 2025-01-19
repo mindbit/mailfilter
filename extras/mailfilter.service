@@ -1,0 +1,11 @@
+[Unit]
+Description=Mail Transport Agent (MTA) framework
+
+[Service]
+Type=exec
+User=mailfilter
+Group=mailfilter
+ExecStart=/usr/bin/mailfilter -c /etc/mailfilter/config.js
+
+[Install]
+WantedBy=multi-user.target
