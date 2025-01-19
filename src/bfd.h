@@ -6,21 +6,11 @@
 #include <string.h>
 #include <sys/types.h>
 
-#define BFD_SIZE 4096
-
-struct bfd {
-	int fd;
-	char rb[BFD_SIZE];			/* read buffer */
-	size_t rh, rt;				/* read head, read tail */
-	char wb[BFD_SIZE];			/* write buffer */
-	size_t wi;					/* write index */
-};
-
+struct bfd;
 typedef struct bfd bfd_t;
 
-void bfd_init(bfd_t *bfd, int fd);
-extern bfd_t *bfd_alloc(int fd);
-int bfd_close(bfd_t *bfd);
+bfd_t *bfd_alloc(int fd);
+int bfd_free(bfd_t *bfd);
 extern int bfd_flush(bfd_t *bfd);
 extern ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len);
 extern int bfd_write_full(bfd_t *bfd, const char *p, size_t len);

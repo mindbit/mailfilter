@@ -32,7 +32,7 @@
  */
 struct smtp_server_context {
 	/* Client stream (buffered file descriptor) */
-	bfd_t stream;
+	bfd_t *stream;
 
 	/* Duktape context */
 	duk_context *dcx;
@@ -168,15 +168,15 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 			break;
 
 	if (!smtp_cmd_table[idx].hdlr)
-		return smtp_server_response(&ctx->stream, &smtp_rsp_not_impl);
+		return smtp_server_response(ctx->stream, &smtp_rsp_not_impl);
 
 	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, &rsp);
 	if (status == EIO)
 		return status;
 	if (status)
-		return smtp_server_response(&ctx->stream, &smtp_rsp_int_err);
+		return smtp_server_response(ctx->stream, &smtp_rsp_int_err);
 
-	status = smtp_server_response(&ctx->stream, &rsp);
+	status = smtp_server_response(ctx->stream, &rsp);
 	free(rsp.message);
 
 	return status;
@@ -248,7 +248,7 @@ static int smtp_server_hdle_one(struct smtp_server_context *ctx)
 	char *c = &buf[0];
 	int status;
 
-	status = smtp_server_read_line(&ctx->stream, buf, &n);
+	status = smtp_server_read_line(ctx->stream, buf, &n);
 
 	if (status < 0) {
 		js_log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
@@ -265,15 +265,15 @@ static int smtp_server_hdle_one(struct smtp_server_context *ctx)
 
 	/* reject oversized commands */
 	if (status > 1)
-		return smtp_server_response(&ctx->stream, &smtp_rsp_cmd_too_long);
+		return smtp_server_response(ctx->stream, &smtp_rsp_cmd_too_long);
 
 	if (!n)
-		return smtp_server_response(&ctx->stream, &smtp_rsp_bad_syntax);
+		return smtp_server_response(ctx->stream, &smtp_rsp_bad_syntax);
 
 	/* Parse SMTP command */
 	c += strspn(c, white);
 	if (*c == '\0')
-		return smtp_server_response(&ctx->stream, &smtp_rsp_bad_syntax);
+		return smtp_server_response(ctx->stream, &smtp_rsp_bad_syntax);
 
 	n = strcspn(c, white);
 
@@ -427,8 +427,14 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 	struct smtp_response rsp;
 
 	remote_addr = inet_ntoa(peer->sin_addr);
-	bfd_init(&ctx.stream, client_sock_fd);
 	js_log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
+
+	ctx.stream = bfd_alloc(client_sock_fd);
+	if (!ctx.stream) {
+		close(client_sock_fd);
+		js_log(JS_LOG_ERR, "%s", strerror(ENOMEM));
+		goto out_msg;
+	}
 
 	/* Create SmtpServer instance */
 	if (!duk_get_global_string(dcx, "SmtpServer"))
@@ -444,11 +450,11 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 
 	/* Handle initial greeting */
 	if (call_js_handler(&ctx, "INIT", 0, &rsp)) {
-		smtp_server_response(&ctx.stream, &smtp_rsp_int_err);
+		smtp_server_response(ctx.stream, &smtp_rsp_int_err);
 		goto out_clean;
 	}
 
-	smtp_server_response(&ctx.stream, &rsp);
+	smtp_server_response(ctx.stream, &rsp);
 	free(rsp.message);
 
 	if (smtp_server_get_disconnect(&ctx))
@@ -468,7 +474,8 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 out_clean:
 	duk_pop(dcx); /* SmtpServer instance (or error) */
 out_close:
-	bfd_close(&ctx.stream);
+	bfd_free(ctx.stream);
+out_msg:
 	js_log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
@@ -881,7 +888,7 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	duk_size_t len;
 	char path[] = "/tmp/mailfilter.XXXXXX";
 	int fd, status = EIO;
-	bfd_t bstream;
+	bfd_t *bstream;
 
 	if (!duk_get_prop_string(ctx->dcx, ctx->js_srv_idx, PR_RECIPIENTS)) {
 		duk_pop(ctx->dcx);
@@ -904,12 +911,16 @@ int smtp_hdlr_data(struct smtp_server_context *ctx, const char *cmd, const char 
 	if ((fd = mkstemp(path)) == -1)
 		return EINVAL;
 
-	bfd_init(&bstream, fd);
+	bstream = bfd_alloc(fd);
+	if (!bstream) {
+		unlink(path);
+		return ENOMEM;
+	}
 
-	if (!smtp_server_response(&ctx->stream, &smtp_rsp_go_ahead))
-		status = smtp_copy_to_file(ctx->dcx, &bstream, &ctx->stream);
+	if (!smtp_server_response(ctx->stream, &smtp_rsp_go_ahead))
+		status = smtp_copy_to_file(ctx->dcx, bstream, ctx->stream);
 
-	if (bfd_close(&bstream) && !status)
+	if (bfd_free(bstream) && !status)
 		status = EINVAL;
 
 	switch (status) {

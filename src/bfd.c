@@ -11,32 +11,40 @@
 
 #include "bfd.h"
 
-void bfd_init(bfd_t *bfd, int fd)
-{
-	bfd->fd = fd;
-	bfd->rh = 0;
-	bfd->rt = 0;
-	bfd->wi = 0;
-}
+#define BFD_SIZE 4096
+
+struct bfd {
+	int fd;
+	char rb[BFD_SIZE];			/* read buffer */
+	size_t rh, rt;				/* read head, read tail */
+	char wb[BFD_SIZE];			/* write buffer */
+	size_t wi;				/* write index */
+};
 
 bfd_t *bfd_alloc(int fd)
 {
-	bfd_t *ret = malloc(sizeof(bfd_t));
+	bfd_t *bfd = malloc(sizeof(bfd_t));
 
-	if (ret)
-		bfd_init(ret, fd);
+	if (bfd) {
+		bfd->fd = fd;
+		bfd->rh = 0;
+		bfd->rt = 0;
+		bfd->wi = 0;
+	}
 
-	return ret;
+	return bfd;
 }
 
 /**
  * @return	0 on success;
  *		-1 on error (errno is set);
  */
-int bfd_close(bfd_t *bfd)
+int bfd_free(bfd_t *bfd)
 {
 	int ret = bfd_flush(bfd);
-	return close(bfd->fd) ? -1 : ret;
+	ret = close(bfd->fd) ? -1 : ret;
+	free(bfd);
+	return ret;
 }
 
 /**

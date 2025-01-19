@@ -983,10 +983,8 @@ static int __SmtpClient_closeStream(duk_context *ctx)
 	duk_del_prop_string(ctx, -2, "stream");
 	duk_pop_2(ctx);
 
-	if (stream) {
-		bfd_close(stream);
-		free(stream);
-	}
+	if (stream)
+		bfd_free(stream);
 
 	return 0;
 }
@@ -1191,8 +1189,7 @@ static int SmtpClient_sendMessage(duk_context *ctx)
 	duk_pop(ctx);
 	status = smtp_copy_from_file(ctx, client_stream, body_stream, 1);
 
-	close(body_stream->fd);
-	free(body_stream);
+	bfd_free(body_stream);
 
 	if (status != EIO)
 		bfd_flush(client_stream);
