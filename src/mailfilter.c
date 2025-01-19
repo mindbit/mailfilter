@@ -137,56 +137,6 @@ out_clean:
 /* Array of server sockets */
 int fds[256], fds_len; // FIXME don't define these globally
 
-/* Forks, closes all file descriptors and redirects stdin/stdout to /dev/null */
-void daemonize(void)
-{
-	struct rlimit rl = {0};
-	int fd = -1;
-	int i;
-
-	switch (fork()) {
-	case -1:
-		//syslog(LOG_ERR, "Prefork stage 1: %m");
-		exit(1);
-	case 0: /* child */
-		break;
-	default: /* parent */
-		exit(0);
-	}
-
-	rl.rlim_max = 0;
-	getrlimit(RLIMIT_NOFILE, &rl);
-	switch (rl.rlim_max) {
-	case -1: /* oops! */
-		//syslog(LOG_ERR, "getrlimit");
-		exit(1);
-	case 0:
-		//syslog(LOG_ERR, "Max number of open file descriptors is 0!");
-		exit(1);
-	}
-	for (i = 0; i < rl.rlim_max; i++)
-		close(i);
-	if (setsid() == -1) {
-		//syslog(LOG_ERR, "setsid failed");
-		exit(1);
-	}
-	switch (fork()) {
-	case -1:
-		//syslog(LOG_ERR, "Prefork stage 2: %m");
-		exit(1);
-	case 0: /* child */
-		break;
-	default: /* parent */
-		exit(0);
-	}
-
-	chdir("/");
-	umask(0);
-	fd = open("/dev/null", O_RDWR);
-	dup(fd);
-	dup(fd);
-}
-
 static void show_help(const char *argv0)
 {
 	fprintf(stderr,
