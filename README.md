@@ -75,7 +75,7 @@ SMTP connections. When a new connection is made, a separate process is forked to
 handle the connection. Therefore, the JavaScript environment is completely
 isolated from the other connections.
 
-When a worked process is started as described above, a SmtpServer instance is
+When a worker process is started as described above, a SmtpServer instance is
 created automatically. The low-level logic of the SMTP protocol is built into
 the Mailfilter engine, and various properties of the SmtpServer instance are
 populated automatically, such as headers, the envelope sender, recipient
@@ -128,18 +128,18 @@ unfortunately it's not a priority for most users/organizations.
 
 Mailfilter started as a pure C implementation where the filtering logic was
 hard-coded into the engine. Some limited customization could be done through the
-configuration file and a (mandatory) relational database.
+configuration file and a (mandatory) relational database. This was version 1.0.
 
 The next iteration added JavaScript (using [SpiderMonkey](https://spidermonkey.dev/))
 and removed the direct connection to the relational database. Instead, if the
 application required customization using a database, it was to be implemented
-using [libjssql](https://github.com/mindbit/libjssql).
+using [libjssql](https://github.com/mindbit/libjssql). This was version 2.x.
 
 The current iteration replaces the JavaScript engine with [Duktape](http://duktape.org/),
 mainly because SpiderMonkey dropped the C API support. Realistically, Duktape is
 easier to embed into another project because it was specifically created for
 this purpose and because the API is much simpler thanks to its data stack
-concept.
+concept. This iteration is version 3.0 and later.
 
 No major changes are planned or expected. A very high level roadmap includes
 stabilization and bringing back some features that were left behind during the
