@@ -132,8 +132,13 @@ static inline int smtp_successful(const struct smtp_response *rsp)
 static int smtp_response_copy(struct smtp_response *dst, const struct smtp_response *src)
 {
 	dst->code = src->code;
-	dst->message = strdup(src->message);
-	return dst->message ? 0 : ENOMEM;
+	free(dst->message);
+	if (src->message) {
+		dst->message = strdup(src->message);
+		return dst->message ? 0 : ENOMEM;
+	}
+	dst->message = NULL;
+	return 0;
 }
 
 /**
@@ -184,16 +189,19 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 
 	status = smtp_cmd_table[idx].hdlr(ctx, cmd, arg, &rsp);
 	if (status == EIO)
-		return status;
-	if (status)
-		return smtp_server_response(ctx->stream, &smtp_rsp_int_err);
+		goto out_ret;
 
-	/* STARTTLS does not send any additional response after a successful SSL handshake */
-	if (rsp.code && rsp.message) {
-		status = smtp_server_response(ctx->stream, &rsp);
+	if (status) {
 		free(rsp.message);
+		return smtp_server_response(ctx->stream, &smtp_rsp_int_err);
 	}
 
+	/* STARTTLS does not send any additional response after a successful SSL handshake */
+	if (rsp.code && rsp.message)
+		status = smtp_server_response(ctx->stream, &rsp);
+
+out_ret:
+	free(rsp.message);
 	return status;
 }
 
@@ -411,6 +419,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 
 	duk_pop(ctx->dcx); /* JS handler return value */
 	rsp->code = code;
+	free(rsp->message);
 	rsp->message = message;
 
 	return 0;
@@ -440,7 +449,7 @@ void smtp_server_main(duk_context *dcx, SSL_CTX *scx, int client_sock_fd, const 
 	int status = 0;
 	char *remote_addr = NULL;
 	struct smtp_server_context ctx = { .dcx = dcx, .scx = scx };
-	struct smtp_response rsp;
+	struct smtp_response rsp = {};
 	SSL *ssl;
 
 	remote_addr = inet_ntoa(peer->sin_addr);
@@ -980,12 +989,8 @@ out_error:
 	call_js_handler(ctx, cmd, 2, NULL);
 
 out_clean:
-	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
-		if (!status)
-			free(rsp->message);
-		if (status != EIO)
-			status = EINVAL;
-	}
+	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx) && status != EIO)
+		status = ENOMEM;
 
 	unlink(path);
 	return status;
