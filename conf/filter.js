@@ -92,12 +92,12 @@ SmtpServer.prototype.smtpInit = function()
 
 SmtpServer.prototype.smtpHelo = function(hostname)
 {
-	return this.relayCmd("HELO", hostname);
+	return this.relayCmd("HELO", this.hostname);
 }
 
 SmtpServer.prototype.smtpEhlo = function(hostname)
 {
-	return this.relayCmd("EHLO", hostname);
+	return this.relayCmd("EHLO", this.hostname);
 }
 
 SmtpServer.prototype.smtpMail = function(path)

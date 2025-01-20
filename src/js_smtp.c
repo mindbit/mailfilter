@@ -1229,7 +1229,7 @@ static int SmtpServer_construct(duk_context *ctx)
 	// Define and set session properties
 
 	duk_push_null(ctx);
-	duk_put_prop_string(ctx, -2, PR_HOSTNAME);
+	duk_put_prop_string(ctx, -2, PR_CLIENTNAME);
 
 	if (!js_init_envelope(ctx, -1))
 		return js_ret_errno(ctx, ENOMEM);
@@ -1252,12 +1252,12 @@ static int SmtpServer_receivedHeader(duk_context *ctx)
 {
 	duk_idx_t argc = duk_get_top(ctx);
 	duk_idx_t self;
-	const char *fname, *proto, *addr, *str;
+	const char *fname, *lhost, *proto, *addr, *str;
 	struct sockaddr_in addr4 = {AF_INET};
-	char phost[NI_MAXHOST], lhost[HOST_NAME_MAX];
+	char phost[NI_MAXHOST];
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 	int err;
-	const char *myid = "mailfilter"; // FIXME take from config; should be similar to EHLO id
+	const char *myid = "Mailfilter"; // TODO take from config
 	time_t t = time(NULL);
 	struct tm *tm = localtime(&t);
 	char ts[40];
@@ -1265,9 +1265,13 @@ static int SmtpServer_receivedHeader(duk_context *ctx)
 	duk_push_this(ctx);
 	self = duk_get_top_index(ctx);
 
-	if (!duk_get_prop_string(ctx, self, PR_HOSTNAME))
+	if (!duk_get_prop_string(ctx, self, PR_CLIENTNAME))
 		return js_ret_errno(ctx, EINVAL);
 	fname = duk_to_string(ctx, -1);
+
+	if (!duk_get_prop_string(ctx, self, PR_HOSTNAME))
+		return js_ret_errno(ctx, EINVAL);
+	lhost = duk_to_string(ctx, -1);
 
 	if (!duk_get_prop_string(ctx, self, PR_PROTO))
 		return js_ret_errno(ctx, EINVAL);
@@ -1281,9 +1285,6 @@ static int SmtpServer_receivedHeader(duk_context *ctx)
 	inet_pton(AF_INET, addr, &addr4.sin_addr); // FIXME check return value
 	if (getnameinfo((struct sockaddr *)&addr4, sizeof(addr4), phost, sizeof(phost), NULL, 0, NI_NAMEREQD))
 		strcpy(phost, "unknown");
-
-	if (gethostname(lhost, sizeof(lhost)))
-		return js_ret_errno(ctx, errno);
 
 	if (!header_alloc(ctx, "Received"))
 		return js_ret_errno(ctx, ENOMEM);
@@ -1382,6 +1383,10 @@ static const duk_function_list_entry SmtpServer_functions[] = {
  */
 duk_bool_t js_smtp_init(duk_context *ctx)
 {
+	char hostname[HOST_NAME_MAX] = "localhost";
+
+	gethostname(hostname, sizeof(hostname));
+
 	duk_push_c_function(ctx, SmtpPath_construct, 0);
 	duk_push_object(ctx);
 	duk_put_function_list(ctx, -1, SmtpPath_functions);
@@ -1408,6 +1413,8 @@ duk_bool_t js_smtp_init(duk_context *ctx)
 	duk_push_c_function(ctx, SmtpServer_construct, 2);
 	duk_push_object(ctx);
 	duk_put_function_list(ctx, -1, SmtpServer_functions);
+	duk_push_string(ctx, hostname);
+	duk_put_prop_string(ctx, -2, PR_HOSTNAME);
 	duk_put_prop_string(ctx, -2, "prototype");
 	duk_put_global_string(ctx, "SmtpServer");
 

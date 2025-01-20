@@ -6,6 +6,7 @@
 #include "bfd.h"
 
 #define PR_HOSTNAME	"hostname"
+#define PR_CLIENTNAME	"clientname"
 #define PR_SENDER	"sender"
 #define PR_RECIPIENTS	"recipients"
 #define PR_DISCONNECT	"disconnect"

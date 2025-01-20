@@ -741,9 +741,9 @@ int smtp_hdlr_helo(struct smtp_server_context *ctx, const char *cmd, const char 
 	if (status || !smtp_successful(rsp))
 		return status;
 
-	/* Set <SmtpServer>.hostname */
+	/* Set <SmtpServer>.clientname */
 	duk_push_lstring(ctx->dcx, arg, alen);
-	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_HOSTNAME);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_CLIENTNAME);
 
 	/* Note: cmd is "EHLO" when we are called by smtp_hdlr_ehlo() */
 	if (strcasecmp(cmd, "EHLO"))
@@ -1060,7 +1060,7 @@ int smtp_hdlr_starttls(struct smtp_server_context *ctx, const char *cmd, const c
 	 */
 
 	duk_push_null(ctx->dcx);
-	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_HOSTNAME);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_CLIENTNAME);
 
 	duk_push_string(ctx->dcx, "SMTP");
 	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_PROTO);
