@@ -37,6 +37,9 @@ struct smtp_server_context {
 	/* Duktape context */
 	duk_context *dcx;
 
+	/* SSL context */
+	SSL_CTX *scx;
+
 	/* JavaScript instance of SmtpServer */
 	duk_idx_t js_srv_idx;
 };
@@ -51,7 +54,7 @@ struct smtp_response {
 
 struct esmtp_cap {
 	const char *verb;
-	int (*cb)(const char *verb, char *param);
+	int (*cb)(struct smtp_server_context *ctx, const char *verb, char *param);
 };
 
 // FIXME
@@ -86,11 +89,13 @@ static struct smtp_cmd_hdlr smtp_cmd_table[];
 		.message	= _message, \
 	}
 
+DEF_SMTP_RSP(tls_ready,		220, "Ready to start TLS");
 DEF_SMTP_RSP(bye,		221, "Closing connection");
 DEF_SMTP_RSP(ok,		250, "OK");
 DEF_SMTP_RSP(go_ahead,		354, "Go ahead");
 DEF_SMTP_RSP(int_err,		451, "Internal server error");
 DEF_SMTP_RSP(no_space,		452, "Insufficient system storage");
+DEF_SMTP_RSP(tls_unavailable,	454, "TLS not available");
 DEF_SMTP_RSP(not_impl,		500, "Command not implemented");
 DEF_SMTP_RSP(cmd_too_long,	500, "Command too long");
 DEF_SMTP_RSP(bad_syntax,	500, "Bad syntax");
@@ -101,10 +106,17 @@ DEF_SMTP_RSP(sndr_specified,	503, "Sender already specified");
 DEF_SMTP_RSP(no_sndr,		503, "Must specify sender first");
 DEF_SMTP_RSP(no_recipients,	503, "Must specify recipient(s) first");
 DEF_SMTP_RSP(hdrs_too_big,	552, "Message header too long");
+DEF_SMTP_RSP(tls_active,	554, "TLS already active");
+
+int esmtp_cap_starttls(struct smtp_server_context *ctx, const char *verb, char *param)
+{
+	return !!ctx->scx;
+}
 
 struct esmtp_cap esmtp_cap_table[] = {
 	{"PIPELINING",		NULL},
 	{"SIZE",		NULL},
+	{"STARTTLS",		esmtp_cap_starttls},
 	{NULL,			NULL}
 };
 
@@ -161,7 +173,7 @@ static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *cmd, const char *arg)
 {
 	int idx, status;
-	struct smtp_response rsp;
+	struct smtp_response rsp = {};
 
 	for (idx = 0; smtp_cmd_table[idx].name; idx++)
 		if (!strcasecmp(smtp_cmd_table[idx].name, cmd))
@@ -176,8 +188,11 @@ static int smtp_server_handle_cmd(struct smtp_server_context *ctx, const char *c
 	if (status)
 		return smtp_server_response(ctx->stream, &smtp_rsp_int_err);
 
-	status = smtp_server_response(ctx->stream, &rsp);
-	free(rsp.message);
+	/* STARTTLS does not send any additional response after a successful SSL handshake */
+	if (rsp.code && rsp.message) {
+		status = smtp_server_response(ctx->stream, &rsp);
+		free(rsp.message);
+	}
 
 	return status;
 }
@@ -297,16 +312,19 @@ static int smtp_server_hdle_one(struct smtp_server_context *ctx)
  */
 static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk_idx_t nargs, struct smtp_response *rsp)
 {
-	char handler_name[10] = "smtp";
+	char handler_name[20] = "smtp";
 	int code, i;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 	char *message;
 	const char *str;
 
-	for (i = 4; i < sizeof(handler_name) - 1 && *cmd; i++)
-		handler_name[i] = tolower(*(cmd++));
-	handler_name[4] = toupper(handler_name[4]);
-	handler_name[i] = '\0';
+	if (*cmd != ':') {
+		for (i = 4; i < sizeof(handler_name) - 1 && *cmd; i++)
+			handler_name[i] = tolower(*(cmd++));
+		handler_name[4] = toupper(handler_name[4]);
+		handler_name[i] = '\0';
+	} else
+		snprintf(handler_name, sizeof(handler_name), "%s", cmd + 1);
 
 	/* Call the given function */
 	duk_push_string(ctx->dcx, handler_name);
@@ -417,12 +435,13 @@ static duk_bool_t smtp_server_get_disconnect(struct smtp_server_context *ctx)
  *	Input:	...
  *	Output:	...
  */
-void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockaddr_in *peer)
+void smtp_server_main(duk_context *dcx, SSL_CTX *scx, int client_sock_fd, const struct sockaddr_in *peer)
 {
-	int status;
+	int status = 0;
 	char *remote_addr = NULL;
-	struct smtp_server_context ctx = { .dcx = dcx };
+	struct smtp_server_context ctx = { .dcx = dcx, .scx = scx };
 	struct smtp_response rsp;
+	SSL *ssl;
 
 	remote_addr = inet_ntoa(peer->sin_addr);
 	js_log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
@@ -464,14 +483,20 @@ void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockadd
 
 	/* Give all modules the chance to clean up (possibly after a broken
 	 * connection) */
-	duk_push_string(dcx, "cleanup");
-	if (duk_pcall_prop(dcx, ctx.js_srv_idx, 0) != DUK_EXEC_SUCCESS)
-		js_log_error(dcx, -1);
-	duk_pop(dcx);
+	call_js_handler(&ctx, ":cleanup", 0, NULL);
 
 out_clean:
 	duk_pop(dcx); /* SmtpServer instance (or error) */
 out_close:
+	if ((ssl = bfd_get_ssl(ctx.stream))) {
+		if (status == EIO)
+			log_ssl_errors();
+		else {
+			bfd_flush(ctx.stream);
+			if (SSL_shutdown(ssl) != 1)
+				log_ssl_errors();
+		}
+	}
 	bfd_free(ctx.stream);
 out_msg:
 	js_log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
@@ -773,7 +798,7 @@ int smtp_hdlr_ehlo(struct smtp_server_context *ctx, const char *cmd, const char 
 		for (cap = &esmtp_cap_table[0]; cap->verb; cap++) {
 			if (strcasecmp(src, cap->verb))
 				continue;
-			if (!cap->cb || cap->cb(cap->verb, param))
+			if (!cap->cb || cap->cb(ctx, cap->verb, param))
 				break;
 		}
 
@@ -966,6 +991,89 @@ out_clean:
 	return status;
 }
 
+int smtp_hdlr_starttls(struct smtp_server_context *ctx, const char *cmd, const char *arg, struct smtp_response *rsp)
+{
+	SSL *ssl;
+	int err;
+
+	if (!ctx->scx)
+		return smtp_response_copy(rsp, &smtp_rsp_not_impl);
+
+	if (strlen(arg))
+		return smtp_response_copy(rsp, &smtp_rsp_bad_syntax);
+
+	if (bfd_get_ssl(ctx->stream))
+		return smtp_response_copy(rsp, &smtp_rsp_tls_active);
+
+	ssl = SSL_new(ctx->scx);
+	if (!ssl) {
+		log_ssl_errors();
+		return smtp_response_copy(rsp, &smtp_rsp_tls_unavailable);
+	}
+
+	if (!SSL_set_fd(ssl, bfd_get_fd(ctx->stream))) {
+		log_ssl_errors();
+		return smtp_response_copy(rsp, &smtp_rsp_tls_unavailable);
+	}
+
+	if (smtp_server_response(ctx->stream, &smtp_rsp_tls_ready)) {
+		SSL_free(ssl);
+		return EIO;
+	}
+
+	/*
+	 * RFC3207 is not very clear about what happens if the TLS negotiation
+	 * fails. However, it does mention that:
+	 *
+	 *    If the TLS negotiation fails or if the client receives a 454
+	 *    response, the client has to decide what to do next.
+	 *
+	 * If a fatal error occurs during negotiation (err < 0) we have no
+	 * choice but to disconnect. But if the handshake is shut down in a
+	 * controlled/compliant way (err = 0), the communication channel is in
+	 * a clean state, and the communication can continue unencrypted. Our
+	 * interpretation of RFC3207 is that in the latter case, because the
+	 * client also knows that the negotiation has failed, the server
+	 * must *not* send an additional 454 response.
+	 */
+	if ((err = SSL_accept(ssl)) <= 0) {
+		log_ssl_errors();
+		SSL_free(ssl);
+		return err ? EIO : 0;
+	}
+
+	bfd_attach_ssl(ctx->stream, ssl);
+	js_log(JS_LOG_INFO, "SSL handshake completed successfully\n");
+
+	/*
+	 * Inform the JS environment that TLS has been enabled. Do this before
+	 * we reset the SMTP transaction state in case the handler needs some
+	 * of the existing info.
+	 */
+	call_js_handler(ctx, ":smtpStartTls", 0, NULL);
+
+	/*
+	 * Reset the SMTP transaction state. See also:
+	 *    smtp_hdlr_helo()
+	 *    smtp_hdlr_rset()
+	 *    SmtpServer_construct()
+	 */
+
+	duk_push_null(ctx->dcx);
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_HOSTNAME);
+
+	duk_push_string(ctx->dcx, "SMTP");
+	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_PROTO);
+
+	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
+		js_log(JS_LOG_ERR, "%s", strerror(ENOMEM));
+		// TODO should we abort the connection?
+		// note that we *cannot* send a response
+	}
+
+	return 0;
+}
+
 /**
  * @return	0 on success;
  *		EINVAL on JS error
@@ -1017,6 +1125,7 @@ static struct smtp_cmd_hdlr smtp_cmd_table[] = {
 	SMTP_CMD_HDLR_INIT(data),
 	SMTP_CMD_HDLR_INIT(mail),
 	SMTP_CMD_HDLR_INIT(rcpt),
+	SMTP_CMD_HDLR_INIT(starttls),
 	SMTP_CMD_HDLR_INIT(rset),
 	SMTP_CMD_HDLR_INIT(noop),
 	SMTP_CMD_HDLR_INIT(quit),

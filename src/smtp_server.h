@@ -7,6 +7,6 @@
 #include <netinet/in.h>
 #include <duktape.h>
 
-extern void smtp_server_main(duk_context *dcx, int client_sock_fd, const struct sockaddr_in *peer);
+extern void smtp_server_main(duk_context *dcx, SSL_CTX *scx, int client_sock_fd, const struct sockaddr_in *peer);
 
 #endif

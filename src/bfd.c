@@ -19,17 +19,51 @@ struct bfd {
 	size_t rh, rt;				/* read head, read tail */
 	char wb[BFD_SIZE];			/* write buffer */
 	size_t wi;				/* write index */
+	SSL *ssl;
+	ssize_t (*read)(bfd_t *bfd, void *buf, size_t count);
+	ssize_t (*write)(bfd_t *bfd, const void *buf, size_t count);
 };
+
+static ssize_t read_native(bfd_t *bfd, void *buf, size_t count)
+{
+	return read(bfd->fd, buf, count);
+}
+
+static ssize_t write_native(bfd_t *bfd, const void *buf, size_t count)
+{
+	return write(bfd->fd, buf, count);
+}
+
+static ssize_t read_ssl(bfd_t *bfd, void *buf, size_t count)
+{
+	int rc = SSL_read(bfd->ssl, buf, count);
+
+	if (rc >= 0)
+		return rc;
+
+	errno = EPROTO;
+	return -1;
+}
+
+static ssize_t write_ssl(bfd_t *bfd, const void *buf, size_t count)
+{
+	int rc = SSL_write(bfd->ssl, buf, count);
+
+	if (rc >= 0)
+		return rc;
+
+	errno = EPROTO;
+	return -1;
+}
 
 bfd_t *bfd_alloc(int fd)
 {
-	bfd_t *bfd = malloc(sizeof(bfd_t));
+	bfd_t *bfd = calloc(1, sizeof(*bfd));
 
 	if (bfd) {
 		bfd->fd = fd;
-		bfd->rh = 0;
-		bfd->rt = 0;
-		bfd->wi = 0;
+		bfd->read = read_native;
+		bfd->write = write_native;
 	}
 
 	return bfd;
@@ -41,9 +75,39 @@ bfd_t *bfd_alloc(int fd)
 int bfd_free(bfd_t *bfd)
 {
 	int ret = bfd_flush(bfd);
-	ret = close(bfd->fd) ? errno : ret;
+
+	SSL_free(bfd->ssl);
+
+	if (close(bfd->fd) && !ret)
+		ret = errno;
+
 	free(bfd);
+
 	return ret;
+}
+
+void bfd_attach_ssl(bfd_t *bfd, SSL *ssl)
+{
+	bfd->ssl = ssl;
+	bfd->read = read_ssl;
+	bfd->write = write_ssl;
+}
+
+void bfd_detach_ssl(bfd_t *bfd)
+{
+	bfd->ssl = NULL;
+	bfd->read = read_native;
+	bfd->write = write_native;
+}
+
+int bfd_get_fd(bfd_t *bfd)
+{
+	return bfd->fd;
+}
+
+SSL *bfd_get_ssl(bfd_t *bfd)
+{
+	return bfd->ssl;
 }
 
 /**
@@ -55,7 +119,7 @@ int bfd_flush(bfd_t *bfd)
 	size_t off = 0;
 
 	while (off < bfd->wi) {
-		sz = write(bfd->fd, &bfd->wb[off], bfd->wi - off);
+		sz = bfd->write(bfd, &bfd->wb[off], bfd->wi - off);
 		if (sz < 0) {
 			if (off) {
 				memcpy(&bfd->wb[0], &bfd->wb[off], bfd->wi - off);
@@ -83,7 +147,7 @@ ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len)
 		return 0;
 
 	if (bfd->wi >= BFD_SIZE) {
-		sz = write(bfd->fd, bfd->wb, BFD_SIZE);
+		sz = bfd->write(bfd, bfd->wb, BFD_SIZE);
 		if (sz <= 0)
 			return sz ? -errno : 0;
 		bfd->wi = BFD_SIZE - sz;
@@ -127,7 +191,7 @@ ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 		return 0;
 
 	if (bfd->rh >= bfd->rt) {
-		sz = read(bfd->fd, bfd->rb, BFD_SIZE);
+		sz = bfd->read(bfd, bfd->rb, BFD_SIZE);
 		if (sz <= 0)
 			return sz ? -errno : 0;
 		bfd->rh = 0;
@@ -194,7 +258,6 @@ int bfd_copy(bfd_t *src, bfd_t *dst)
 	ssize_t sz;
 	int err;
 
-	// FIXME use read() and write() directly to avoid unnecessary memcpy()
 	while ((sz = bfd_read(src, buf, sizeof(buf)))) {
 		if (sz < 0)
 			return -sz;

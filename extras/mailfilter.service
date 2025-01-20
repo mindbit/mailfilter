@@ -5,7 +5,8 @@ Description=Mail Transport Agent (MTA) framework
 Type=exec
 User=mailfilter
 Group=mailfilter
-ExecStart=/usr/bin/mailfilter -c /etc/mailfilter/config.js
+EnvironmentFile=/etc/sysconfig/mailfilter
+ExecStart=/usr/bin/mailfilter -c /etc/mailfilter/config.js -k ${SSL_KEY} -s ${SSL_CHAIN}
 
 [Install]
 WantedBy=multi-user.target

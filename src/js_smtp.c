@@ -1357,6 +1357,7 @@ DEFINE_HANDLER_STUB(Mail);
 DEFINE_HANDLER_STUB(Rcpt);
 DEFINE_HANDLER_STUB(Rset);
 DEFINE_HANDLER_STUB(Body);
+DEFINE_HANDLER_STUB(StartTls);
 
 static const duk_function_list_entry SmtpServer_functions[] = {
 	{"smtpInit",		SmtpServer_smtpInit,		0},
@@ -1368,6 +1369,7 @@ static const duk_function_list_entry SmtpServer_functions[] = {
 	{"smtpRcpt",		SmtpServer_smtpRcpt,		0},
 	{"smtpRset",		SmtpServer_smtpRset,		0},
 	{"smtpBody",		SmtpServer_smtpBody,		0},
+	{"smtpStartTls",	SmtpServer_smtpStartTls,	0},
 	{"cleanup",		SmtpServer_cleanup,		0},
 	{"receivedHeader",	SmtpServer_receivedHeader,	0},
 	{NULL,			NULL,				0}

@@ -22,8 +22,7 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 
-#include <jsmisc.h>
-
+#include "mailfilter.h"
 #include "config.h"
 #include "js_sys.h"
 #include "js_smtp.h"
@@ -39,6 +38,33 @@ const char *tab_space = "\t ";
 
 // FIXME will be retrieved by dlsym() when loadable module support is available
 duk_bool_t mod_spf_init(duk_context *ctx);
+
+static SSL_CTX *ssl_init(const char *chain_path, const char *key_path)
+{
+	SSL_CTX *ctx;
+
+	ctx = SSL_CTX_new(TLS_server_method());
+	if (!ctx) {
+		log_ssl_errors();
+		return NULL;
+	}
+
+	if (SSL_CTX_use_certificate_chain_file(ctx, chain_path) != 1) {
+		log_ssl_errors();
+		goto out_free;
+	}
+
+	if (SSL_CTX_use_PrivateKey_file(ctx, key_path, SSL_FILETYPE_PEM) != 1) {
+		log_ssl_errors();
+		goto out_free;
+	}
+
+	return ctx;
+
+out_free:
+	SSL_CTX_free(ctx);
+	return NULL;
+}
 
 static void js_fatal(void *udata, const char *msg) {
 	(void) udata;  /* ignored in this case, silence warning */
@@ -140,14 +166,16 @@ int fds[256], fds_len; // FIXME don't define these globally
 static void show_help(const char *argv0)
 {
 	fprintf(stderr,
-			"Usage: %s <options>\n"
-			"\n"
-			"Valid options:\n"
-			"  -c <path>       Read configuration file from <path>\n"
-			"  -d              Debug mode (do not fork worker processes)\n"
-			"  -h              Show this help\n"
-			"\n",
-			argv0);
+		"Usage: %s <options>\n"
+		"\n"
+		"Valid options:\n"
+		"  -c <path>      Read configuration file from <path>\n"
+		"  -d             Debug mode (do not fork worker processes)\n"
+		"  -h             Show this help\n"
+		"  -k <path>      Read SSL key from PEM file at <path>\n"
+		"  -s <path>      Read SSL certificate chain from PEM file at <path>\n"
+		"\n",
+		argv0);
 }
 
 static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
@@ -275,6 +303,20 @@ static int create_sockets(duk_context *ctx)
 	return 0;
 }
 
+int ssl_print_errors_cb(const char *str, size_t len, void *u)
+{
+	const struct log_metadata *m = u;
+
+	if (m->func)
+		js_log_impl(m->prio, "[%s %s:%d] %*s",
+			    m->func, m->file, m->line, (int)len, str);
+	else
+		js_log_impl(m->prio, "[%s:%d] %*s",
+			    m->file, m->line, (int)len, str);
+
+	return 0;
+}
+
 /* TODO redesign model procese:
  * - reciclam workerii
  * - procesul parinte functioneaza ca multiplexor de date
@@ -290,15 +332,18 @@ static int create_sockets(duk_context *ctx)
 int main(int argc, char **argv)
 {
 	int opt, debug = 0;
-	char *config_path = "config.js";
-	duk_context *ctx;
+	const char *config_path = "config.js";
+	const char *ssl_chain_path = NULL;
+	const char *ssl_key_path = NULL;
+	duk_context *dctx;
+	SSL_CTX *sctx = NULL;
 
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
 		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
 	};
 
-	while ((opt = getopt(argc, argv, "hdc:")) != -1) {
+	while ((opt = getopt(argc, argv, "c:dhk:s:")) != -1) {
 		switch (opt) {
 		case 'c':
 			config_path = optarg;
@@ -309,6 +354,12 @@ int main(int argc, char **argv)
 		case 'h':
 			show_help(argv[0]);
 			return 0;
+		case 'k':
+			ssl_key_path = optarg;
+			break;
+		case 's':
+			ssl_chain_path = optarg;
+			break;
 		default:
 			show_help(argv[0]);
 			return 1;
@@ -317,12 +368,21 @@ int main(int argc, char **argv)
 
 	js_log(JS_LOG_INFO, "%s\n", VERSION_STR);
 
+	if (ssl_key_path && ssl_chain_path) {
+		sctx = ssl_init(ssl_chain_path, ssl_key_path);
+		if (sctx)
+			js_log(JS_LOG_INFO, "STARTTLS support initialized\n");
+		else
+			js_log(JS_LOG_NOTICE, "STARTTLS support unavailable\n");
+	} else
+		js_log(JS_LOG_NOTICE, "STARTTLS support not configured\n");
+
 	/* Intialize JavaScript engine */
-	if (!(ctx = js_init(config_path)))
+	if (!(dctx = js_init(config_path)))
 		goto out;
 
 	/* Start listening on addresses and ports given in the JS config */
-	if (create_sockets(ctx)) {
+	if (create_sockets(dctx)) {
 		fprintf(stderr, "Error setting up sockets.\n");
 		goto out;
 	}
@@ -343,7 +403,7 @@ int main(int argc, char **argv)
 		}
 
 		if (debug) {
-			smtp_server_main(ctx, client_sock_fd, &peer);
+			smtp_server_main(dctx, sctx, client_sock_fd, &peer);
 			continue;
 		}
 
@@ -362,8 +422,9 @@ int main(int argc, char **argv)
 			 * properly recover from the error. */
 			signal(SIGPIPE, SIG_IGN);
 
-			smtp_server_main(ctx, client_sock_fd, &peer);
-			duk_destroy_heap(ctx);
+			smtp_server_main(dctx, sctx, client_sock_fd, &peer);
+			SSL_CTX_free(sctx);
+			duk_destroy_heap(dctx);
 			exit(EXIT_SUCCESS);
 		default:
 			close(client_sock_fd);
@@ -372,6 +433,7 @@ int main(int argc, char **argv)
 	} while (1);
 
 out:
-	duk_destroy_heap(ctx);
+	SSL_CTX_free(sctx);
+	duk_destroy_heap(dctx);
 	return 1;
 }

@@ -192,6 +192,10 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	return this.smtpClient.readResponse();
 }
 
+SmtpServer.prototype.smtpStartTls = function() {
+	return this.relayCmd("RSET");
+};
+
 SmtpServer.prototype.smtpRset = function() {
 	return this.relayCmd("RSET");
 };

@@ -47,6 +47,7 @@ AC_ARG_WITH(jsmisc,
 # Checks for libraries
 #
 
+AC_SEARCH_LIBS([SSL_CTX_new], [ssl], , AC_MSG_ERROR([libssl not found]))
 AC_SEARCH_LIBS([BIO_ctrl], [crypto], , AC_MSG_ERROR([libcrypto not found]))
 # FIXME res_nquery expands to __res_nquery (see /usr/include/resolv.h), so checking for
 # res_nquery fails because that's not a symbol; need to check this in a portable way
