@@ -32,30 +32,37 @@ SmtpServer.FILTER_REJECT_PERMANENTLY = 3;
 //   - remaining elements (optional) are passed to the callback function // TODO
 // See https://www.dnsbl.info/dnsbl-list.php for a list of (active) DNS blacklists
 SmtpServer.dnsbl = [
-	["zen.spamhaus.org"],		// Free for "private mail systems with low traffic";
+	//["zen.spamhaus.org"],		// Free for "private mail systems with low traffic";
 					// https://www.spamhaus.org/organization/dnsblusage/
 	["bl.spamcop.net"],		// Open; https://www.spamcop.net/bl.shtml
-	["rbl.abuse.ro"],		// Open; https://abuse.ro/#three
-	//["b.barracudacentral.org"],	// Open; requires registation;
-					// https://barracudacentral.org/
+	//["rbl.abuse.ro"],		// Open; https://abuse.ro/#three
+	//["b.barracudacentral.org"],	// Open; https://barracudacentral.org/
 ];
 
+// If an email to any of the recipients below is identified as SPAM, accept it
+// and prepend the "[SPAM] " string to the Subject header, instead of rejecting
+// the email.
 SmtpServer.bypassFilters = [
 	'<test@localhost>',
 ];
 
+// If the sender domain is one of the domains below AND the SPF check has passed,
+// accept the email and prepend the "[SPAM] " string to the Subject header in
+// case further checks (such as DNS RBL) fail.
 SmtpServer.trustSpfDomains = [
 	'gmail.com',
 	'yahoo.com',
 ];
 
-Array.prototype.indexOfStr = function(str)
-{
-	for (var i in this)
-		if (this[i].toString() == str)
-			return i;
-	return -1;
-}
+Object.defineProperty(Array.prototype, "indexOfStr", {
+	value: function(str) {
+		for (var i in this)
+			if (this[i].toString() == str)
+				return i;
+		return -1;
+	},
+	enumerable: false
+});
 
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
@@ -83,7 +90,11 @@ SmtpServer.prototype.smtpInit = function()
 	*/
 
 	// Create a SMTP client object pointing to the real server
-	this.smtpClient = new SmtpClient("127.0.0.1", 25);
+	//    .     WARNING  Do not set the address below to 127.0.0.1 unless
+	//   / \    WARNING  you really know what you're doing. Because this
+	//  / ! \   WARNING  address is trusted in most default configurations,
+	// '-----'  WARNING  it will likely turn your system into an open relay.
+	this.smtpClient = new SmtpClient("192.168.0.1", 25);
 	// Connect to the real server
 	this.smtpClient.connect();
 	// Read the greeting and pass it back to our client
@@ -213,7 +224,6 @@ SmtpServer.prototype.filter = function(headers, body) {
 
 	var srv = new SpfServer(Spf.DNS_CACHE);
 	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
-	Sys.dump(rsp);
 	switch (rsp.result) {
 	case Spf.RESULT_NEUTRAL:
 		Sys.log(Sys.LOG_DEBUG, "SPF: ? (Neutral)");
@@ -267,29 +277,3 @@ SmtpServer.prototype.filter = function(headers, body) {
 
 	return SmtpServer.FILTER_ACCEPT;
 }
-
-/*
-smtpServer.smtpAuth = function() {
-	return {
-		"code" : 250,
-		"message" : "auth from JS",
-		"disconnect" : false
-	};
-}
-
-smtpServer.smtpAlou = function() {
-	return {
-		"code" : 250,
-		"message" : "alou from JS",
-		"disconnect" : false
-	};
-}
-
-smtpServer.smtpAlop = function() {
-	return {
-		"code" : 250,
-		"message" : "alop from JS",
-		"disconnect" : false
-	};
-}
-*/
