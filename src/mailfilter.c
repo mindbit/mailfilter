@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPLv2 */
 
-#define _XOPEN_SOURCE 500
-#define _POSIX_C_SOURCE 201112L
+#define _DEFAULT_SOURCE
 
 #include <fcntl.h>
 #include <signal.h>
@@ -9,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <grp.h>
+#include <pwd.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -64,6 +65,25 @@ static SSL_CTX *ssl_init(const char *chain_path, const char *key_path)
 out_free:
 	SSL_CTX_free(ctx);
 	return NULL;
+}
+
+static int drop_privs(uid_t uid, gid_t gid)
+{
+	/* See SEI CERT C rule POS36-C */
+
+	if (geteuid() != 0)
+		return EPERM;
+
+	if (setgroups(0, NULL) == -1)
+		return errno;
+
+	if (setgid(gid) == -1)
+		return errno;
+
+	if (setuid(uid) == -1)
+		return errno;
+
+	return 0;
 }
 
 static void js_fatal(void *udata, const char *msg) {
@@ -171,9 +191,11 @@ static void show_help(const char *argv0)
 		"Valid options:\n"
 		"  -c <path>      Read configuration file from <path>\n"
 		"  -d             Debug mode (do not fork worker processes)\n"
+		"  -g <group>     Run as specified group name\n"
 		"  -h             Show this help\n"
 		"  -k <path>      Read SSL key from PEM file at <path>\n"
 		"  -s <path>      Read SSL certificate chain from PEM file at <path>\n"
+		"  -u <user>      Run as specified user name\n"
 		"\n",
 		argv0);
 }
@@ -331,19 +353,23 @@ int ssl_print_errors_cb(const char *str, size_t len, void *u)
 
 int main(int argc, char **argv)
 {
-	int opt, debug = 0;
+	int opt, debug = 0, err;
 	const char *config_path = "config.js";
 	const char *ssl_chain_path = NULL;
 	const char *ssl_key_path = NULL;
 	duk_context *dctx;
 	SSL_CTX *sctx = NULL;
+	struct group *group;
+	struct passwd *passwd;
+	gid_t gid = 0;
+	uid_t uid = 0;
 
 	struct sigaction sigchld_act = {
 		.sa_sigaction = chld_sigaction,
 		.sa_flags = SA_SIGINFO | SA_NOCLDSTOP
 	};
 
-	while ((opt = getopt(argc, argv, "c:dhk:s:")) != -1) {
+	while ((opt = getopt(argc, argv, "c:dg:hk:s:u:")) != -1) {
 		switch (opt) {
 		case 'c':
 			config_path = optarg;
@@ -351,18 +377,36 @@ int main(int argc, char **argv)
 		case 'd':
 			debug = 1;
 			break;
+		case 'g':
+			group = getgrnam(optarg);
+			if (!group || !group->gr_gid) {
+				fprintf(stderr, "Invalid group '%s': %s\n", optarg,
+					strerror(!passwd && !errno ? ENOENT : errno));
+				return EXIT_FAILURE;
+			}
+			gid = group->gr_gid;
+			break;
 		case 'h':
 			show_help(argv[0]);
-			return 0;
+			return EXIT_SUCCESS;
 		case 'k':
 			ssl_key_path = optarg;
 			break;
 		case 's':
 			ssl_chain_path = optarg;
 			break;
+		case 'u':
+			passwd = getpwnam(optarg);
+			if (!passwd || !passwd->pw_uid) {
+				fprintf(stderr, "Invalid user '%s': %s\n", optarg,
+					strerror(!passwd && !errno ? ENOENT : errno));
+				return EXIT_FAILURE;
+			}
+			uid = passwd->pw_uid;
+			break;
 		default:
 			show_help(argv[0]);
-			return 1;
+			return EXIT_FAILURE;
 		}
 	}
 
@@ -376,6 +420,11 @@ int main(int argc, char **argv)
 			js_log(JS_LOG_NOTICE, "STARTTLS support unavailable\n");
 	} else
 		js_log(JS_LOG_NOTICE, "STARTTLS support not configured\n");
+
+	if ((uid || gid) && (err = drop_privs(uid, gid))) {
+		js_log(JS_LOG_ERR, "Error dropping privileges: %s\n", strerror(err));
+		return EXIT_FAILURE;
+	}
 
 	/* Intialize JavaScript engine */
 	if (!(dctx = js_init(config_path)))
@@ -435,5 +484,5 @@ int main(int argc, char **argv)
 out:
 	SSL_CTX_free(sctx);
 	duk_destroy_heap(dctx);
-	return 1;
+	return EXIT_FAILURE;
 }

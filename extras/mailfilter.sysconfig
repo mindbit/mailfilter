@@ -1,2 +1,4 @@
+RUN_USER=mailfilter
+RUN_GROUP=mailfilter
 SSL_KEY=/etc/pki/tls/private/mailfilter.key
 SSL_CHAIN=/etc/pki/tls/certs/mailfilter.crt
