@@ -55,6 +55,13 @@ for SMTP authentication, and it hasn't been implemented yet.
 See [INSTALL.md](docs/INSTALL.md) for details on how to build and install
 Mailfilter.
 
+The `conf/` directory includes various configuration examples. At the top of
+each file there is a comment that provides an overview of what the example
+does. The recommended way of configuring Mailfilter is to start from the
+example that's closest to the intended use case, and build upon that. There
+are comments throughout the example files that explain what each configurable
+option does.
+
 # Embedded JavaScript overview
 
 The standard JavaScript environment is overloaded with additional objects and
