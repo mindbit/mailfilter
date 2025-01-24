@@ -1,10 +1,20 @@
 /*
- * Reverse proxy configuration where suspicious emails are tagged
- * by adding the "[SPAM] " prefix to the Subject header.
+ * Reverse proxy configuration that demonstrates database integration
+ * capabilities. In terms of SMTP, it is identical to mark.js but in
+ * addition it logs information about SMTP transactions to a SQL
+ * database.
  */
 
 // Uncomment the line below to switch logging to syslog
 //Sys.openlog();
+
+// Load the "sql" module. Registers the global "sql" object, which has
+// the getConnection(url) method.
+Sys.loadModule("mod_sql.so");
+
+// Load the mysql driver module. This enables using URLs that start
+// with "mysql://" with the sql.getConnection() method.
+Sys.loadModule("mod_mysql.so");
 
 // Load the SMTP client module. This module allows connecting to other
 // SMTP servers as a client.
@@ -41,6 +51,21 @@ SmtpServer.prototype.relayCmd = function(cmd, args)
 // client, as a SmtpResponse object.
 SmtpServer.prototype.smtpInit = function()
 {
+	/* TODO
+	// Create connection to SQL server
+	this.db = DriverManager.getConnection("mailfilter", "mailfilter");
+
+	// Create a new record in smtp_transactions and save remote server address and port
+	var pstmt = this.db.createPreparedStatement("INSERT INTO smtp_transactions (remote_addr, remote_port) VALUES(?,?)");
+	pstmt.setString(1, this.remoteAddr);
+	pstmt.setString(2, this.remotePort);
+	pstmt.executeUpdate();
+	var res = pstmt.getGeneratedKeys();
+	res.next();
+	this.smtpTransactionId = res.getString(1);
+	pstmt.close();
+	*/
+
 	// Create a SMTP client object pointing to the real server
 	//    .     WARNING  Do not set the address below to 127.0.0.1 unless
 	//   / \    WARNING  you really know what you're doing. Because this
@@ -65,11 +90,29 @@ SmtpServer.prototype.smtpEhlo = function(hostname)
 
 SmtpServer.prototype.smtpMail = function(path)
 {
+	/* TODO
+	// Save the envelope sender in the database
+	var pstmt = this.db.createPreparedStatement("UPDATE smtp_transactions SET envelope_sender=? WHERE smtp_transaction_id=?");
+	pstmt.setString(1, this.smtpTransactionId);
+	pstmt.setString(2, path.toString());
+	pstmt.executeUpdate();
+	pstmt.close();
+	*/
+
 	return this.relayCmd("MAIL", "FROM: " + path.toString());
 }
 
 SmtpServer.prototype.smtpRcpt = function(path)
 {
+	/* TODO
+	// Save the recipient in the database
+	var pstmt = this.db.createPreparedStatement("INSERT INTO smtp_transaction_recipients(smtp_transaction_id, recipient) VALUES (?,?)");
+	pstmt.setString(1, this.smtpTransactionId);
+	pstmt.setString(2, path.toString());
+	pstmt.executeUpdate();
+	pstmt.close();
+	*/
+
 	return this.relayCmd("RCPT", "TO: " + path.toString());
 }
 
