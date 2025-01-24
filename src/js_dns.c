@@ -161,11 +161,13 @@ static int Dns_query(duk_context *ctx)
 
 	if (rlen < 0) {
 		duk_push_int(ctx, h_errno);
-		return 1;
+		goto out_ret;
 	}
 
-	if (ns_initparse(rsp, rlen, &hdl))
+	if (ns_initparse(rsp, rlen, &hdl)) {
+		res_nclose(&rs);
 		return js_ret_error(ctx, "ns_initparse: %s", strerror(errno));
+	}
 
 	duk_push_object(ctx);
 	for (i = 0; i < ARRAY_SIZE(smap); i++) {
@@ -174,6 +176,8 @@ static int Dns_query(duk_context *ctx)
 		duk_put_prop_string(ctx, -2, smap[i].prop);
 	}
 
+out_ret:
+	res_nclose(&rs);
 	return 1;
 }
 
