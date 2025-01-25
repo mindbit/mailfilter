@@ -30,6 +30,8 @@
 #include "js_dns.h"
 #include "smtp_server.h"
 
+#include "mod_spf.h"
+
 // FIXME
 #define assert_log(...)
 #define assert_mod_log(...)
@@ -125,8 +127,9 @@ static duk_context *js_init(const char *filename)
 	if (!js_dns_init(ctx))
 		goto out_clean;
 
-	// FIXME will be called by Sys.loadModule() when supported
+#if HAVE_LIBSPF2
 	mod_spf_init(ctx);
+#endif
 
 	/* Read the file into memory */
 
