@@ -21,6 +21,7 @@ extern int bfd_flush(bfd_t *bfd);
 extern ssize_t bfd_write(bfd_t *bfd, const char *p, size_t len);
 extern int bfd_write_full(bfd_t *bfd, const char *p, size_t len);
 extern ssize_t bfd_read(bfd_t *bfd, char *p, size_t len);
+ssize_t bfd_read_full(bfd_t *bfd, char *p, size_t len);
 extern int bfd_printf(bfd_t *bfd, const char *format, ...);
 extern ssize_t bfd_read_line(bfd_t *bfd, char *buf, size_t len);
 extern int bfd_copy(bfd_t *src, bfd_t *dst);

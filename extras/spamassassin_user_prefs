@@ -1,0 +1,14 @@
+# This is the local SpamAssassin configuration file for the user that
+# Mailfilter runs as. See the spamassassin(1) manual page for details.
+
+# Do NOT change the report configuration options below. They are needed
+# for Mailfilter to correctly parse the response from SpamAssassin.
+clear_report_template
+report _HOSTNAME_
+report _VERSION_
+report _SUBVERSION_
+report _RULESVERSION_
+report _BAYES_
+report _TESTSSCORES_
+
+# Include any custom configuration options below.

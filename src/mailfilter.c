@@ -31,6 +31,7 @@
 #include "smtp_server.h"
 
 #include "mod_spf.h"
+#include "mod_spamassassin.h"
 
 // FIXME
 #define assert_log(...)
@@ -130,6 +131,7 @@ static duk_context *js_init(const char *filename)
 #if HAVE_LIBSPF2
 	mod_spf_init(ctx);
 #endif
+	mod_spamassassin_init(ctx);
 
 	/* Read the file into memory */
 
@@ -214,10 +216,10 @@ static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
 	waitpid(info->si_pid, &status, WNOHANG);
 }
 
-static int get_socket_for_address(const char *ip, unsigned short port)
+static int get_socket_for_address(const char *host, unsigned short port)
 {
 	int sockfd = -1, status, yes = 1;
-	struct addrinfo *servinfo, *p, hints = {
+	struct addrinfo *addrinfo, *p, hints = {
 		.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV,
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_STREAM,
@@ -225,49 +227,47 @@ static int get_socket_for_address(const char *ip, unsigned short port)
 	char pstr[20];
 
 	snprintf(pstr, sizeof(pstr), "%hu", port);
-	status = getaddrinfo(ip, pstr, &hints, &servinfo);
+	status = getaddrinfo(host, pstr, &hints, &addrinfo);
 	if (status) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-		return -1;
+		js_log(JS_LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
+		return -ENOLINK;
 	}
 
-	for(p = servinfo; p != NULL; p = p->ai_next) {
+	for (p = addrinfo; p != NULL; p = p->ai_next) {
 		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 		if (sockfd < 0) {
-			perror("socket"); // FIXME log the error
+			js_log(JS_LOG_NOTICE, "socket: %s\n", strerror(errno));
 			continue;
 		}
 
 		status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
 				sizeof(int));
 		if (status < 0) {
-			perror("setsockopt"); // FIXME log the error
+			js_log(JS_LOG_NOTICE, "setsockopt: %s\n", strerror(errno));
 			close(sockfd);
 			continue;
 		}
 
 		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
 		if (status < 0) {
-			perror("bind"); // FIXME log the error
+			js_log(JS_LOG_NOTICE, "bind: %s\n", strerror(errno));
 			close(sockfd);
 			continue;
 		}
 
-		status = listen(sockfd, 20);
-		if (status < 0) {
-			perror("listen"); // FIXME log the error
-			close(sockfd);
-			continue;
-		}
+		if (listen(sockfd, 20) == 0)
+			break;
 
-		break;
+		js_log(JS_LOG_NOTICE, "listen: %s\n", strerror(errno));
+		close(sockfd);
 	}
 
-	if (p == NULL) {
-		fprintf(stderr, "failed to bind to %s:%s\n", ip, pstr); // FIXME log the error
-	}
+	freeaddrinfo(addrinfo);
 
-	freeaddrinfo(servinfo);
+	if (!p) {
+		js_log(JS_LOG_ERR, "cannot bind to %s:%s\n", host, pstr);
+		return -ENOLINK;
+	}
 
 	return sockfd;
 }
@@ -278,19 +278,19 @@ static int create_sockets(duk_context *ctx)
 
 	/* Get global SmtpServer object */
 	if (!duk_get_global_string(ctx, "SmtpServer"))
-		return -1;
+		return EINVAL;
 
 	/* Get SmtpServer.listenAddress and check it's an array */
 	if (!duk_get_prop_string(ctx, -1, "listenAddress"))
-		return -1;
+		return EINVAL;
 	if (!duk_is_array(ctx, -1))
-		return -1;
+		return EINVAL;
 
 	/* Iterate over SmtpServer.listenAddress */
 	n = duk_get_length(ctx, -1);
 	for (i = 0; i < n; i++) {
-		const char *ip;
-		int port;
+		const char *host;
+		int port, sock;
 
 		duk_get_prop_index(ctx, -1, i);
 
@@ -300,12 +300,12 @@ static int create_sockets(duk_context *ctx)
 		 */
 		if (!duk_is_array(ctx, -1) || duk_get_length(ctx, -1) < 2) {
 			duk_pop_3(ctx);
-			return -1;
+			return EINVAL;
 		}
 
 		/* Get IP address (1st element of array) */
 		duk_get_prop_index(ctx, -1, 0);
-		ip = duk_safe_to_string(ctx, -1);
+		host = duk_safe_to_string(ctx, -1);
 		duk_pop(ctx);
 
 		/* Get Port number (2nd element of array) */
@@ -313,12 +313,13 @@ static int create_sockets(duk_context *ctx)
 		port = duk_to_int(ctx, -1);
 		duk_pop(ctx);
 
-		if ((fds[fds_len++] = get_socket_for_address(ip, port)) < 0) {
+		if ((sock = get_socket_for_address(host, port)) < 0) {
 			duk_pop_3(ctx);
-			return -1;
+			return -sock;
 		}
 
-		js_log(JS_LOG_INFO, "Listening on %s:%d\n", ip, port);
+		fds[fds_len++] = sock;
+		js_log(JS_LOG_INFO, "Listening on %s:%d\n", host, port);
 		duk_pop(ctx);
 		// FIXME for now, handle only the first element of "listenAddress"
 		break;
@@ -326,6 +327,47 @@ static int create_sockets(duk_context *ctx)
 
 	duk_pop_2(ctx);
 	return 0;
+}
+
+int connect_to_address(duk_context *ctx, const char *host, unsigned short port)
+{
+	int sockfd = -1, status;
+	struct addrinfo *addrinfo, *p, hints = {
+		.ai_flags = AI_NUMERICSERV,
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM,
+	};
+	char pstr[20];
+
+	snprintf(pstr, sizeof(pstr), "%hu", port);
+	status = getaddrinfo(host, pstr, &hints, &addrinfo);
+	if (status) {
+		js_log(JS_LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
+		return -ENOLINK;
+	}
+
+	for (p = addrinfo; p; p = p->ai_next) {
+		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+		if (sockfd < 0) {
+			js_log(JS_LOG_NOTICE, "socket: %s\n", strerror(errno));
+			continue;
+		}
+
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0)
+			break;
+
+		js_log(JS_LOG_NOTICE, "connect: %s\n", strerror(errno));
+		close(sockfd);
+	}
+
+	freeaddrinfo(addrinfo);
+
+	if (!p) {
+		js_log(JS_LOG_ERR, "cannot connect to %s:%s\n", host, pstr);
+		return -ENOLINK;
+	}
+
+	return sockfd;
 }
 
 int ssl_print_errors_cb(const char *str, size_t len, void *u)
@@ -435,7 +477,7 @@ int main(int argc, char **argv)
 
 	/* Start listening on addresses and ports given in the JS config */
 	if (create_sockets(dctx)) {
-		fprintf(stderr, "Error setting up sockets.\n");
+		js_log(JS_LOG_ERR, "Error setting up listening sockets\n");
 		goto out;
 	}
 

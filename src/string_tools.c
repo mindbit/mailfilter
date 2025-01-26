@@ -9,6 +9,9 @@
 #include "string_tools.h"
 #include "mailfilter.h"
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 {
 	void *s = realloc(sb->s, sb->size + chunk);
@@ -22,6 +25,9 @@ int __string_buffer_enlarge(struct string_buffer *sb, size_t chunk)
 	return 0;
 }
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 int string_buffer_append_char(struct string_buffer *sb, char c)
 {
 	int err;
@@ -36,6 +42,9 @@ int string_buffer_append_char(struct string_buffer *sb, char c)
 	return 0;
 }
 
+/**
+ * @return	0 on success; POSIX error code on error
+ */
 int string_buffer_append_string(struct string_buffer *sb, const char *s)
 {
 	size_t len = strlen(s);

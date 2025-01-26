@@ -176,5 +176,10 @@ SmtpServer.prototype.filter = function(headers, body) {
 		return true;
 	}
 
+	var sa = new SpamAssassin("localhost");
+	var scan = sa.scan(headers, body);
+	if (scan.spam)
+		return true;
+
 	return false;
 }

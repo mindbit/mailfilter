@@ -74,13 +74,15 @@ bfd_t *bfd_alloc(int fd)
  */
 int bfd_free(bfd_t *bfd)
 {
-	int ret = bfd_flush(bfd);
+	int ret;
 
+	if (!bfd)
+		return 0;
+
+	ret = bfd_flush(bfd);
 	SSL_free(bfd->ssl);
-
 	if (close(bfd->fd) && !ret)
 		ret = errno;
-
 	free(bfd);
 
 	return ret;
@@ -203,6 +205,24 @@ ssize_t bfd_read(bfd_t *bfd, char *p, size_t len)
 	bfd->rh += sz;
 
 	return sz;
+}
+
+/**
+ * @return	0 on success; POSIX error code on error
+ */
+ssize_t bfd_read_full(bfd_t *bfd, char *p, size_t len)
+{
+	while (len) {
+		ssize_t sz = bfd_read(bfd, p, len);
+
+		if (sz <= 0)
+			return sz ? -sz : EIO;
+
+		p += sz;
+		len -= sz;
+	}
+
+	return 0;
 }
 
 /**

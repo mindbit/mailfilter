@@ -25,6 +25,8 @@ struct log_metadata {
 	int line;
 };
 
+int connect_to_address(duk_context *ctx, const char *host, unsigned short port);
+
 int ssl_print_errors_cb(const char *str, size_t len, void *u);
 #define __log_ssl_errors(prio, func, file, line) ERR_print_errors_cb( \
 	ssl_print_errors_cb, (void *)&(const struct log_metadata){prio, func, file, line})

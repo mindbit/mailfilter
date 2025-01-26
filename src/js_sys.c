@@ -1,5 +1,8 @@
 #include <syslog.h>
 #include <jsmisc.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <sys/types.h>
 
 #include "mailfilter.h"
 
@@ -104,14 +107,34 @@ static duk_function_list_entry Sys_functions[] = {
 	{NULL,		NULL,		0}
 };
 
+duk_bool_t js_sys_get_prop(duk_context *ctx, const char *name)
+{
+	duk_bool_t ret;
+
+	if (!duk_get_global_string(ctx, "Sys"))
+		return 0;
+
+	ret = duk_get_prop_string(ctx, -1, name);
+	duk_remove(ctx, -2);
+
+	return ret;
+}
+
 /**
  * @return 1 on success, throws error on failure
  */
 duk_bool_t js_sys_init(duk_context *ctx)
 {
+	struct passwd *passwd;
+
 	duk_push_object(ctx);
 	duk_put_number_list(ctx, -1, Sys_props);
 	duk_put_function_list(ctx, -1, Sys_functions);
+
+	if ((passwd = getpwuid(geteuid()))) {
+		duk_push_string(ctx, passwd->pw_name);
+		duk_put_prop_string(ctx, -2, "user");
+	}
 
 	duk_put_global_string(ctx, "Sys");
 	return 1;

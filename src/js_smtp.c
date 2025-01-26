@@ -14,7 +14,6 @@
 
 #include "mailfilter.h"
 #include "js_smtp.h"
-#include "string_tools.h"
 
 /**
  * Context for message header parser.
@@ -434,6 +433,47 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 		return EIO;
 	if (dotconv && bfd_puts(out, ".\r\n"))
 		return EIO;
+
+	return 0;
+}
+
+int smtp_headers_to_string(duk_context *ctx, struct string_buffer *sb, duk_idx_t idx)
+{
+	duk_size_t i, len;
+
+	len = duk_get_length(ctx, idx);
+	for (i = 0; i < len; i++) {
+		if (!duk_get_prop_index(ctx, 0, i)) {
+			duk_pop(ctx);
+			string_buffer_cleanup(sb);
+			return EINVAL;
+		}
+
+		duk_push_string(ctx, "toString");
+		if (duk_pcall_prop(ctx, -2, 0)) {
+			js_log_error(ctx, -1);
+			duk_pop_2(ctx);
+			string_buffer_cleanup(sb);
+			return EINVAL;
+		}
+
+		if (string_buffer_append_string(sb, duk_safe_to_string(ctx, -1))) {
+			duk_pop_2(ctx);
+			string_buffer_cleanup(sb);
+			return ENOMEM;
+		}
+		duk_pop_2(ctx);
+
+		if (string_buffer_append_string(sb, "\r\n")) {
+			string_buffer_cleanup(sb);
+			return ENOMEM;
+		}
+	}
+
+	if (string_buffer_append_string(sb, "\r\n")) {
+		string_buffer_cleanup(sb);
+		return ENOMEM;
+	}
 
 	return 0;
 }
@@ -941,36 +981,6 @@ static int SmtpResponse_construct(duk_context *ctx)
 
 /* }}} SmtpResponse */
 
-static int connect_to_address(duk_context *ctx, const char *host, unsigned short port)
-{
-	int sockfd;
-	struct sockaddr_in serv_addr = {AF_INET};
-	struct hostent *server;
-
-	// FIXME use getaddrinfo; handle ipv6
-	server = gethostbyname(host);
-	if (!server) {
-		// TODO throw exc
-		return -1;
-	}
-
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd < 0) {
-		// TODO throw exc
-		return -1;
-	}
-
-	memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, sizeof(in_addr_t));
-	serv_addr.sin_port = htons(port);
-
-	if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-		close(sockfd);
-		return js_report_error(ctx, "Cannot connect to %s:%hu!", host, port);
-	}
-
-	return sockfd;
-}
-
 /* {{{ SmtpClient */
 
 static int __SmtpClient_closeStream(duk_context *ctx)
@@ -1031,13 +1041,17 @@ static int SmtpClient_connect(duk_context *ctx)
 	port = duk_get_int(ctx, -1);
 
 	if (!host || !port)
-		js_report_error(ctx, "Invalid host or port %s:%d", host, port);
+		return js_ret_error(ctx, "Invalid host or port %s:%d", host, port);
 
 	sockfd = connect_to_address(ctx, host, port);
-	// FIXME connect_to_address may fail; check return value and bail out
+	if (sockfd < 0)
+		return js_ret_errno(ctx, -sockfd);
 
 	stream = bfd_alloc(sockfd);
-	// FIXME bfd_alloc can fail
+	if (!stream) {
+		close(sockfd);
+		return js_ret_errno(ctx, ENOMEM);
+	}
 
 	// FIXME client may already be connected; don't leak previous connection
 	duk_push_pointer(ctx, stream);
