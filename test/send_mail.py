@@ -12,6 +12,9 @@ def expect(sock, code):
     with sock.makefile() as file:
         while True:
             line = file.readline()
+            if not line:
+                print('DISCONNECTED')
+                sys.exit(1)
             print('<<< ' + line.rstrip())
             match = pattern.search(line)
             if match:
