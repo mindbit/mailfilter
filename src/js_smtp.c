@@ -1009,8 +1009,12 @@ static int SmtpClient_construct(duk_context *ctx)
 	duk_put_prop_string(ctx, -2, "host");
 
 	// Add port
-	duk_dup(ctx, 1);
-	duk_to_int(ctx, -1);
+	if (duk_is_undefined(ctx, 1))
+		duk_push_int(ctx, 25);
+	else {
+		duk_dup(ctx, 1);
+		duk_to_int(ctx, -1);
+	}
 	duk_put_prop_string(ctx, -2, "port");
 
 	duk_pop(ctx);

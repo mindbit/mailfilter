@@ -35,7 +35,7 @@ SmtpServer.prototype.smtpInit = function()
 	//   / \    WARNING  you really know what you're doing. Because this
 	//  / ! \   WARNING  address is trusted in most default configurations,
 	// '-----'  WARNING  it will likely turn your system into an open relay.
-	this.smtpClient = new SmtpClient("192.168.0.1", 25);
+	this.smtpClient = new SmtpClient("192.168.0.1");
 	// Connect to the real server
 	this.smtpClient.connect();
 	// Read the greeting and pass it back to our client
