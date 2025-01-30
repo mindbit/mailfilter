@@ -241,7 +241,7 @@ SmtpServer.prototype.filter = function(headers, body) {
 
 	var sa = new SpamAssassin("localhost");
 	var scan = sa.scan(headers, body);
-	if (scan.spam)
+	if (scan && scan.spam)
 		return ret;
 
 	return SmtpServer.FILTER_ACCEPT;

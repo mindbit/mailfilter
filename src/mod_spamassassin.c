@@ -68,6 +68,8 @@ static int SpamAssassin_scan(duk_context *ctx)
 {
 	const char *host, *user;
 	int port, err, sockfd = -1, len, clen = 0, i;
+	int max_message_len;
+	size_t message_size;
 	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
 	bfd_t *body_stream, *sock_stream = NULL;
 	struct stat body_stat;
@@ -101,6 +103,11 @@ static int SpamAssassin_scan(duk_context *ctx)
 	duk_get_prop_string(ctx, -3, "user");
 	user = duk_get_string(ctx, -1);
 
+	// Get max message length; the property is defined in the prototype
+	// but allow individual objects to override it
+	duk_get_prop_string(ctx, -4, "MAX_MESSAGE_LEN");
+	max_message_len = duk_get_int(ctx, -1);
+
 	if (!host || !port)
 		return js_ret_error(ctx, "Invalid host or port %s:%d", host, port);
 
@@ -119,6 +126,12 @@ static int SpamAssassin_scan(duk_context *ctx)
 
 	if (fstat(bfd_get_fd(body_stream), &body_stat)) {
 		err = errno;
+		goto out_clean;
+	}
+
+	message_size = sb.cur + body_stat.st_size;
+	if (message_size > max_message_len) {
+		duk_push_null(ctx);
 		goto out_clean;
 	}
 
@@ -142,9 +155,7 @@ static int SpamAssassin_scan(duk_context *ctx)
 		"User: %s\r\n"
 		"Content-length: %zu\r\n"
 		"\r\n%s",
-		user,
-		sb.cur + body_stat.st_size,
-		sb.s)))
+		user, message_size, sb.s)))
 		goto out_clean;
 
 	// Send message body to spamd
@@ -258,6 +269,12 @@ out_clean:
 	return err ? js_ret_errno(ctx, err) : 1;
 }
 
+static const duk_number_list_entry SpamAssassin_props[] = {
+	{"MAX_MESSAGE_LEN",	2 * 1024 * 1024},
+	{NULL,			0.0}
+};
+
+
 static const duk_function_list_entry SpamAssassin_functions[] = {
 	{"scan",		SpamAssassin_scan,		2},
 	{NULL,			NULL,				0}
@@ -269,6 +286,7 @@ duk_bool_t mod_spamassassin_init(duk_context *ctx)
 {
 	duk_push_c_function(ctx, SpamAssassin_construct, 3);
 	duk_push_object(ctx);
+	duk_put_number_list(ctx, -1, SpamAssassin_props);
 	duk_put_function_list(ctx, -1, SpamAssassin_functions);
 	duk_put_prop_string(ctx, -2, "prototype");
 	duk_put_global_string(ctx, "SpamAssassin");
