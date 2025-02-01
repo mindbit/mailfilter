@@ -229,10 +229,8 @@ static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
 	ssize_t len;
 	int writes = 0;
 
-	if (!stream || !buf || !size || *size < 2) {
-		errno = EINVAL;
-		return -1;
-	}
+	if (!stream || !buf || !size || *size < 2)
+		return -EINVAL;
 
 	do {
 		buf[*size - 2] = '\n';
