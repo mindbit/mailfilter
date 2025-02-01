@@ -31,7 +31,7 @@
 #include "smtp_server.h"
 
 #include "mod_spf.h"
-#include "mod_spamassassin.h"
+#include "mod_extscan.h"
 
 // FIXME
 #define assert_log(...)
@@ -131,7 +131,7 @@ static duk_context *js_init(const char *filename)
 #if HAVE_LIBSPF2
 	mod_spf_init(ctx);
 #endif
-	mod_spamassassin_init(ctx);
+	mod_extscan_init(ctx);
 
 	/* Read the file into memory */
 

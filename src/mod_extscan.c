@@ -282,7 +282,7 @@ static const duk_function_list_entry SpamAssassin_functions[] = {
 
 /* }}} SpamAssassin */
 
-duk_bool_t mod_spamassassin_init(duk_context *ctx)
+duk_bool_t mod_extscan_init(duk_context *ctx)
 {
 	duk_push_c_function(ctx, SpamAssassin_construct, 3);
 	duk_push_object(ctx);
