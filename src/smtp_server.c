@@ -217,11 +217,11 @@ out_ret:
  * @param[in]	stream The input buffered file descriptor
  * @param[in]	buf Buffer to store data that is read from the file
  * @param[in]	size Buffer size
- * @param[out]	size String length after "\r\n" was trimmed and
+ * @param[out]	size String length after "\r\n" has been trimmed and
  *		excluding the null-terminator
  *
  * @return	0 or positive value: the number of lines successfully
- *		from the stream and written to the buffer;
+ *		read from the stream and written to the buffer;
  *		negative POSIX error code on error
  */
 static int smtp_server_read_line(bfd_t *stream, char *buf, size_t *size)
