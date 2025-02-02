@@ -481,6 +481,13 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
+	/* Ignore SIGPIPE, because we don't want to die if the other end of
+	 * a socket has been closed and we attempt to write. Ignore the
+	 * signal, and writes will fail with -1 (and errno set to EPIPE).
+	 * Write failures are properly handled throughout the code base. */
+	signal(SIGPIPE, SIG_IGN);
+
+	/* Make sure child processes are reaped and do not become zombies. */
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
 	js_log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
@@ -509,12 +516,6 @@ int main(int argc, char **argv)
 			/* __pexec_hdlr_body() always calls waitpid() for child processes,
 			 * so we reinstall the default signal handler */
 			signal(SIGCHLD, SIG_DFL);
-
-			/* Ignore SIGPIPE, because we don't want to die if the chid closes
-			 * while we're writing to the pipe. Instead, reads/writes will fail
-			 * with -1 (and errno set to EPIPE), and __pexec_hdlr_body() will
-			 * properly recover from the error. */
-			signal(SIGPIPE, SIG_IGN);
 
 			smtp_server_main(dctx, sctx, client_sock_fd, &peer);
 			SSL_CTX_free(sctx);
