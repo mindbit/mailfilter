@@ -224,5 +224,12 @@ SmtpServer.prototype.filter = function(headers, body) {
 	if (scan && scan.spam)
 		return true;
 
+	var av = new ClamAV("localhost");
+	var scan = av.scan(headers, body);
+	if (scan && scan.found) {
+		Sys.log(Sys.LOG_NOTICE, "ClamAV found " + scan.name);
+		return true;
+	}
+
 	return false;
 }

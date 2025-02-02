@@ -15,12 +15,14 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 
 #include "mailfilter.h"
 #include "js_smtp.h"
 #include "js_sys.h"
 
 #define SPAMD_MAX_RESPONSE_SIZE 16384
+#define CLAMD_MAX_RESPONSE_SIZE 256
 
 struct extscan_context {
 	duk_context *dcx;
@@ -349,6 +351,151 @@ static const duk_function_list_entry SpamAssassin_functions[] = {
 
 /* }}} SpamAssassin */
 
+/*
+ * Parse the response id from a clamd response in session mode
+ *
+ * @return	Offset of the first character of the actual response or
+ *		-1 for parse error.
+ */
+int parse_clamd_response(char *buf, int *id)
+{
+	int _id, off;
+	char c;
+
+	if (sscanf(buf, "%d: %c%n", &_id, &c, &off) != 2)
+		return -1;
+
+	if (id)
+		*id = _id;
+
+	return off - 1;
+}
+
+/* {{{ ClamAV */
+
+/*
+ * Interface to the ClamAV anti-virus engine
+ *
+ * The clamd protocol is described in the clamd(8) man page.
+ */
+
+static int ClamAV_construct(duk_context *ctx)
+{
+	extscan_construct(ctx, 3310, 0);
+	return 0;
+}
+
+static int ClamAV_scan(duk_context *ctx)
+{
+	struct extscan_context ecx = EXTSCAN_CONTEXT_INITIALIZER(ctx);
+	char buf[CLAMD_MAX_RESPONSE_SIZE];
+	int err, len, off;
+	const struct extscan_field fields[] = {
+		{"progver",		's'},
+		{"dbver",		'd'},
+		{"dbdate",		's'},
+		{ /* sentinel */ }
+	};
+	static const char s_stream[] = "stream: ";
+	static const char s_found[] = " FOUND";
+
+	extscan_get_props(&ecx, 0);
+
+	if (extscan_prepare(&ecx)) {
+		duk_push_null(ctx);
+		extscan_context_cleanup(&ecx);
+		return 1;
+	}
+
+	// Prepare connection to clamd
+	extscan_connect(&ecx);
+
+	// Start a clamd session to be able to reuse the same socket to
+	// send multiple commands.
+	if ((err = bfd_puts(ecx.sock_stream, "nIDSESSION\n")))
+		return extscan_ret_errno(&ecx, err);
+	if ((err = bfd_flush(ecx.sock_stream)))
+		return extscan_ret_errno(&ecx, err);
+
+	// Get program and database versions
+	duk_push_object(ctx);
+	if ((err = bfd_puts(ecx.sock_stream, "nVERSION\n")))
+		return extscan_ret_errno(&ecx, err);
+	if ((err = bfd_flush(ecx.sock_stream)))
+		return extscan_ret_errno(&ecx, err);
+	if ((len = bfd_read_line(ecx.sock_stream, buf, sizeof(buf) - 1)) < 0)
+		return extscan_ret_errno(&ecx, len ? -len : EIO);
+	if (buf[len - 1] != '\n')
+		return extscan_ret_errno(&ecx, EPROTO);
+	buf[len - 1] = '/';
+	buf[len] = '\0';
+	if ((len = parse_clamd_response(buf, NULL)) < 0)
+		return extscan_ret_errno(&ecx, EPROTO);
+	extscan_parse_fields(&ecx, &buf[len], '/', fields);
+
+	// Send request and chunk length to clamd
+	if ((err = bfd_puts(ecx.sock_stream, "nINSTREAM\n")))
+		return extscan_ret_errno(&ecx, err);
+	*(uint32_t *)buf = htonl(ecx.message_size);
+	if ((err = bfd_write_full(ecx.sock_stream, buf, sizeof(uint32_t))))
+		return extscan_ret_errno(&ecx, err);
+
+	// Send message headers and body to clamd
+	extscan_send_hdr_body(&ecx);
+
+	// Send terminating zero-length chunk
+	*(uint32_t *)buf = 0;
+	if ((err = bfd_write_full(ecx.sock_stream, buf, sizeof(uint32_t))))
+		return extscan_ret_errno(&ecx, err);
+	if ((err = bfd_flush(ecx.sock_stream)))
+		return extscan_ret_errno(&ecx, err);
+
+	// Read and parse response from clamd
+	if ((len = bfd_read_line(ecx.sock_stream, buf, sizeof(buf) - 1)) < 0)
+		return extscan_ret_errno(&ecx, len ? -len : EIO);
+	if (buf[--len] != '\n')
+		return extscan_ret_errno(&ecx, EPROTO);
+	buf[len] = '\0';
+	if ((off = parse_clamd_response(buf, NULL)) < 0)
+		return extscan_ret_errno(&ecx, EPROTO);
+	if (strncmp(&buf[off], s_stream, sizeof(s_stream) - 1))
+		return extscan_ret_errno(&ecx, EPROTO);
+	off += sizeof(s_stream) - 1;
+	err = strcmp(&buf[off], "OK");
+	duk_push_boolean(ctx, !!err);
+	duk_put_prop_string(ctx, -2, "found");
+	if (err) {
+		if (off + sizeof(s_found) >= len ||
+		    strcmp(&buf[len - sizeof(s_found) + 1], s_found))
+			return extscan_ret_errno(&ecx, EPROTO);
+		buf[len - sizeof(s_found) + 1] = '\0';
+		duk_push_string(ctx, &buf[off]);
+		duk_put_prop_string(ctx, -2, "name");
+	}
+
+	// End clamd session
+	if ((err = bfd_puts(ecx.sock_stream, "nEND\n")))
+		return extscan_ret_errno(&ecx, err);
+	if ((err = bfd_flush(ecx.sock_stream)))
+		return extscan_ret_errno(&ecx, err);
+
+	extscan_context_cleanup(&ecx);
+	return 1;
+}
+
+static const duk_number_list_entry ClamAV_props[] = {
+	{"MAX_MESSAGE_LEN",	100 * 1024 * 1024},
+	{NULL,			0.0}
+};
+
+
+static const duk_function_list_entry ClamAV_functions[] = {
+	{"scan",		ClamAV_scan,		2},
+	{NULL,			NULL,				0}
+};
+
+/* }}} ClamAV */
+
 duk_bool_t mod_extscan_init(duk_context *ctx)
 {
 	duk_push_c_function(ctx, SpamAssassin_construct, 3);
@@ -357,6 +504,13 @@ duk_bool_t mod_extscan_init(duk_context *ctx)
 	duk_put_function_list(ctx, -1, SpamAssassin_functions);
 	duk_put_prop_string(ctx, -2, "prototype");
 	duk_put_global_string(ctx, "SpamAssassin");
+
+	duk_push_c_function(ctx, ClamAV_construct, 2);
+	duk_push_object(ctx);
+	duk_put_number_list(ctx, -1, ClamAV_props);
+	duk_put_function_list(ctx, -1, ClamAV_functions);
+	duk_put_prop_string(ctx, -2, "prototype");
+	duk_put_global_string(ctx, "ClamAV");
 
 	return 1;
 }
