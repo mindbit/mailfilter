@@ -1,23 +1,15 @@
 /* SPDX-License-Identifier: GPLv2 */
 
 /*
- * Interface to the Apache SpamAssassin spam filter
+ * Interface to external scanners using TCP sockets. Currently Apache
+ * SpamAssassin and ClamAV are supported.
  *
- * The implementation in this module connects directly to spamd over a
- * TCP socket and does not use spamc. There are some advantages:
+ * There are some advantages to connecting directly to the external
+ * scanners instead of running the dedicated clients (e.g. spamc and
+ * clamdscan) as child processes:
  *  - Avoid the overhead of running an external program and copying the
- *    message again from stdin to the spamd socket inside spamc.
- *  - Avoid parsing the response twice (here and inside spamc).
- *  - Direct access to the spamd protocol headers.
- *
- * The spamd protocol is similar to HTTP and described in spamd/PROTOCOL
- * in the SpamAssassin source code. The assumption is that spamd responds
- * with the report format defined in extras/spamassassin_user_prefs. This
- * file should be installed as ~/.spamassassin/user_prefs in the home
- * directory of the user that Mailfilter runs as. The list of supported
- * report tags can be found in lib/Mail/SpamAssassin/PerMsgStatus.pm, and
- * the tags are documented in lib/Mail/SpamAssassin/Conf.pm in the
- * SpamAssassin source code.
+ *    message again from stdin to the scanner socket.
+ *  - Direct access to the scanner protocol provides more flexibility.
  */
 
 #include <unistd.h>
@@ -30,9 +22,48 @@
 
 #define SPAMD_MAX_RESPONSE_SIZE 16384
 
-/* {{{ SpamAssassin */
+struct extscan_context {
+	duk_context *dcx;
+	const char *host;
+	int port;
+	const char *user;
+	int max_message_len;
+	struct string_buffer hdr;
+	bfd_t *body_stream;
+	bfd_t *sock_stream;
+	size_t message_size;
+	char *rbuf;
+};
 
-static int SpamAssassin_construct(duk_context *ctx)
+struct extscan_field {
+	const char *name;
+	char type;
+};
+
+#define EXTSCAN_CONTEXT_INITIALIZER(ctx) {					\
+	.dcx = ctx,								\
+	.hdr = STRING_BUFFER_INITIALIZER,					\
+}
+
+static void extscan_context_cleanup(struct extscan_context *ecx)
+{
+	free(ecx->rbuf);
+	string_buffer_cleanup(&ecx->hdr);
+	bfd_free(ecx->body_stream);
+	bfd_free(ecx->sock_stream);
+}
+
+#define extscan_ret_errno(ecx, err) ({						\
+	typeof(err) _err = (err);						\
+	extscan_context_cleanup(ecx);						\
+	js_ret_errno((ecx)->dcx, _err);						\
+})
+
+enum extscan_flags {
+	FL_USER = 1,
+};
+
+static void extscan_construct(duk_context *ctx, int default_port, enum extscan_flags fl)
 {
 	duk_push_this(ctx);
 
@@ -43,7 +74,7 @@ static int SpamAssassin_construct(duk_context *ctx)
 
 	// Add port
 	if (duk_is_undefined(ctx, 1))
-		duk_push_int(ctx, 783);
+		duk_push_int(ctx, default_port);
 	else {
 		duk_dup(ctx, 1);
 		duk_to_int(ctx, -1);
@@ -51,132 +82,212 @@ static int SpamAssassin_construct(duk_context *ctx)
 	duk_put_prop_string(ctx, -2, "port");
 
 	// Add user
-	if (duk_is_undefined(ctx, 2))
-		js_sys_get_prop(ctx, "user");
-	else {
-		duk_dup(ctx, 2);
-		duk_to_string(ctx, -1);
+	if ((fl && FL_USER)) {
+		if (duk_is_undefined(ctx, 2))
+			js_sys_get_prop(ctx, "user");
+		else {
+			duk_dup(ctx, 2);
+			duk_to_string(ctx, -1);
+		}
+		duk_put_prop_string(ctx, -2, "user");
 	}
-	duk_put_prop_string(ctx, -2, "user");
 
 	duk_pop(ctx);
+}
 
+static void extscan_get_props(struct extscan_context *ecx, enum extscan_flags fl)
+{
+	duk_idx_t this;
+
+	duk_push_this(ecx->dcx);
+	this = duk_normalize_index(ecx->dcx, -1);
+
+	// Get host
+	duk_get_prop_string(ecx->dcx, this, "host");
+	ecx->host = duk_get_string(ecx->dcx, -1);
+	if (!ecx->host)
+		js_report_error(ecx->dcx, "Invalid host");
+
+	// Get port
+	duk_get_prop_string(ecx->dcx, this, "port");
+	ecx->port = duk_get_int(ecx->dcx, -1);
+	if (!ecx->port)
+		js_report_error(ecx->dcx, "Invalid port");
+
+	// Get user
+	if ((fl & FL_USER)) {
+		duk_get_prop_string(ecx->dcx, this, "user");
+		ecx->user = duk_get_string(ecx->dcx, -1);
+		if (!ecx->user)
+			js_report_error(ecx->dcx, "Invalid user");
+	}
+
+	// Get max message length; the property is defined in the prototype
+	// but allow individual objects to override it
+	duk_get_prop_string(ecx->dcx, this, "MAX_MESSAGE_LEN");
+	ecx->max_message_len = duk_get_int(ecx->dcx, -1);
+}
+
+static int extscan_prepare(struct extscan_context *ecx)
+{
+	int err;
+	struct stat body_stat;
+
+	// Extract headers and append to string buffer. We cannot use
+	// smtp_copy_from_file() because we need to calculate the total
+	// header size to send the correct Content-length value to spamd.
+	if ((err = smtp_headers_to_string(ecx->dcx, &ecx->hdr, 0)))
+		return extscan_ret_errno(ecx, err);
+
+	// Prepare message body stream
+	if (!(ecx->body_stream = smtp_body_open_read(ecx->dcx, 1)))
+		return extscan_ret_errno(ecx, ENOMEM);
+
+	if (fstat(bfd_get_fd(ecx->body_stream), &body_stat))
+		return extscan_ret_errno(ecx, errno);
+
+	ecx->message_size = ecx->hdr.cur + body_stat.st_size;
+
+	return ecx->message_size > ecx->max_message_len;
+}
+
+static int extscan_connect(struct extscan_context *ecx)
+{
+	int sockfd;
+
+	sockfd = connect_to_address(ecx->dcx, ecx->host, ecx->port);
+	if (sockfd < 0)
+		return extscan_ret_errno(ecx, -sockfd);
+
+	ecx->sock_stream = bfd_alloc(sockfd);
+	if (!ecx->sock_stream) {
+		close(sockfd);
+		return extscan_ret_errno(ecx, ENOMEM);
+	}
+
+	return 0;
+}
+
+static int extscan_send_hdr_body(struct extscan_context *ecx)
+{
+	int err;
+
+	if ((err = bfd_puts(ecx->sock_stream, ecx->hdr.s)))
+		return extscan_ret_errno(ecx, err);
+
+	if ((err = bfd_copy(ecx->body_stream, ecx->sock_stream)))
+		return extscan_ret_errno(ecx, err);
+
+	if ((err = bfd_flush(ecx->sock_stream)))
+		return extscan_ret_errno(ecx, err);
+
+	return 0;
+}
+
+static int extscan_parse_fields(struct extscan_context *ecx, char *buf, char delim,
+				const struct extscan_field *fields)
+{
+	int i;
+
+	for (i = 0; fields[i].name; i++) {
+		char *p = strchr(buf, delim);
+		int d;
+		double f;
+
+		if (!p)
+			return extscan_ret_errno(ecx, EPROTO);
+		*p = '\0';
+		switch (fields[i].type) {
+		case 's':
+			duk_push_string(ecx->dcx, buf);
+			break;
+		case 'd':
+			if (sscanf(buf, "%d", &d) != 1)
+				return extscan_ret_errno(ecx, EPROTO);
+			duk_push_int(ecx->dcx, d);
+			break;
+		case 'f':
+			if (sscanf(buf, "%lf", &f) != 1)
+				return extscan_ret_errno(ecx, EPROTO);
+			duk_push_number(ecx->dcx, f);
+			break;
+		}
+		duk_put_prop_string(ecx->dcx, -2, fields[i].name);
+		buf = p + 1;
+	}
+
+	return 0;
+}
+
+/* {{{ SpamAssassin */
+
+/*
+ * Interface to the Apache SpamAssassin spam filter
+ *
+ * The spamd protocol is similar to HTTP and described in spamd/PROTOCOL
+ * in the SpamAssassin source code. The assumption is that spamd responds
+ * with the report format defined in extras/spamassassin_user_prefs. This
+ * file should be installed as ~/.spamassassin/user_prefs in the home
+ * directory of the user that Mailfilter runs as. The list of supported
+ * report tags can be found in lib/Mail/SpamAssassin/PerMsgStatus.pm, and
+ * the tags are documented in lib/Mail/SpamAssassin/Conf.pm in the
+ * SpamAssassin source code.
+ */
+
+static int SpamAssassin_construct(duk_context *ctx)
+{
+	extscan_construct(ctx, 783, FL_USER);
 	return 0;
 }
 
 static int SpamAssassin_scan(duk_context *ctx)
 {
-	const char *host, *user;
-	int port, err, sockfd = -1, len, clen = 0, i;
-	int max_message_len;
-	size_t message_size;
-	struct string_buffer sb = STRING_BUFFER_INITIALIZER;
-	bfd_t *body_stream, *sock_stream = NULL;
-	struct stat body_stat;
+	struct extscan_context ecx = EXTSCAN_CONTEXT_INITIALIZER(ctx);
+	int err, len, clen = 0, i;
 	bool spam = false;
 	double score = 0, required = 0;
-	char *buf = NULL, *tok;
-	const struct {
-		const char *name;
-		char type;
-	} fields[] = {
+	const struct extscan_field fields[] = {
 		{"hostname",		's'},
 		{"version",		's'},
 		{"subversion",		's'},
 		{"rulesversion",	's'},
 		{"bayes",		'f'},
 		{"testsscores",		's'},
+		{ /* sentinel */ }
 	};
 
+	extscan_get_props(&ecx, FL_USER);
 
-	duk_push_this(ctx);
-
-	// Get host
-	duk_get_prop_string(ctx, -1, "host");
-	host = duk_get_string(ctx, -1);
-
-	// Get port
-	duk_get_prop_string(ctx, -2, "port");
-	port = duk_get_int(ctx, -1);
-
-	// Get user
-	duk_get_prop_string(ctx, -3, "user");
-	user = duk_get_string(ctx, -1);
-
-	// Get max message length; the property is defined in the prototype
-	// but allow individual objects to override it
-	duk_get_prop_string(ctx, -4, "MAX_MESSAGE_LEN");
-	max_message_len = duk_get_int(ctx, -1);
-
-	if (!host || !port)
-		return js_ret_error(ctx, "Invalid host or port %s:%d", host, port);
-
-	// Extract headers and append to string buffer. We cannot use
-	// smtp_copy_from_file() because we need to calculate the total
-	// header size to send the correct Content-length value to spamd.
-	if ((err = smtp_headers_to_string(ctx, &sb, 0)))
-		return js_ret_errno(ctx, err);
-
-	// Prepare message body stream
-	body_stream = smtp_body_open_read(ctx, 1);
-	if (!body_stream) {
-		err = ENOMEM;
-		goto out_clean;
-	}
-
-	if (fstat(bfd_get_fd(body_stream), &body_stat)) {
-		err = errno;
-		goto out_clean;
-	}
-
-	message_size = sb.cur + body_stat.st_size;
-	if (message_size > max_message_len) {
+	if (extscan_prepare(&ecx)) {
 		duk_push_null(ctx);
-		goto out_clean;
+		extscan_context_cleanup(&ecx);
+		return 1;
 	}
 
 	// Prepare connection to spamd
-	sockfd = connect_to_address(ctx, host, port);
-	if (sockfd < 0) {
-		err = -sockfd;
-		goto out_clean;
-	}
-
-	sock_stream = bfd_alloc(sockfd);
-	if (!sock_stream) {
-		close(sockfd);
-		err = ENOMEM;
-		goto out_clean;
-	}
+	extscan_connect(&ecx);
 
 	// Send request line and headers to spamd
-	if ((err = bfd_printf(sock_stream,
+	if ((err = bfd_printf(ecx.sock_stream,
 		"REPORT SPAMC/1.5\r\n"
 		"User: %s\r\n"
 		"Content-length: %zu\r\n"
-		"\r\n%s",
-		user, message_size, sb.s)))
-		goto out_clean;
+		"\r\n",
+		ecx.user, ecx.message_size)))
+		return extscan_ret_errno(&ecx, err);
 
-	// Send message body to spamd
-	if ((err = bfd_copy(body_stream, sock_stream)))
-		goto out_clean;
-	if ((err = bfd_flush(sock_stream)))
-		goto out_clean;
+	// Send message headers and body to spamd
+	extscan_send_hdr_body(&ecx);
 
 	// Read and parse status line and headers from spamd
 	for (i = 0;; i++) {
 		char hdr[50], scr[sizeof(hdr)];
 
-		if ((len = bfd_read_line(sock_stream, hdr, sizeof(hdr))) < 0) {
-			err = len ? -len : EIO;
-			goto out_clean;
-		}
+		if ((len = bfd_read_line(ecx.sock_stream, hdr, sizeof(hdr))) < 0)
+			return extscan_ret_errno(&ecx, len ? -len : EIO);
 
-		if (len < 2 || strncmp(&hdr[len - 2], "\r\n", 2)) {
-			err = EPROTO;
-			goto out_clean;
-		}
+		if (len < 2 || strncmp(&hdr[len - 2], "\r\n", 2))
+			return extscan_ret_errno(&ecx, EPROTO);
 
 		hdr[len -= 2] = '\0';
 		if (!len)
@@ -184,10 +295,8 @@ static int SpamAssassin_scan(duk_context *ctx)
 
 		if (!i) {
 			if (sscanf(hdr, "SPAMD/%[0-9.] %d %s", scr, (int *)scr, scr) != 3 ||
-			    strcmp(scr, "EX_OK")) {
-				err = EPROTO;
-				goto out_clean;
-			}
+			    strcmp(scr, "EX_OK"))
+				return extscan_ret_errno(&ecx, EPROTO);
 			continue;
 		}
 
@@ -197,28 +306,22 @@ static int SpamAssassin_scan(duk_context *ctx)
 		if (sscanf(hdr, "Spam: %s ; %lf / %lf", scr, &score, &required) == 3) {
 			if (strcmp(scr, "True") == 0)
 				spam = true;
-			else if (strcmp(scr, "False") != 0) {
-				err = EPROTO;
-				goto out_clean;
-			}
+			else if (strcmp(scr, "False") != 0)
+				return extscan_ret_errno(&ecx, EPROTO);
 		}
 	}
 
-	if (!clen || clen >= SPAMD_MAX_RESPONSE_SIZE) {
-		err = EPROTO;
-		goto out_clean;
-	}
+	if (!clen || clen >= SPAMD_MAX_RESPONSE_SIZE)
+		return extscan_ret_errno(&ecx, EPROTO);
 
-	buf = malloc(clen + 1);
-	if (!buf) {
-		err = ENOMEM;
-		goto out_clean;
-	}
+	ecx.rbuf = malloc(clen + 1);
+	if (!ecx.rbuf)
+		return extscan_ret_errno(&ecx, ENOMEM);
 
 	// Read and parse response from spamd
-	if ((err = bfd_read_full(sock_stream, buf, clen)))
-		goto out_clean;
-	buf[clen] = '\0';
+	if ((err = bfd_read_full(ecx.sock_stream, ecx.rbuf, clen)))
+		return extscan_ret_errno(&ecx, err);
+	ecx.rbuf[clen] = '\0';
 
 	duk_push_object(ctx);
 	duk_push_boolean(ctx, spam);
@@ -227,46 +330,10 @@ static int SpamAssassin_scan(duk_context *ctx)
 	duk_put_prop_string(ctx, -2, "score");
 	duk_push_number(ctx, required);
 	duk_put_prop_string(ctx, -2, "required");
+	extscan_parse_fields(&ecx, ecx.rbuf, '\n', fields);
 
-	for (i = 0, tok = buf; i < ARRAY_SIZE(fields); i++) {
-		char *p = strchr(tok, '\n');
-		int d;
-		double f;
-
-		if (!p) {
-			err = EPROTO;
-			goto out_clean;
-		}
-		*p = '\0';
-		switch (fields[i].type) {
-		case 's':
-			duk_push_string(ctx, tok);
-			break;
-		case 'd':
-			if (sscanf(tok, "%d", &d) != 1) {
-				err = EPROTO;
-				goto out_clean;
-			}
-			duk_push_int(ctx, d);
-			break;
-		case 'f':
-			if (sscanf(tok, "%lf", &f) != 1) {
-				err = EPROTO;
-				goto out_clean;
-			}
-			duk_push_number(ctx, f);
-			break;
-		}
-		duk_put_prop_string(ctx, -2, fields[i].name);
-		tok = p + 1;
-	}
-
-out_clean:
-	free(buf);
-	string_buffer_cleanup(&sb);
-	bfd_free(body_stream);
-	bfd_free(sock_stream);
-	return err ? js_ret_errno(ctx, err) : 1;
+	extscan_context_cleanup(&ecx);
+	return 1;
 }
 
 static const duk_number_list_entry SpamAssassin_props[] = {
