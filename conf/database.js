@@ -172,33 +172,14 @@ SmtpServer.prototype.filter = function(headers, body) {
 
 	var srv = new SpfServer(Spf.DNS_CACHE);
 	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
-	switch (rsp.result) {
-	case Spf.RESULT_NEUTRAL:
-		Sys.log(Sys.LOG_DEBUG, "SPF: ? (Neutral)");
-		break;
-	case Spf.RESULT_PASS:
-		Sys.log(Sys.LOG_DEBUG, "SPF: + (Pass)");
-		break;
-	case Spf.RESULT_FAIL:
-		Sys.log(Sys.LOG_DEBUG, "SPF: - (Fail)");
+	Sys.log(Sys.LOG_INFO, "SPF: " + Spf.resultStrMap[rsp.result]);
+	if (rsp.result == Spf.RESULT_TEMPERROR)
 		return true;
-	case Spf.RESULT_SOFTFAIL:
-		Sys.log(Sys.LOG_DEBUG, "SPF: ~ (Softfail)");
-		// TODO increase spam score
-		break;
-	case Spf.RESULT_NONE:
-		Sys.log(Sys.LOG_DEBUG, "SPF: X (None)");
-		break;
-	case Spf.RESULT_TEMPERROR:
-		Sys.log(Sys.LOG_DEBUG, "SPF: T (TempError)");
+	if (rsp.result == Spf.RESULT_FAIL)
 		return true;
-	case Spf.RESULT_PERMERROR:
-		Sys.log(Sys.LOG_DEBUG, "SPF: P (PermError)");
-		// We get PermError if e.g. the domain declares multiple SPF records. In that case
-		// it means the SPF check is unreliable, so we just go on with other checks.
-		// TODO increase spam score
-		break;
-	}
+	// We get PermError if e.g. the domain declares multiple SPF records. In that case
+	// it means the SPF check is unreliable, so we just go on with other checks.
+	// TODO increase spam score for SoftFail and PermError
 
 	for (var i in SmtpServer.dnsbl) {
 		var dnsbl = SmtpServer.dnsbl[i];

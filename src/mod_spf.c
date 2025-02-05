@@ -245,6 +245,28 @@ static const duk_number_list_entry Spf_props[] = {
 	{NULL, 0.0}
 };
 
+static const js_array_map_element_t Spf_resultChrMap[] = {
+	{SPF_RESULT_NEUTRAL,	"?"},
+	{SPF_RESULT_PASS,	"+"},
+	{SPF_RESULT_FAIL,	"-"},
+	{SPF_RESULT_SOFTFAIL,	"~"},
+	{SPF_RESULT_NONE,	"X"},
+	{SPF_RESULT_TEMPERROR,	"T"},
+	{SPF_RESULT_PERMERROR,	"P"},
+	{ /* sentinel */ }
+};
+
+static const js_array_map_element_t Spf_resultStrMap[] = {
+	{SPF_RESULT_NEUTRAL,	"neutral"},
+	{SPF_RESULT_PASS,	"pass"},
+	{SPF_RESULT_FAIL,	"fail"},
+	{SPF_RESULT_SOFTFAIL,	"softfail"},
+	{SPF_RESULT_NONE,	"none"},
+	{SPF_RESULT_TEMPERROR,	"temperror"},
+	{SPF_RESULT_PERMERROR,	"permerror"},
+	{ /* sentinel */ }
+};
+
 /* }}} Spf */
 
 /* {{{ libspf2 Logging Handlers */
@@ -313,6 +335,10 @@ duk_bool_t mod_spf_init(duk_context *ctx)
 
 	duk_push_object(ctx);
 	duk_put_number_list(ctx, -1, Spf_props);
+	js_create_array_map(ctx, Spf_resultChrMap);
+	duk_put_prop_string(ctx, -2, "resultChrMap");
+	js_create_array_map(ctx, Spf_resultStrMap);
+	duk_put_prop_string(ctx, -2, "resultStrMap");
 	duk_put_global_string(ctx, "Spf");
 
 	return 1;
