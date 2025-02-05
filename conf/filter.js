@@ -206,7 +206,7 @@ SmtpServer.prototype.filter = function(headers, body) {
 		var raddr = Dns.revAddr(this.remoteAddr, dnsbl[0]);
 		var result = Dns.query(raddr, Dns.t_a);
 		if (typeof(result) == "number") {
-			Sys.log(Sys.LOG_DEBUG, "DNSBL: pass " + raddr + " (" + result + ")");
+			Sys.log(Sys.LOG_INFO, "DNSBL: pass " + raddr + " (" + result + ")");
 			continue;
 		}
 		var rlist = [];
@@ -216,21 +216,21 @@ SmtpServer.prototype.filter = function(headers, body) {
 				rlist.push(rr.data);
 		}
 		// TODO if `dnsbl` defines a callback function, call it and pass rlist
-		Sys.log(Sys.LOG_DEBUG, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
+		Sys.log(Sys.LOG_INFO, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
 		return ret;
 	}
 
 	var sa = new SpamAssassin("localhost");
 	var scan = sa.scan(headers, body);
+	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(scan));
 	if (scan && scan.spam)
 		return ret;
 
 	var av = new ClamAV("localhost");
 	var scan = av.scan(headers, body);
-	if (scan && scan.found) {
-		Sys.log(Sys.LOG_NOTICE, "ClamAV found " + scan.name);
+	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(scan));
+	if (scan && scan.found)
 		return ret;
-	}
 
 	return SmtpServer.FILTER_ACCEPT;
 }
