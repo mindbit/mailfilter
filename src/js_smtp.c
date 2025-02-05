@@ -366,6 +366,7 @@ int smtp_copy_to_file(duk_context *ctx, bfd_t *out, bfd_t *in)
  *            comprising of a single dot is written to the output stream
  *            at the end. This is useful when sending a message to an
  *            SMTP server.
+ * @return    0 on success; POSIX error code on error
  */
 int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 {
@@ -407,6 +408,13 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 	if (bfd_puts(out, "\r\n"))
 		return EIO;
 
+	/*
+	 * If no conversion is done, it's more efficient to copy blocks
+	 * of data instead of individual characters.
+	 */
+	if (!dotconv)
+		return bfd_copy(in, out);
+
 	/* send body */
 	while ((c = bfd_getc(in)) >= 0) {
 		do {
@@ -417,7 +425,7 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 				fill = PTRN_LEN;
 			}
 			c = '.';
-		} while (dotconv && (buf & CRLFDOT_MASK) == CRLFDOT_PTRN);
+		} while ((buf & CRLFDOT_MASK) == CRLFDOT_PTRN);
 	}
 
 	/* flush remaining buffer */
@@ -431,7 +439,7 @@ int smtp_copy_from_file(duk_context *ctx, bfd_t *out, bfd_t *in, int dotconv)
 	/* send termination marker */
 	if (add_crlf && bfd_puts(out, "\r\n"))
 		return EIO;
-	if (dotconv && bfd_puts(out, ".\r\n"))
+	if (bfd_puts(out, ".\r\n"))
 		return EIO;
 
 	return 0;

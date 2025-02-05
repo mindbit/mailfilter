@@ -278,6 +278,13 @@ int bfd_copy(bfd_t *src, bfd_t *dst)
 	ssize_t sz;
 	int err;
 
+	/*
+	 * Typically `src` is backed by a regular file (the temp file
+	 * where the message body is stored). Unlike sockets, a read()
+	 * from a regular file that returns 0 means that EOF has been
+	 * reached. In our case, this can happen if the size of the
+	 * input file is a multiple of sizeof(buf).
+	 */
 	while ((sz = bfd_read(src, buf, sizeof(buf)))) {
 		if (sz < 0)
 			return -sz;
