@@ -22,6 +22,7 @@ SmtpServer.FILTER_ACCEPT = 0;
 SmtpServer.FILTER_ACCEPT_MARK = 1;
 SmtpServer.FILTER_REJECT_TEMPORARILY = 2;
 SmtpServer.FILTER_REJECT_PERMANENTLY = 3;
+SmtpServer.FILTER_REJECT_VIRUS = 4;
 
 // List of DNSBL domains:
 //   - first element is the DNSBL domain name
@@ -60,6 +61,18 @@ Object.defineProperty(Array.prototype, "indexOfStr", {
 	},
 	enumerable: false
 });
+
+function addSubjectTag(headers, tag)
+{
+	for (var i in headers) {
+		if (headers[i].name.toLowerCase() != "subject")
+			continue;
+		var parts = headers[i].parts;
+		parts[0] = "[" + tag + "] " + parts[0];
+		return;
+	}
+	headers.push(new SmtpHeader("Subject", "[" + tag + "]"));
+}
 
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
@@ -120,6 +133,7 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	headers.unshift(this.receivedHeader());
 
 	var bypassFilters = false;
+	var tag = "SPAM";
 	for (var i in SmtpServer.bypassFilters)
 		if (this.recipients.indexOfStr(SmtpServer.bypassFilters[i]) >= 0) {
 			bypassFilters = true;
@@ -128,35 +142,32 @@ SmtpServer.prototype.smtpData = function(headers, body)
 
 	switch (this.filter(headers, body)) {
 	case SmtpServer.FILTER_REJECT_TEMPORARILY:
-		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-TEMPORARILY");
+		Sys.log(Sys.LOG_INFO, "Filter: REJECT-TEMPORARILY");
 		if (bypassFilters)
 			break;
 		this.relayCmd("RSET");
 		return new SmtpResponse(450, "Requested action not taken");
+	case SmtpServer.FILTER_REJECT_VIRUS:
+		tag = "VIRUS";
+		// fallthrough
 	case SmtpServer.FILTER_REJECT_PERMANENTLY:
-		Sys.log(Sys.LOG_INFO, "FILTER: REJECT-PERMANENTLY");
+		Sys.log(Sys.LOG_INFO, "Filter: REJECT-PERMANENTLY");
 		if (bypassFilters)
 			break;
 		this.relayCmd("RSET");
 		return new SmtpResponse(550, "Requested action not taken");
 	case SmtpServer.FILTER_ACCEPT_MARK:
-		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT-MARK");
+		Sys.log(Sys.LOG_INFO, "Filter: ACCEPT-MARK");
 		bypassFilters = true;
 		break;
 	default:
-		Sys.log(Sys.LOG_INFO, "FILTER: ACCEPT");
+		Sys.log(Sys.LOG_INFO, "Filter: ACCEPT");
 		bypassFilters = false;
 	}
 
 	if (bypassFilters) {
-		Sys.log(Sys.LOG_INFO, "bypassed filter action");
-		for (var i in headers) {
-			if (headers[i].name.toLowerCase() != "subject")
-				continue;
-			var parts = headers[i].parts;
-			parts[0] = "[SPAM] " + parts[0];
-			break;
-		}
+		Sys.log(Sys.LOG_INFO, "Bypassed filter action");
+		addSubjectTag(headers, tag)
 	}
 
 	var rsp = this.relayCmd("DATA");
@@ -181,6 +192,12 @@ SmtpServer.prototype.cleanup = function() {
 };
 
 SmtpServer.prototype.filter = function(headers, body) {
+	var srv = new ClamAV("localhost");
+	var rsp = srv.scan(headers, body);
+	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(rsp));
+	if (rsp && rsp.found)
+		return SmtpServer.FILTER_REJECT_VIRUS;
+
 	if (!this.sender.mailbox.domain) {
 		Sys.log(Sys.LOG_DEBUG, "Sender: null");
 		return SmtpServer.FILTER_REJECT_PERMANENTLY;
@@ -220,16 +237,10 @@ SmtpServer.prototype.filter = function(headers, body) {
 		return ret;
 	}
 
-	var sa = new SpamAssassin("localhost");
-	var scan = sa.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(scan));
-	if (scan && scan.spam)
-		return ret;
-
-	var av = new ClamAV("localhost");
-	var scan = av.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(scan));
-	if (scan && scan.found)
+	var srv = new SpamAssassin("localhost");
+	var rsp = srv.scan(headers, body);
+	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(rsp));
+	if (rsp && rsp.spam)
 		return ret;
 
 	return SmtpServer.FILTER_ACCEPT;

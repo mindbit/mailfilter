@@ -18,6 +18,9 @@ SmtpServer.listenAddress = [["127.0.0.1", 8025]];
 // connection.
 SmtpServer.debugProtocol = true;
 
+SmtpServer.FILTER_PASS = 0;
+SmtpServer.FILTER_SPAM = 1;
+SmtpServer.FILTER_VIRUS = 2;
 // List of DNSBL domains:
 //   - first element is the DNSBL domain name
 //   - second element (optional) is a callback function // TODO
@@ -30,6 +33,18 @@ SmtpServer.dnsbl = [
 	//["rbl.abuse.ro"],		// Open; https://abuse.ro/#three
 	//["b.barracudacentral.org"],	// Open; https://barracudacentral.org/
 ];
+
+function addSubjectTag(headers, tag)
+{
+	for (var i in headers) {
+		if (headers[i].name.toLowerCase() != "subject")
+			continue;
+		var parts = headers[i].parts;
+		parts[0] = "[" + tag + "] " + parts[0];
+		return;
+	}
+	headers.push(new SmtpHeader("Subject", "[" + tag + "]"));
+}
 
 SmtpServer.prototype.relayCmd = function(cmd, args)
 {
@@ -89,15 +104,17 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	// Generate and insert the "Received" header
 	headers.unshift(this.receivedHeader());
 
-	if (this.filter(headers, body)) {
-		Sys.log(Sys.LOG_INFO, "marking email as SPAM");
-		for (var i in headers) {
-			if (headers[i].name.toLowerCase() != "subject")
-				continue;
-			var parts = headers[i].parts;
-			parts[0] = "[SPAM] " + parts[0];
-			break;
-		}
+	var tag = "SPAM";
+	switch (this.filter(headers, body)) {
+	case SmtpServer.FILTER_VIRUS:
+		tag = "VIRUS";
+		// fallthrough
+	case SmtpServer.FILTER_SPAM:
+		Sys.log(Sys.LOG_INFO, "Filter: tagging email as " + tag);
+		addSubjectTag(headers, tag)
+		break;
+	default:
+		Sys.log(Sys.LOG_INFO, "Filter: PASS");
 	}
 
 	var rsp = this.relayCmd("DATA");
@@ -122,18 +139,24 @@ SmtpServer.prototype.cleanup = function() {
 };
 
 SmtpServer.prototype.filter = function(headers, body) {
+	var srv = new ClamAV("localhost");
+	var rsp = srv.scan(headers, body);
+	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(rsp));
+	if (rsp && rsp.found)
+		return SmtpServer.FILTER_VIRUS;
+
 	if (!this.sender.mailbox.domain) {
 		Sys.log(Sys.LOG_DEBUG, "Sender: null");
-		return true;
+		return SmtpServer.FILTER_SPAM;
 	}
 
 	var srv = new SpfServer(Spf.DNS_CACHE);
 	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
 	Sys.log(Sys.LOG_INFO, "SPF: " + Spf.resultStrMap[rsp.result]);
 	if (rsp.result == Spf.RESULT_TEMPERROR)
-		return true;
+		return SmtpServer.FILTER_SPAM;
 	if (rsp.result == Spf.RESULT_FAIL)
-		return true;
+		return SmtpServer.FILTER_SPAM;
 	// We get PermError if e.g. the domain declares multiple SPF records. In that case
 	// it means the SPF check is unreliable, so we just go on with other checks.
 	// TODO increase spam score for SoftFail and PermError
@@ -154,20 +177,14 @@ SmtpServer.prototype.filter = function(headers, body) {
 		}
 		// TODO if `dnsbl` defines a callback function, call it and pass rlist
 		Sys.log(Sys.LOG_INFO, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
-		return true;
+		return SmtpServer.FILTER_SPAM;
 	}
 
-	var sa = new SpamAssassin("localhost");
-	var scan = sa.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(scan));
-	if (scan && scan.spam)
-		return true;
+	var srv = new SpamAssassin("localhost");
+	var rsp = srv.scan(headers, body);
+	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(rsp));
+	if (rsp && rsp.spam)
+		return SmtpServer.FILTER_SPAM;
 
-	var av = new ClamAV("localhost");
-	var scan = av.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(scan));
-	if (scan && scan.found)
-		return true;
-
-	return false;
+	return SmtpServer.FILTER_PASS;
 }
