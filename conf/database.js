@@ -1,6 +1,6 @@
 /*
  * Reverse proxy configuration that demonstrates database integration
- * capabilities. In terms of SMTP, it is identical to mark.js but in
+ * capabilities. In terms of SMTP, it is identical to proxy.js but in
  * addition it logs information about SMTP transactions to a SQL
  * database.
  */
@@ -132,17 +132,6 @@ SmtpServer.prototype.smtpData = function(headers, body)
 	// Generate and insert the "Received" header
 	headers.unshift(this.receivedHeader());
 
-	if (this.filter(headers, body)) {
-		Sys.log(Sys.LOG_INFO, "marking email as SPAM");
-		for (var i in headers) {
-			if (headers[i].name.toLowerCase() != "subject")
-				continue;
-			var parts = headers[i].parts;
-			parts[0] = "[SPAM] " + parts[0];
-			break;
-		}
-	}
-
 	var rsp = this.relayCmd("DATA");
 	if (rsp.code != 354)
 		return rsp;
@@ -163,54 +152,3 @@ SmtpServer.prototype.cleanup = function() {
 	this.relayCmd("QUIT");
 	this.smtpClient.disconnect();
 };
-
-SmtpServer.prototype.filter = function(headers, body) {
-	if (!this.sender.mailbox.domain) {
-		Sys.log(Sys.LOG_DEBUG, "Sender: null");
-		return true;
-	}
-
-	var srv = new SpfServer(Spf.DNS_CACHE);
-	var rsp = srv.query(this.remoteAddr, this.sender.mailbox.domain);
-	Sys.log(Sys.LOG_INFO, "SPF: " + Spf.resultStrMap[rsp.result]);
-	if (rsp.result == Spf.RESULT_TEMPERROR)
-		return true;
-	if (rsp.result == Spf.RESULT_FAIL)
-		return true;
-	// We get PermError if e.g. the domain declares multiple SPF records. In that case
-	// it means the SPF check is unreliable, so we just go on with other checks.
-	// TODO increase spam score for SoftFail and PermError
-
-	for (var i in SmtpServer.dnsbl) {
-		var dnsbl = SmtpServer.dnsbl[i];
-		var raddr = Dns.revAddr(this.remoteAddr, dnsbl[0]);
-		var result = Dns.query(raddr, Dns.t_a);
-		if (typeof(result) == "number") {
-			Sys.log(Sys.LOG_INFO, "DNSBL: pass " + raddr + " (" + result + ")");
-			continue;
-		}
-		var rlist = [];
-		for (var j in result.answer) {
-			var rr = result.answer[j];
-			if (rr.type = Dns.t_a && rr.name.toLowerCase() == raddr.toLowerCase())
-				rlist.push(rr.data);
-		}
-		// TODO if `dnsbl` defines a callback function, call it and pass rlist
-		Sys.log(Sys.LOG_INFO, "DNSBL: reject " + raddr + " (" + rlist.join() + ")");
-		return true;
-	}
-
-	var sa = new SpamAssassin("localhost");
-	var scan = sa.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "SpamAssassin: " + JSON.stringify(scan));
-	if (scan && scan.spam)
-		return true;
-
-	var av = new ClamAV("localhost");
-	var scan = av.scan(headers, body);
-	Sys.log(Sys.LOG_INFO, "ClamAV: " + JSON.stringify(scan));
-	if (scan && scan.found)
-		return true;
-
-	return false;
-}
