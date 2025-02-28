@@ -16,10 +16,6 @@ Sys.loadModule("mod_sql.so");
 // with "mysql://" with the sql.getConnection() method.
 Sys.loadModule("mod_mysql.so");
 
-// Load the SMTP client module. This module allows connecting to other
-// SMTP servers as a client.
-Sys.loadModule("mod_smtp_client.so");
-
 // Configure address/port pairs for listening to incoming SMTP
 // connections.
 SmtpServer.listenAddress = [["127.0.0.1", 8025]];
