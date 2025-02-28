@@ -147,18 +147,17 @@ static int smtp_response_copy(struct smtp_response *dst, const struct smtp_respo
  */
 static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 {
-	static const int log_len = 50;
 	char *h, *t;
 
 	for (h = rsp->message; (t = strchr(h, '\n')); h = t + 1) {
-		js_log(JS_LOG_DEBUG, "<<< %d-%.*s\n", rsp->code, MIN(log_len, t - h), h);
+		js_log(JS_LOG_DEBUG, "<<< %d-%.*s\n", rsp->code, t - h, h);
 
 		bfd_printf(f, "%d-", rsp->code);
 		bfd_write_full(f, h, t - h);
 		bfd_printf(f, "\r\n");
 	}
 
-	js_log(JS_LOG_DEBUG, "<<< %d %.*s\n", rsp->code, log_len, h);
+	js_log(JS_LOG_DEBUG, "<<< %d %s\n", rsp->code, h);
 	if (bfd_printf(f, "%d %s\r\n", rsp->code, h) == 0) {
 		bfd_flush(f);
 		return 0;
