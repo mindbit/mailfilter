@@ -508,7 +508,7 @@ bfd_t *smtp_body_open_read(duk_context *ctx, duk_idx_t obj_idx)
 duk_bool_t smtp_create_response(duk_context *ctx, int code, const char *message, int disconnect)
 {
 	if (!duk_get_global_string(ctx, "SmtpResponse")) {
-		js_log(JS_LOG_ERR, "SmtpResponse is not defined\n");
+		js_log(LOG_ERR, "SmtpResponse is not defined\n");
 		duk_pop(ctx);
 		return 0;
 	}

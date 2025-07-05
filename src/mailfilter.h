@@ -35,6 +35,6 @@ int ssl_print_errors_cb(const char *str, size_t len, void *u);
 #else
 #define _log_ssl_errors(x, prio...) __log_ssl_errors(prio, NULL, __FILE__, __LINE__)
 #endif
-#define log_ssl_errors(prio...) _log_ssl_errors(x, ##prio, JS_LOG_ERR)
+#define log_ssl_errors(prio...) _log_ssl_errors(x, ##prio, LOG_ERR)
 
 #endif

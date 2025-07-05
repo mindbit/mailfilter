@@ -150,14 +150,14 @@ static int smtp_server_response(bfd_t *f, const struct smtp_response *rsp)
 	char *h, *t;
 
 	for (h = rsp->message; (t = strchr(h, '\n')); h = t + 1) {
-		js_log(JS_LOG_DEBUG, "<<< %d-%.*s\n", rsp->code, t - h, h);
+		js_log(LOG_DEBUG, "<<< %d-%.*s\n", rsp->code, t - h, h);
 
 		bfd_printf(f, "%d-", rsp->code);
 		bfd_write_full(f, h, t - h);
 		bfd_printf(f, "\r\n");
 	}
 
-	js_log(JS_LOG_DEBUG, "<<< %d %s\n", rsp->code, h);
+	js_log(LOG_DEBUG, "<<< %d %s\n", rsp->code, h);
 	if (bfd_printf(f, "%d %s\r\n", rsp->code, h) == 0) {
 		bfd_flush(f);
 		return 0;
@@ -269,17 +269,17 @@ static int smtp_server_hdle_one(struct smtp_server_context *ctx)
 	status = smtp_server_read_line(ctx->stream, buf, &n);
 
 	if (status < 0) {
-		js_log(JS_LOG_ERR, "Socket read error (%s)\n", strerror(errno));
+		js_log(LOG_ERR, "Socket read error (%s)\n", strerror(errno));
 		return EIO;
 	}
 
 	if (!status) {
-		js_log(JS_LOG_ERR, "Lost connection to client\n");
+		js_log(LOG_ERR, "Lost connection to client\n");
 		return EIO;
 	}
 
 	/* Log received command */
-	js_log(JS_LOG_DEBUG, ">>> %s\n", &buf[0]);
+	js_log(LOG_DEBUG, ">>> %s\n", &buf[0]);
 
 	/* reject oversized commands */
 	if (status > 1)
@@ -337,7 +337,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 	if (duk_pcall_prop(ctx->dcx, ctx->js_srv_idx, nargs)) {
 		js_log_error(ctx->dcx, -1);
 		duk_pop(ctx->dcx);
-		js_log(JS_LOG_ERR, "failed calling '%s'\n", handler_name);
+		js_log(LOG_ERR, "failed calling '%s'\n", handler_name);
 		return EINVAL;
 	}
 
@@ -348,14 +348,14 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 
 	/* Sanity check on return type */
 	if (!duk_is_object(ctx->dcx, -1)) {
-		js_log(JS_LOG_ERR, "%s: retval not an object\n", handler_name);
+		js_log(LOG_ERR, "%s: retval not an object\n", handler_name);
 		duk_pop(ctx->dcx);
 		return EINVAL;
 	}
 
 	/* Extract "code" field */
 	if (!duk_get_prop_string(ctx->dcx, -1, "code")) {
-		js_log(JS_LOG_ERR, "%s: retval missing code\n", handler_name);
+		js_log(LOG_ERR, "%s: retval missing code\n", handler_name);
 		duk_pop_2(ctx->dcx);
 		return EINVAL;
 	}
@@ -364,14 +364,14 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 
 	/* Extract "message" field */
 	if (!duk_get_prop_string(ctx->dcx, -1, "message")) {
-		js_log(JS_LOG_ERR, "%s: retval missing message\n", handler_name);
+		js_log(LOG_ERR, "%s: retval missing message\n", handler_name);
 		duk_pop_2(ctx->dcx);
 		return EINVAL;
 	}
 	if (!duk_is_array(ctx->dcx, -1)) {
 		str = duk_safe_to_string(ctx->dcx, -1);
 		if (!strlen(str)) {
-			js_log(JS_LOG_ERR, "%s: retval empty message\n", handler_name);
+			js_log(LOG_ERR, "%s: retval empty message\n", handler_name);
 			duk_pop_2(ctx->dcx);
 			return EINVAL;
 		}
@@ -394,7 +394,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 		}
 
 		if (!sb.cur) {
-			js_log(JS_LOG_ERR, "%s: retval empty message\n", handler_name);
+			js_log(LOG_ERR, "%s: retval empty message\n", handler_name);
 			duk_pop_2(ctx->dcx);
 			string_buffer_cleanup(&sb);
 			return EINVAL;
@@ -406,7 +406,7 @@ static int call_js_handler(struct smtp_server_context *ctx, const char *cmd, duk
 
 	/* Extract "disconnect" field */
 	if (!duk_get_prop_string(ctx->dcx, -1, PR_DISCONNECT)) {
-		js_log(JS_LOG_ERR, "%s: retval missing disconnect\n", handler_name);
+		js_log(LOG_ERR, "%s: retval missing disconnect\n", handler_name);
 		duk_pop_2(ctx->dcx);
 		free(message);
 		return EINVAL;
@@ -429,7 +429,7 @@ static duk_bool_t smtp_server_get_disconnect(struct smtp_server_context *ctx)
 	if (duk_get_prop_string(ctx->dcx, ctx->js_srv_idx, PR_DISCONNECT))
 		ret = duk_to_boolean(ctx->dcx, -1);
 	else
-		js_log(JS_LOG_WARNING, "Cannot get disconnect flag\n");
+		js_log(LOG_WARNING, "Cannot get disconnect flag\n");
 
 	duk_pop(ctx->dcx);
 	return ret;
@@ -450,12 +450,12 @@ void smtp_server_main(duk_context *dcx, SSL_CTX *scx, int client_sock_fd, const 
 	SSL *ssl;
 
 	remote_addr = inet_ntoa(peer->sin_addr);
-	js_log(JS_LOG_INFO, "New connection from %s\n", remote_addr);
+	js_log(LOG_INFO, "New connection from %s\n", remote_addr);
 
 	ctx.stream = bfd_alloc(client_sock_fd);
 	if (!ctx.stream) {
 		close(client_sock_fd);
-		js_log(JS_LOG_ERR, "%s", strerror(ENOMEM));
+		js_log(LOG_ERR, "%s", strerror(ENOMEM));
 		goto out_msg;
 	}
 
@@ -505,7 +505,7 @@ out_close:
 	}
 	bfd_free(ctx.stream);
 out_msg:
-	js_log(JS_LOG_INFO, "Closed connection to %s\n", remote_addr);
+	js_log(LOG_INFO, "Closed connection to %s\n", remote_addr);
 }
 
 /**
@@ -1045,7 +1045,7 @@ int smtp_hdlr_starttls(struct smtp_server_context *ctx, const char *cmd, const c
 	}
 
 	bfd_attach_ssl(ctx->stream, ssl);
-	js_log(JS_LOG_INFO, "SSL handshake completed successfully\n");
+	js_log(LOG_INFO, "SSL handshake completed successfully\n");
 
 	/*
 	 * Inform the JS environment that TLS has been enabled. Do this before
@@ -1068,7 +1068,7 @@ int smtp_hdlr_starttls(struct smtp_server_context *ctx, const char *cmd, const c
 	duk_put_prop_string(ctx->dcx, ctx->js_srv_idx, PR_PROTO);
 
 	if (!js_init_envelope(ctx->dcx, ctx->js_srv_idx)) {
-		js_log(JS_LOG_ERR, "%s", strerror(ENOMEM));
+		js_log(LOG_ERR, "%s", strerror(ENOMEM));
 		// TODO should we abort the connection?
 		// note that we *cannot* send a response
 	}

@@ -4,7 +4,7 @@
  */
 
 // Uncomment the line below to switch logging to syslog
-//Sys.openlog();
+//Sys.openlog("mailfilter", Sys.LOG_MAIL);
 
 // Configure address/port pairs for listening to incoming SMTP
 // connections.

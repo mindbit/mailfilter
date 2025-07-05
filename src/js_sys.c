@@ -6,28 +6,6 @@
 
 #include "mailfilter.h"
 
-static int Sys_openlog(duk_context *ctx)
-{
-	int argc = duk_get_top(ctx);
-	const char *ident = "mailfilter";
-	int facility = LOG_MAIL;
-
-	if (argc >= 1)
-		ident = duk_safe_to_string(ctx, 0);
-
-	if (argc >= 2)
-		facility = duk_to_int(ctx, 1);
-
-	openlog(ident, LOG_PID, facility);
-
-	// FIXME for better portability, do not pass vsyslog directly;
-	// instead create a wrapper function that translates priority
-	// from JS_LOG_* to LOG_*
-	js_log_set_callback(vsyslog);
-
-	return 0;
-}
-
 #if 0
 static JSBool debug_protocol_hdlr(JSContext *cx, JSObject *obj, jsval *vp)
 {
@@ -48,7 +26,7 @@ static int Sys_loadModule(duk_context *ctx)
 {
 	const char *module_name = duk_safe_to_string(ctx, 0);
 
-	js_log(JS_LOG_INFO, "[STUB] Loading module \"%s\"\n", module_name);
+	js_log(LOG_INFO, "[STUB] Loading module \"%s\"\n", module_name);
 
 	return 0;
 }
@@ -74,35 +52,13 @@ int js_engine_parse(JSContext *cx, JSObject *global)
 }
 #endif
 
-static const duk_number_list_entry Sys_props[] = {
-	// syslog facilities
-	{"SYSLOG_DAEMON",	LOG_DAEMON },
-	{"SYSLOG_USER",		LOG_USER },
-	{"SYSLOG_MAIL",		LOG_MAIL },
-	{"SYSLOG_LOCAL0",	LOG_LOCAL0},
-	{"SYSLOG_LOCAL1",	LOG_LOCAL1},
-	{"SYSLOG_LOCAL2",	LOG_LOCAL2},
-	{"SYSLOG_LOCAL3",	LOG_LOCAL3},
-	{"SYSLOG_LOCAL4",	LOG_LOCAL4},
-	{"SYSLOG_LOCAL5",	LOG_LOCAL5},
-	{"SYSLOG_LOCAL6",	LOG_LOCAL6},
-	{"SYSLOG_LOCAL7",	LOG_LOCAL7},
 #if 0
-	// syslog priorities
-	{"SYSLOG_EMERG",	LOG_EMERG},
-	{"SYSLOG_ALERT",	LOG_ALERT},
-	{"SYSLOG_CRIT",		LOG_CRIT},
-	{"SYSLOG_ERR",		LOG_ERR},
-	{"SYSLOG_WARNING",	LOG_WARNING},
-	{"SYSLOG_NOTICE",	LOG_NOTICE},
-	{"SYSLOG_INFO",		LOG_INFO},
-	{"SYSLOG_DEBUG",	LOG_DEBUG},
-#endif
+static const duk_number_list_entry Sys_props[] = {
 	{NULL,			0.0}
 };
+#endif
 
 static duk_function_list_entry Sys_functions[] = {
-	{"openlog",	Sys_openlog, 	DUK_VARARGS},
 	{"loadModule",	Sys_loadModule,	1},
 	{NULL,		NULL,		0}
 };
@@ -128,7 +84,9 @@ duk_bool_t js_sys_init(duk_context *ctx)
 	struct passwd *passwd;
 
 	duk_push_object(ctx);
+#if 0
 	duk_put_number_list(ctx, -1, Sys_props);
+#endif
 	duk_put_function_list(ctx, -1, Sys_functions);
 
 	if ((passwd = getpwuid(geteuid()))) {

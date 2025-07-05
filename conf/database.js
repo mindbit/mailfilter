@@ -6,7 +6,7 @@
  */
 
 // Uncomment the line below to switch logging to syslog
-//Sys.openlog();
+//Sys.openlog("mailfilter", Sys.LOG_MAIL);
 
 // Load the "sql" module. Registers the global "sql" object, which has
 // the getConnection(url) method.

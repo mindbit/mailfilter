@@ -232,28 +232,28 @@ static int get_socket_for_address(const char *host, unsigned short port)
 	snprintf(pstr, sizeof(pstr), "%hu", port);
 	status = getaddrinfo(host, pstr, &hints, &addrinfo);
 	if (status) {
-		js_log(JS_LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
+		js_log(LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
 		return -ENOLINK;
 	}
 
 	for (p = addrinfo; p != NULL; p = p->ai_next) {
 		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 		if (sockfd < 0) {
-			js_log(JS_LOG_NOTICE, "socket: %s\n", strerror(errno));
+			js_log(LOG_NOTICE, "socket: %s\n", strerror(errno));
 			continue;
 		}
 
 		status = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
 				sizeof(int));
 		if (status < 0) {
-			js_log(JS_LOG_NOTICE, "setsockopt: %s\n", strerror(errno));
+			js_log(LOG_NOTICE, "setsockopt: %s\n", strerror(errno));
 			close(sockfd);
 			continue;
 		}
 
 		status = bind(sockfd, p->ai_addr, p->ai_addrlen);
 		if (status < 0) {
-			js_log(JS_LOG_NOTICE, "bind: %s\n", strerror(errno));
+			js_log(LOG_NOTICE, "bind: %s\n", strerror(errno));
 			close(sockfd);
 			continue;
 		}
@@ -261,14 +261,14 @@ static int get_socket_for_address(const char *host, unsigned short port)
 		if (listen(sockfd, 20) == 0)
 			break;
 
-		js_log(JS_LOG_NOTICE, "listen: %s\n", strerror(errno));
+		js_log(LOG_NOTICE, "listen: %s\n", strerror(errno));
 		close(sockfd);
 	}
 
 	freeaddrinfo(addrinfo);
 
 	if (!p) {
-		js_log(JS_LOG_ERR, "cannot bind to %s:%s\n", host, pstr);
+		js_log(LOG_ERR, "cannot bind to %s:%s\n", host, pstr);
 		return -ENOLINK;
 	}
 
@@ -322,7 +322,7 @@ static int create_sockets(duk_context *ctx)
 		}
 
 		fds[fds_len++] = sock;
-		js_log(JS_LOG_INFO, "Listening on %s:%d\n", host, port);
+		js_log(LOG_INFO, "Listening on %s:%d\n", host, port);
 		duk_pop(ctx);
 		// FIXME for now, handle only the first element of "listenAddress"
 		break;
@@ -345,28 +345,28 @@ int connect_to_address(duk_context *ctx, const char *host, unsigned short port)
 	snprintf(pstr, sizeof(pstr), "%hu", port);
 	status = getaddrinfo(host, pstr, &hints, &addrinfo);
 	if (status) {
-		js_log(JS_LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
+		js_log(LOG_NOTICE, "getaddrinfo: %s\n", gai_strerror(status));
 		return -ENOLINK;
 	}
 
 	for (p = addrinfo; p; p = p->ai_next) {
 		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 		if (sockfd < 0) {
-			js_log(JS_LOG_NOTICE, "socket: %s\n", strerror(errno));
+			js_log(LOG_NOTICE, "socket: %s\n", strerror(errno));
 			continue;
 		}
 
 		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0)
 			break;
 
-		js_log(JS_LOG_NOTICE, "connect: %s\n", strerror(errno));
+		js_log(LOG_NOTICE, "connect: %s\n", strerror(errno));
 		close(sockfd);
 	}
 
 	freeaddrinfo(addrinfo);
 
 	if (!p) {
-		js_log(JS_LOG_ERR, "cannot connect to %s:%s\n", host, pstr);
+		js_log(LOG_ERR, "cannot connect to %s:%s\n", host, pstr);
 		return -ENOLINK;
 	}
 
@@ -458,19 +458,19 @@ int main(int argc, char **argv)
 		}
 	}
 
-	js_log(JS_LOG_INFO, "%s\n", VERSION_STR);
+	js_log(LOG_INFO, "%s\n", VERSION_STR);
 
 	if (ssl_key_path && ssl_chain_path) {
 		sctx = ssl_init(ssl_chain_path, ssl_key_path);
 		if (sctx)
-			js_log(JS_LOG_INFO, "STARTTLS support initialized\n");
+			js_log(LOG_INFO, "STARTTLS support initialized\n");
 		else
-			js_log(JS_LOG_NOTICE, "STARTTLS support unavailable\n");
+			js_log(LOG_NOTICE, "STARTTLS support unavailable\n");
 	} else
-		js_log(JS_LOG_NOTICE, "STARTTLS support not configured\n");
+		js_log(LOG_NOTICE, "STARTTLS support not configured\n");
 
 	if ((uid || gid) && (err = drop_privs(uid, gid))) {
-		js_log(JS_LOG_ERR, "Error dropping privileges: %s\n", strerror(err));
+		js_log(LOG_ERR, "Error dropping privileges: %s\n", strerror(err));
 		return EXIT_FAILURE;
 	}
 
@@ -480,7 +480,7 @@ int main(int argc, char **argv)
 
 	/* Start listening on addresses and ports given in the JS config */
 	if (create_sockets(dctx)) {
-		js_log(JS_LOG_ERR, "Error setting up listening sockets\n");
+		js_log(LOG_ERR, "Error setting up listening sockets\n");
 		goto out;
 	}
 
@@ -493,7 +493,7 @@ int main(int argc, char **argv)
 	/* Make sure child processes are reaped and do not become zombies. */
 	sigaction(SIGCHLD, &sigchld_act, NULL);
 
-	js_log(JS_LOG_INFO, "startup complete; ready to accept connections\n");
+	js_log(LOG_INFO, "startup complete; ready to accept connections\n");
 
 	do {
 		struct sockaddr_in peer;

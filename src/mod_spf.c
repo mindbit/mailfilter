@@ -274,9 +274,9 @@ static const js_array_map_element_t Spf_resultStrMap[] = {
 static void __attribute__((noreturn)) js_log_spf_error(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	js_log_impl(JS_LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(LOG_ERR, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	jS_log_impl(JS_LOG_ERR, "[%s] %s\n", file, errmsg);
+	jS_log_impl(LOG_ERR, "[%s] %s\n", file, errmsg);
 #endif
 	/*
 	 * FIXME abort() required by libspf2, but this really should be
@@ -289,27 +289,27 @@ static void __attribute__((noreturn)) js_log_spf_error(const char *file, int lin
 static void js_log_spf_warning(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	js_log_impl(JS_LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(LOG_WARNING, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	js_log_impl(JS_LOG_WARNING, "[%s] %s\n", file, errmsg);
+	js_log_impl(LOG_WARNING, "[%s] %s\n", file, errmsg);
 #endif
 }
 
 static void js_log_spf_info(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	js_log_impl(JS_LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(LOG_INFO, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	js_log_impl(JS_LOG_INFO, "[%s] %s\n", file, errmsg);
+	js_log_impl(LOG_INFO, "[%s] %s\n", file, errmsg);
 #endif
 }
 
 static void js_log_spf_debug(const char *file, int line, const char *errmsg)
 {
 #ifdef JS_DEBUG
-	js_log_impl(JS_LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
+	js_log_impl(LOG_DEBUG, "[%s:%d] %s\n", file, line, errmsg);
 #else
-	js_log_impl(JS_LOG_DEBUG, "[%s] %s\n", file, errmsg);
+	js_log_impl(LOG_DEBUG, "[%s] %s\n", file, errmsg);
 #endif
 }
 
