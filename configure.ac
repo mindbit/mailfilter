@@ -125,7 +125,7 @@ AS_IF([test "x$enable_debug" = "xyes"], [
 #
 
 AC_DEFINE_UNQUOTED(VERSION_STR,
-    ["mailfilter `git describe` ($host, $ax_cv_c_compiler_vendor cc $ax_cv_c_compiler_version, `expr $ac_cv_sizeof_void_p \* 8`-bit)"],
+    ["mailfilter `./version` ($host, $ax_cv_c_compiler_vendor cc $ax_cv_c_compiler_version, `expr $ac_cv_sizeof_void_p \* 8`-bit)"],
     [A string containing the version number, platform, and C compiler])
 
 AC_OUTPUT

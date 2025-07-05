@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ -f localversion ]]; then
+	cat localversion
+	exit
+fi
+
+if [[ -e .git ]]; then
+	git describe
+	exit
+fi
+
+echo "<unknown>"
