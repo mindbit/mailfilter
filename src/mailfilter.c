@@ -207,13 +207,16 @@ static void show_help(const char *argv0)
 
 static void chld_sigaction(int sig, siginfo_t *info, void *_ucontext)
 {
+	pid_t pid __attribute__((unused));
 	int status;
 
-#if 0
-	printf("SIGCHLD: signo=%d errno=%d code=%d pid=%d\n",
-			info->si_signo, info->si_errno, info->si_code, info->si_pid);
-#endif
-	waitpid(info->si_pid, &status, WNOHANG);
+	/*
+	 * If multiple child processes exit at about the same time, the signal
+	 * handler is called only once. Repeatedly wait for *any* child process
+	 * that has exited (not just the one in info->si_pid), until there are
+	 * no more child processes.
+	 */
+	while ((pid = waitpid(-1, &status, WNOHANG)) > 0);
 }
 
 static int get_socket_for_address(const char *host, unsigned short port)
@@ -513,8 +516,6 @@ int main(int argc, char **argv)
 			assert_log(0, &config); // FIXME
 			break;
 		case 0:
-			/* __pexec_hdlr_body() always calls waitpid() for child processes,
-			 * so we reinstall the default signal handler */
 			signal(SIGCHLD, SIG_DFL);
 
 			smtp_server_main(dctx, sctx, client_sock_fd, &peer);
